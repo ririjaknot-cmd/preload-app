@@ -58,8 +58,8 @@ with tab_preload:
     # Menggunakan Pandas DataFrame untuk st.data_editor
     st.markdown("##### Data Picking")
     df_pick = pd.DataFrame({
-        "ID Request": ["REQ-001", "REQ-002"], 
-        "Jumlah Box": [5, 12], 
+        "ID Request": ["REQ-004", "REQ-003"], 
+        "Jumlah Box": [4, 11], 
         "Status": ["Pending", "Process"]
     })
     st.data_editor(df_pick, key="editor_picking")
