@@ -55,15 +55,6 @@ with tab_preload:
     st.subheader("Proses Preload")
     st.text_input("Input ID Request", key="input_preload")
 
-    # Menggunakan Pandas DataFrame untuk st.data_editor
-    st.markdown("##### Data Picking")
-    df_pick = pd.DataFrame({
-        "ID Request": ["REQ-004", "REQ-003"], 
-        "Jumlah Box": [4, 11], 
-        "Status": ["Pending", "Process"]
-    })
-    st.data_editor(df_pick, key="editor_picking")
-
 with tab_ondelivery:
     st.subheader("Proses On Delivery")
     st.write("Centang kotak di bawah untuk menandai status pengiriman:")
