@@ -55,6 +55,15 @@ with tab_preload:
     st.subheader("Proses Preload")
     st.text_input("Input ID Request", key="input_preload")
 
+    st.markdown("##### Data Preload")
+    df_preload = pd.DataFrame({
+        "ID Request": ["PRE-001", "PRE-002"], 
+        "Jumlah Box": [8, 15], 
+        "Status": ["Pending", "Ready"],
+        "Zona Mezzanine": ["Zone A", "Zone B"] # Menyesuaikan dengan kolom di sketsa Anda
+    })
+    st.data_editor(df_preload, key="editor_preload")
+
 with tab_ondelivery:
     st.subheader("Proses On Delivery")
     st.write("Centang kotak di bawah untuk menandai status pengiriman:")
