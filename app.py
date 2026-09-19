@@ -16,7 +16,6 @@ with col_head2:
 st.divider()
 
 # --- SIDEBAR (Menu Vertikal: Wilayah / Tujuan Pengiriman) ---
-# Tips: Anda bisa mengeklik tombol panah (<) di pojok kiri atas untuk menciutkan sidebar ini
 st.sidebar.header("Tujuan Pengiriman")
 wilayah = st.sidebar.radio(
     "Pilih Cabang:",
@@ -54,14 +53,20 @@ with tab_pick:
 with tab_preload:
     st.subheader("Proses Preload")
     
-    # Layout tombol Buat Manifest dan Input ID Request berdampingan
-    col_pre1, col_pre2 = st.columns([1, 2])
-    with col_pre1:
-        st.markdown("<br>", unsafe_allow_html=True) # Penyelaras posisi tombol
-        if st.button("📦 Buat Manifest", use_container_width=True):
-            st.success("Manifest baru berhasil dibuat!")
-    with col_pre2:
-        st.text_input("Input ID Request (Ready / Selesai Picking)", key="input_preload_manifest")
+    # Tombol untuk membuat manifest baru
+    if st.button("📦 Buat Manifest Baru"):
+        st.success("Manifest baru berhasil dibuat!")
+
+    # Daftar manifest yang tersedia (nanti bisa diambil dari data database/spreadsheet)
+    daftar_manifest = ["MNF-001", "MNF-002", "MNF-003"]
+    
+    # Memilih manifest (berfungsi seperti memilih/mengklik manifest)
+    manifest_terpilih = st.selectbox("Pilih Nomor Manifest untuk Input ID:", daftar_manifest)
+    
+    # Kolom input ID Request akan muncul dinamis berdasarkan manifest yang dipilih
+    if manifest_terpilih:
+        st.info(f"Kolom input aktif untuk Manifest: **{manifest_terpilih}**")
+        st.text_input(f"Input ID Request untuk {manifest_terpilih}", key=f"input_{manifest_terpilih}")
 
     # Tabel Daftar Manifest Preload
     st.markdown("##### Daftar Manifest Preload")
