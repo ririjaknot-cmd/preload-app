@@ -16,6 +16,7 @@ with col_head2:
 st.divider()
 
 # --- SIDEBAR (Menu Vertikal: Wilayah / Tujuan Pengiriman) ---
+# Tips: Anda bisa mengeklik tombol panah (<) di pojok kiri atas untuk menciutkan sidebar ini
 st.sidebar.header("Tujuan Pengiriman")
 wilayah = st.sidebar.radio(
     "Pilih Cabang:",
@@ -42,35 +43,43 @@ with tab_pick:
     st.subheader("Proses Picking")
     st.text_input("Input ID Request", key="input_picking")
     
-    # Menggunakan Pandas DataFrame untuk st.data_editor
     st.markdown("##### Data Picking")
     df_pick = pd.DataFrame({
         "ID Request": ["REQ-001", "REQ-002"], 
         "Jumlah Box": [5, 12], 
-        "Status": ["Pending", "Process"]
+        "Status": ["Ready", "Process"]
     })
     st.data_editor(df_pick, key="editor_picking")
 
 with tab_preload:
     st.subheader("Proses Preload")
-    st.text_input("Input ID Request", key="input_preload")
+    
+    # Layout tombol Buat Manifest dan Input ID Request berdampingan
+    col_pre1, col_pre2 = st.columns([1, 2])
+    with col_pre1:
+        st.markdown("<br>", unsafe_allow_html=True) # Penyelaras posisi tombol
+        if st.button("📦 Buat Manifest", use_container_width=True):
+            st.success("Manifest baru berhasil dibuat!")
+    with col_pre2:
+        st.text_input("Input ID Request (Ready / Selesai Picking)", key="input_preload_manifest")
 
-    st.markdown("##### Data Preload")
+    # Tabel Daftar Manifest Preload
+    st.markdown("##### Daftar Manifest Preload")
     df_preload = pd.DataFrame({
-        "ID Request": ["PRE-001", "PRE-002"], 
-        "Jumlah Box": [8, 15], 
-        "Status": ["Pending", "Ready"],
-        "Zona Mezzanine": ["Zone A", "Zone B"] # Menyesuaikan dengan kolom di sketsa Anda
+        "ID Manifest": ["MNF-001", "MNF-001", "MNF-002"],
+        "ID Request": ["REQ-001", "REQ-002", "REQ-003"], 
+        "Jumlah Box": [5, 12, 8], 
+        "Status": ["Ready", "Ready", "Pending"],
+        "Zona Mezzanine": ["Zone A", "Zone B", "Zone A"]
     })
-    st.data_editor(df_preload, key="editor_preload")
+    st.data_editor(df_preload, key="editor_preload_manifest")
 
 with tab_ondelivery:
     st.subheader("Proses On Delivery")
     st.write("Centang kotak di bawah untuk menandai status pengiriman:")
     
-    # Menggunakan Pandas DataFrame untuk st.dataframe
     df_delivery = pd.DataFrame([
-        {"ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
-        {"ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
+        {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
+        {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
     ])
     st.dataframe(df_delivery)
