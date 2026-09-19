@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import streamlit.components.v1 as components
 
 # Konfigurasi halaman agar menggunakan mode 'wide' (lebar) ala dashboard
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
@@ -66,8 +67,36 @@ else:
     with col_head1:
         st.markdown("### V2 Pre Load 2026")
     with col_head2:
-        # Menampilkan nama asli pengguna yang sedang login berdasarkan kamus
-        st.text(f"👤 {st.session_state.user_nama}\n🕒 18 Sep 2026, 03:00")
+        st.text(f"👤 {st.session_state.user_nama}")
+        
+        # Komponen HTML + JS untuk Jam & Tanggal Live berdetik
+        components.html("""
+        <div style="font-family: sans-serif; font-size: 13px; color: #31333F; margin-top: -10px;">
+            🕒 <span id="live-clock">Loading...</span>
+        </div>
+        <script>
+        function updateClock() {
+            const now = new Date();
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            const dayName = days[now.getDay()];
+            const dayNum = String(now.getDate()).padStart(2, '0');
+            const monthName = months[now.getMonth()];
+            const year = now.getFullYear();
+            
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            const timeString = `${dayName}, ${dayNum} ${monthName} ${year}, ${hours}:${minutes}:${seconds}`;
+            document.getElementById('live-clock').innerText = timeString;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+        </script>
+        """, height=30)
+
         if st.button("Logout"):
             st.session_state.logged_in = False
             st.session_state.user_email = ""
