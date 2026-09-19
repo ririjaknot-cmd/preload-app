@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
+from streamlit-gsheets import GSheetsConnection
 import streamlit.components.v1 as components
 
 # Konfigurasi halaman agar menggunakan mode 'wide' (lebar) ala dashboard
