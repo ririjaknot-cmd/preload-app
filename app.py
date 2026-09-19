@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
 
 # Konfigurasi halaman agar menggunakan mode 'wide' (lebar) ala dashboard
@@ -31,6 +32,15 @@ if "user_email" not in st.session_state:
     st.session_state.user_email = ""
 if "user_nama" not in st.session_state:
     st.session_state.user_nama = ""
+
+# --- KONEKSI GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Fungsi untuk membaca data dari sheet "Database log"
+def load_data():
+    # ttl=0 memastikan data dibaca secara real-time tanpa cache yang lama
+    df = conn.read(worksheet="Database log", ttl=0)
+    return df
 
 # --- FUNGSI HALAMAN LOGIN ---
 def tampilkan_halaman_login():
@@ -71,7 +81,7 @@ else:
         
         # Komponen HTML + JS untuk Jam & Tanggal Live berdetik
         components.html("""
-        <div style="font-family: sans-serif; font-size: 13px; color: #ffffff; margin-top: -10px;">
+        <div style="font-family: sans-serif; font-size: 13px; color: #31333F; margin-top: -10px;">
             🕒 <span id="live-clock">Loading...</span>
         </div>
         <script>
@@ -119,6 +129,19 @@ else:
 
     st.title(f"Cabang - {wilayah}")
 
+    # --- AMBIL DATA DARI GOOGLE SHEETS ---
+    try:
+        df_database = load_data()
+        # Filter data berdasarkan cabang yang dipilih di sidebar
+        if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
+            df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
+        else:
+            df_filtered = pd.DataFrame()
+    except Exception as e:
+        st.error(f"Gagal memuat data dari Google Sheets: {e}")
+        df_database = pd.DataFrame()
+        df_filtered = pd.DataFrame()
+
     # --- TAB UTAMA (Horizontal Tabs) ---
     tab_summary, tab_pick, tab_preload, tab_ondelivery = st.tabs([
         "Summary Status", "Picking", "Preload", "On Delivery"
@@ -126,19 +149,15 @@ else:
 
     with tab_summary:
         st.subheader(f"Summary Status untuk {wilayah}")
-        st.info(f"Ringkasan data untuk cabang **{wilayah}** (Diakses oleh: {st.session_state.user_nama})")
+        st.metric("Total Log Data Cabang Ini", len(df_filtered))
 
     with tab_pick:
         st.subheader("Proses Picking")
-        st.text_input("Input ID Request", key="input_picking")
+        id_picking = st.text_input("Input ID Request", key="input_picking")
         
-        st.markdown("##### Data Picking")
-        df_pick = pd.DataFrame({
-            "ID Request": ["REQ-001", "REQ-002"], 
-            "Jumlah Box": [5, 12], 
-            "Status": ["Ready", "Process"]
-        })
-        st.data_editor(df_pick, key="editor_picking")
+        st.markdown("##### Data Logistik Sesuai Cabang")
+        # Menampilkan data dari Google Sheet yang sudah difilter sesuai cabang
+        st.dataframe(df_filtered, use_container_width=True)
 
     with tab_preload:
         st.subheader("Proses Preload")
