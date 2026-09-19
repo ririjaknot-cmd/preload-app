@@ -4,87 +4,142 @@ import pandas as pd
 # Konfigurasi halaman agar menggunakan mode 'wide' (lebar) ala dashboard
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
-# --- HEADER ---
-col_head1, col_head2 = st.columns([4, 1])
-with col_head1:
-    st.markdown("### V2 Pre Load 2026")
-with col_head2:
-    st.text("👤 Uwa Tere\n🕒 18 Sep 2026, 03:00")
-    if st.button("Logout"):
-        st.warning("Anda telah logout.")
+# --- KAMUS DATA PENGGUNA (User Dictionary) ---
+USER_DATABASE = {
+    "riri.jaknot@gmail.com": {"nama": "Riri Ridwan Genta Yudha", "pin": "1234"},
+    "adamrayhan.jaknot@gmail.com": {"nama": "Adam Rayhan", "pin": "1234"},
+    "satriopjn@gmail.com": {"nama": "Satrio Sudiyanto", "pin": "1234"},
+    "ahmadallfiansc@gmail.com": {"nama": "Ahmad Alfian", "pin": "1234"},
+    "ajikurnianto93@gmail.com": {"nama": "Aji Kurnianto", "pin": "1234"},
+    "alekhandoko98@gmail.com": {"nama": "Alek Handoko", "pin": "1234"},
+    "alghifariathian@gmail.com": {"nama": "Athian Alghifari", "pin": "1234"},
+    "amelyaadm@gmail.com": {"nama": "Amelya Putri", "pin": "1234"},
+    "ardi03027@gmail.com": {"nama": "Eka Febri Setiardi", "pin": "1234"},
+    "arifsa2703@gmail.com": {"nama": "Arif Saputra", "pin": "1234"},
+    "bedhel089f@gmail.com": {"nama": "Fadhilah Al Azani", "pin": "1234"},
+    "olifiaekmanda7@gmail.com": {"nama": "Olifia Ekmanda", "pin": "1234"},
+    "rayadiagung22@gmail.com": {"nama": "Rayadi Agung", "pin": "1234"},
+    "siwhayy170@gmail.com": {"nama": "Wahyu Adi Sucipto", "pin": "1234"},
+    "tasyaameliaa05@gmail.com": {"nama": "Tasya Amelia", "pin": "1234"}
+}
 
-st.divider()
+# --- INISIALISASI SESSION STATE ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "user_email" not in st.session_state:
+    st.session_state.user_email = ""
+if "user_nama" not in st.session_state:
+    st.session_state.user_nama = ""
 
-# --- SIDEBAR (Menu Vertikal: Wilayah / Tujuan Pengiriman) ---
-st.sidebar.header("Tujuan Pengiriman")
-wilayah = st.sidebar.radio(
-    "Pilih Cabang:",
-    [
-        "Jakarta Pusat", "Jakarta Barat", "Jakarta Utara", 
-        "Tangerang", "Cikupa", "Bandung", "Semarang", 
-        "Surabaya Timur", "Surabaya Barat", "Yogyakarta", 
-        "Makassar", "Medan", "Official Store"
-    ]
-)
-
-st.title(f"Cabang - {wilayah}")
-
-# --- TAB UTAMA (Horizontal Tabs) ---
-tab_summary, tab_pick, tab_preload, tab_ondelivery = st.tabs([
-    "Summary Status", "Picking", "Preload", "On Delivery"
-])
-
-with tab_summary:
-    st.subheader(f"Summary Status untuk {wilayah}")
-    st.info("Ringkasan data dan grafik status pengiriman akan tampil di sini.")
-
-with tab_pick:
-    st.subheader("Proses Picking")
-    st.text_input("Input ID Request", key="input_picking")
+# --- FUNGSI HALAMAN LOGIN ---
+def tampilkan_halaman_login():
+    st.markdown("<h2 style='text-align: center;'>🔐 Login V2 Pre Load System</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan email terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
     
-    st.markdown("##### Data Picking")
-    df_pick = pd.DataFrame({
-        "ID Request": ["REQ-001", "REQ-002"], 
-        "Jumlah Box": [5, 12], 
-        "Status": ["Ready", "Process"]
-    })
-    st.data_editor(df_pick, key="editor_picking")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        with st.form("form_login"):
+            email_input = st.text_input("Email Pengguna").strip().lower()
+            pin_input = st.text_input("PIN / Password", type="password")
+            submit_btn = st.form_submit_button("Masuk (Login)", use_container_width=True)
+            
+            if submit_btn:
+                if email_input in USER_DATABASE and USER_DATABASE[email_input]["pin"] == pin_input:
+                    st.session_state.logged_in = True
+                    st.session_state.user_email = email_input
+                    st.session_state.user_nama = USER_DATABASE[email_input]["nama"]
+                    st.success(f"Login berhasil! Selamat datang, {st.session_state.user_nama}")
+                    st.rerun()
+                else:
+                    st.error("Email atau PIN salah. Silakan periksa kembali.")
 
-with tab_preload:
-    st.subheader("Proses Preload")
-    
-    # Tombol untuk membuat manifest baru
-    if st.button("📦 Buat Manifest Baru"):
-        st.success("Manifest baru berhasil dibuat!")
+# --- KONTROL UTAMA: CEK STATUS LOGIN ---
+if not st.session_state.logged_in:
+    tampilkan_halaman_login()
+else:
+    # =========================================================================
+    # KODE DASHBOARD UTAMA (Hanya tampil jika sudah login)
+    # =========================================================================
 
-    # Daftar manifest yang tersedia (nanti bisa diambil dari data database/spreadsheet)
-    daftar_manifest = ["MNF-001", "MNF-002", "MNF-003"]
-    
-    # Memilih manifest (berfungsi seperti memilih/mengklik manifest)
-    manifest_terpilih = st.selectbox("Pilih Nomor Manifest untuk Input ID:", daftar_manifest)
-    
-    # Kolom input ID Request akan muncul dinamis berdasarkan manifest yang dipilih
-    if manifest_terpilih:
-        st.info(f"Kolom input aktif untuk Manifest: **{manifest_terpilih}**")
-        st.text_input(f"Input ID Request untuk {manifest_terpilih}", key=f"input_{manifest_terpilih}")
+    # --- HEADER ---
+    col_head1, col_head2 = st.columns([4, 1])
+    with col_head1:
+        st.markdown("### V2 Pre Load 2026")
+    with col_head2:
+        # Menampilkan nama asli pengguna yang sedang login berdasarkan kamus
+        st.text(f"👤 {st.session_state.user_nama}\n🕒 18 Sep 2026, 03:00")
+        if st.button("Logout"):
+            st.session_state.logged_in = False
+            st.session_state.user_email = ""
+            st.session_state.user_nama = ""
+            st.rerun()
 
-    # Tabel Daftar Manifest Preload
-    st.markdown("##### Daftar Manifest Preload")
-    df_preload = pd.DataFrame({
-        "ID Manifest": ["MNF-001", "MNF-001", "MNF-002"],
-        "ID Request": ["REQ-001", "REQ-002", "REQ-003"], 
-        "Jumlah Box": [5, 12, 8], 
-        "Status": ["Ready", "Ready", "Pending"],
-        "Zona Mezzanine": ["Zone A", "Zone B", "Zone A"]
-    })
-    st.data_editor(df_preload, key="editor_preload_manifest")
+    st.divider()
 
-with tab_ondelivery:
-    st.subheader("Proses On Delivery")
-    st.write("Centang kotak di bawah untuk menandai status pengiriman:")
-    
-    df_delivery = pd.DataFrame([
-        {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
-        {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
+    # --- SIDEBAR (Menu Vertikal: Wilayah / Tujuan Pengiriman) ---
+    st.sidebar.header("Tujuan Pengiriman")
+    wilayah = st.sidebar.radio(
+        "Pilih Cabang:",
+        [
+            "Jakarta Pusat", "Jakarta Barat", "Jakarta Utara", 
+            "Tangerang", "Cikupa", "Bandung", "Semarang", 
+            "Surabaya Timur", "Surabaya Barat", "Yogyakarta", 
+            "Makassar", "Medan", "Official Store"
+        ]
+    )
+
+    st.title(f"Cabang - {wilayah}")
+
+    # --- TAB UTAMA (Horizontal Tabs) ---
+    tab_summary, tab_pick, tab_preload, tab_ondelivery = st.tabs([
+        "Summary Status", "Picking", "Preload", "On Delivery"
     ])
-    st.dataframe(df_delivery)
+
+    with tab_summary:
+        st.subheader(f"Summary Status untuk {wilayah}")
+        st.info(f"Ringkasan data untuk cabang **{wilayah}** (Diakses oleh: {st.session_state.user_nama})")
+
+    with tab_pick:
+        st.subheader("Proses Picking")
+        st.text_input("Input ID Request", key="input_picking")
+        
+        st.markdown("##### Data Picking")
+        df_pick = pd.DataFrame({
+            "ID Request": ["REQ-001", "REQ-002"], 
+            "Jumlah Box": [5, 12], 
+            "Status": ["Ready", "Process"]
+        })
+        st.data_editor(df_pick, key="editor_picking")
+
+    with tab_preload:
+        st.subheader("Proses Preload")
+        
+        if st.button("📦 Buat Manifest Baru"):
+            st.success("Manifest baru berhasil dibuat!")
+
+        daftar_manifest = ["MNF-001", "MNF-002", "MNF-003"]
+        manifest_terpilih = st.selectbox("Pilih Nomor Manifest untuk Input ID:", daftar_manifest)
+        
+        if manifest_terpilih:
+            st.info(f"Kolom input aktif untuk Manifest: **{manifest_terpilih}**")
+            st.text_input(f"Input ID Request untuk {manifest_terpilih}", key=f"input_{manifest_terpilih}")
+
+        st.markdown("##### Daftar Manifest Preload")
+        df_preload = pd.DataFrame({
+            "ID Manifest": ["MNF-001", "MNF-001", "MNF-002"],
+            "ID Request": ["REQ-001", "REQ-002", "REQ-003"], 
+            "Jumlah Box": [5, 12, 8], 
+            "Status": ["Ready", "Ready", "Pending"],
+            "Zona Mezzanine": ["Zone A", "Zone B", "Zone A"]
+        })
+        st.data_editor(df_preload, key="editor_preload_manifest")
+
+    with tab_ondelivery:
+        st.subheader("Proses On Delivery")
+        st.write("Centang kotak di bawah untuk menandai status pengiriman:")
+        
+        df_delivery = pd.DataFrame([
+            {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
+            {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
+        ])
+        st.dataframe(df_delivery)
