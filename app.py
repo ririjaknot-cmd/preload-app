@@ -130,13 +130,13 @@ else:
     st.title(f"Cabang - {wilayah}")
 
 # --- AMBIL DATA DARI GOOGLE SHEETS ---
-    try:
+try:
         df_database = load_data()
-        if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
-            df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
-        else:
-            df_filtered = pd.DataFrame()
-            st.warning("⚠️ Berhasil terhubung, tetapi kolom 'Tujuan Pengiriman' tidak ditemukan atau data kosong.")
+    if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
+        df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
+    else:
+        df_filtered = pd.DataFrame()
+        st.warning("⚠️ Berhasil terhubung, tetapi kolom 'Tujuan Pengiriman' tidak ditemukan atau data kosong.")
 except Exception as e:
     # Ini akan menampilkan teks error asli secara mendetail di layar aplikasi
     st.error("❌ Gagal terhubung ke Google Sheets. Detail Error:")
