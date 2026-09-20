@@ -129,19 +129,20 @@ else:
 
     st.title(f"Cabang - {wilayah}")
 
-    # --- AMBIL DATA DARI GOOGLE SHEETS ---
-    try:
-        df_database = load_data()
-        # Filter data berdasarkan cabang yang dipilih di sidebar
-        if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
-            df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
-        else:
-            df_filtered = pd.DataFrame()
-    except Exception as e:
-        st.error(f"Gagal memuat data dari Google Sheets: {e}")
-        df_database = pd.DataFrame()
+# --- AMBIL DATA DARI GOOGLE SHEETS ---
+try:
+    df_database = load_data()
+    if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
+        df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
+    else:
         df_filtered = pd.DataFrame()
-
+        st.warning("⚠️ Berhasil terhubung, tetapi kolom 'Tujuan Pengiriman' tidak ditemukan atau data kosong.")
+except Exception as e:
+    # Ini akan menampilkan teks error asli secara mendetail di layar aplikasi
+    st.error("❌ Gagal terhubung ke Google Sheets. Detail Error:")
+    st.exception(e)
+    df_database = pd.DataFrame()
+    df_filtered = pd.DataFrame()
     # --- TAB UTAMA (Horizontal Tabs) ---
     tab_summary, tab_pick, tab_preload, tab_ondelivery = st.tabs([
         "Summary Status", "Picking", "Preload", "On Delivery"
