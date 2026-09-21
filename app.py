@@ -233,7 +233,7 @@ else:
                 else:
                     df_filtered_cabang["Progress"] = pd.to_numeric(df_filtered_cabang["Progress"], errors='coerce').fillna(0).astype(int)
                 
-                # Standarisasi Kolom Picker, Waktu, & Status berdasarkan aturan baru
+                # Standarisasi Kolom Picker, Waktu, & Status
                 if "Picker" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Picker"] = "-"
                 else:
@@ -244,7 +244,6 @@ else:
                 else:
                     df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
                 
-                # Mapping status otomatis berdasarkan perbandingan Progress dan Jumlah Box
                 def mapping_status_picking(row):
                     prog = row.get("Progress", 0)
                     jml = row.get("Jumlah Box", 1)
@@ -263,12 +262,11 @@ else:
                 
             df_pick_current = st.session_state[session_key]
 
-            # Inisialisasi state untuk widget text input agar bisa dikosongkan bersih
+            # --- OPSI 1: SCANNER BARCODE CEPAT (+1 BOX) ---
             input_widget_key = f"input_scan_{wilayah}"
             if input_widget_key not in st.session_state:
                 st.session_state[input_widget_key] = ""
 
-            # Fungsi callback saat Enter ditekan pada input box
             def proses_input_scan():
                 scan_input = st.session_state[input_widget_key].strip()
                 if not scan_input:
@@ -289,7 +287,6 @@ else:
                         if new_prog > jml_box:
                             new_prog = jml_box
                         
-                        # Tentukan Status Baru (🟡 Processed jika sudah lengkap, 🔴 Pending jika belum)
                         new_status = "🟡 Processed" if new_prog >= jml_box else "🔴 Pending"
                         
                         # Update state lokal
@@ -299,7 +296,6 @@ else:
                         df_pick_current.loc[idx, "Status"] = new_status
                         
                         try:
-                            # Sinkronisasi ke Database Global & Google Sheets
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
                                 global_id_col = global_id_candidates[0]
@@ -316,24 +312,18 @@ else:
                                     df_database.loc[global_mask, "Waktu Picking"] = str(waktu_sekarang)
                                 if "Status" in df_database.columns:
                                     df_database["Status"] = df_database["Status"].astype(str)
-                                    # Simpan teks status bersih ke spreadsheet database
                                     df_database.loc[global_mask, "Status"] = "Processed" if new_prog >= jml_box else "Pending"
-                                
-                                conn.update(worksheet="Database log", data=df_database)
-                            
-                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID Request **{scan_input}** berhasil diperbarui (Progress: {new_prog}/{jml_box})!")
-                            st.session_state[f"sound_effect_{wilayah}"] = "success"
-                        except Exception as e:
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
-                            st.session_state[f"sound_effect_{wilayah}"] = "error"
+                        except Exception:
+                            pass
+
+                        st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ **{scan_input}** (+1 Box, Progress: {new_prog}/{jml_box})")
+                        st.session_state[f"sound_effect_{wilayah}"] = "success"
                     else:
-                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID Request **{scan_input}** tidak ditemukan di daftar cabang {wilayah}!")
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak ditemukan!")
                         st.session_state[f"sound_effect_{wilayah}"] = "error"
                 
-                # Kosongkan kembali kotak input secara otomatis
                 st.session_state[input_widget_key] = ""
 
-            # Input Text Widget utama
             st.text_input(
                 "📷 Scan / Masukkan ID Request:", 
                 placeholder="Arahkan scanner atau ketik ID lalu tekan Enter...", 
@@ -341,7 +331,79 @@ else:
                 on_change=proses_input_scan
             )
 
-            # Tampilkan pesan feedback (sukses/gagal) jika ada
+            # --- OPSI 2: INPUT MANUAL JUMLAH BESAR (PULUHAN / RATUSAN BOX) ---
+            with st.expander("📦 Input Manual Jumlah Box Besar (Untuk Puluhan/Ratusan Box)"):
+                col_m1, col_m2, col_m3 = st.columns([2, 2, 1])
+                with col_m1:
+                    manual_id = st.text_input("Ketik ID Request", key=f"manual_id_{wilayah}", placeholder="Masukkan ID...")
+                with col_m2:
+                    manual_qty = st.number_input("Jumlah Box yang Ingin Ditambahkan", min_value=1, value=1, step=1, key=f"manual_qty_{wilayah}")
+                with col_m3:
+                    st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True) # Penyelaras tinggi tombol
+                    btn_proses_manual = st.button("Proses", key=f"btn_manual_{wilayah}", use_container_width=True)
+
+                if btn_proses_manual and manual_id:
+                    clean_manual_id = manual_id.strip()
+                    match_mask_m = df_pick_current["ID Request"] == clean_manual_id
+                    
+                    if match_mask_m.any():
+                        import datetime
+                        waktu_sekarang = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        idx_m = df_pick_current[match_mask_m].index[0]
+                        jml_box_m = int(df_pick_current.loc[idx_m, "Jumlah Box"])
+                        current_prog_m = int(df_pick_current.loc[idx_m, "Progress"])
+                        
+                        # Tambahkan jumlah box sesuai input manual
+                        new_prog_m = current_prog_m + int(manual_qty)
+                        if new_prog_m > jml_box_m:
+                            new_prog_m = jml_box_m
+                            st.warning(f"⚠️ Progress dibatasi maksimal sejumlah Jumlah Box ({jml_box_m})!")
+                        
+                        new_status_m = "🟡 Processed" if new_prog_m >= jml_box_m else "🔴 Pending"
+                        
+                        # Update state lokal
+                        df_pick_current.loc[idx_m, "Progress"] = new_prog_m
+                        df_pick_current.loc[idx_m, "Picker"] = st.session_state.user_nama
+                        df_pick_current.loc[idx_m, "Waktu Picking"] = waktu_sekarang
+                        df_pick_current.loc[idx_m, "Status"] = new_status_m
+                        
+                        try:
+                            global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
+                            if global_id_candidates:
+                                global_id_col = global_id_candidates[0]
+                                global_mask_m = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == clean_manual_id
+                                
+                                if "Progress" in df_database.columns:
+                                    df_database["Progress"] = pd.to_numeric(df_database["Progress"], errors='coerce').fillna(0).astype(int)
+                                    df_database.loc[global_mask_m, "Progress"] = new_prog_m
+                                if "Picker" in df_database.columns:
+                                    df_database["Picker"] = df_database["Picker"].astype(str)
+                                    df_database.loc[global_mask_m, "Picker"] = str(st.session_state.user_nama)
+                                if "Waktu Picking" in df_database.columns:
+                                    df_database["Waktu Picking"] = df_database["Waktu Picking"].astype(str)
+                                    df_database.loc[global_mask_m, "Waktu Picking"] = str(waktu_sekarang)
+                                if "Status" in df_database.columns:
+                                    df_database["Status"] = df_database["Status"].astype(str)
+                                    df_database.loc[global_mask_m, "Status"] = "Processed" if new_prog_m >= jml_box_m else "Pending"
+                        except Exception:
+                            pass
+
+                        st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box (Progress: {new_prog_m}/{jml_box_m})")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ ID Request **{clean_manual_id}** tidak ditemukan di cabang ini!")
+
+            # Tombol Sinkronisasi Manual ke Google Sheets
+            col_btn1, col_btn2 = st.columns([2, 4])
+            with col_btn1:
+                if st.button("💾 Simpan/Sinkron ke Cloud", key=f"sync_cloud_{wilayah}", use_container_width=True):
+                    try:
+                        conn.update(worksheet="Database log", data=df_database)
+                        st.success("Berhasil sinkronisasi ke Google Sheets!")
+                    except Exception as e:
+                        st.error(f"Gagal sync: {e}")
+
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -350,32 +412,18 @@ else:
                     st.error(m_text)
                 del st.session_state[f"last_msg_{wilayah}"]
 
-            # Putar Efek Suara Melalui Audio HTML tersembunyi
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type = st.session_state[f"sound_effect_{wilayah}"]
                 if sound_type == "success":
-                    audio_html = """
-                        <audio autoplay>
-                          <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
-                        </audio>
-                    """
+                    audio_html = '<audio autoplay><source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg"></audio>'
                 else:
-                    audio_html = """
-                        <audio autoplay>
-                          <source src="https://assets.mixkit.co/active_storage/sfx/2957/2957-preview.mp3" type="audio/mpeg">
-                        </audio>
-                    """
+                    audio_html = '<audio autoplay><source src="https://assets.mixkit.co/active_storage/sfx/2957/2957-preview.mp3" type="audio/mpeg"></audio>'
                 st.markdown(audio_html, unsafe_allow_html=True)
                 del st.session_state[f"sound_effect_{wilayah}"]
 
             st.markdown("##### 📋 Monitoring Data Picking Cabang")
-            
             if not df_pick_current.empty:
-                st.dataframe(
-                    df_pick_current, 
-                    use_container_width=True, 
-                    hide_index=True
-                )
+                st.dataframe(df_pick_current, use_container_width=True, hide_index=True)
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
