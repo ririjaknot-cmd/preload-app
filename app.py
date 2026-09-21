@@ -172,12 +172,34 @@ else:
         else:
             df_filtered = pd.DataFrame()
 
-        # Terapkan format "Jumlah Box" menjadi angka biasa (tanpa tanda kurung) untuk tab ID
-        if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
-            # Mengubah nilai box menjadi integer, lalu dikonversi ke string biasa
-            df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
+        # --- STANDARISASI KOLOM YANG DIBUTUHKAN ---
+        if not df_filtered.empty:
+            id_col_candidates = [col for col in df_filtered.columns if 'id' in col.lower() or 'request' in col.lower()]
+            main_id_col = id_col_candidates[0] if id_col_candidates else "ID Request"
+            if main_id_col != "ID Request" and "ID Request" not in df_filtered.columns:
+                df_filtered["ID Request"] = df_filtered[main_id_col]
 
-        # --- TAB UTAMA (Horizontal Tabs): Tambah Tab "ID" di sebelah kiri ---
+            if "Jumlah Box" in df_filtered.columns:
+                df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
+            else:
+                df_filtered["Jumlah Box"] = 1
+
+            if "Progress" not in df_filtered.columns:
+                df_filtered["Progress"] = "0"
+            if "Picker" not in df_filtered.columns:
+                df_filtered["Picker"] = "-"
+            if "Waktu Picking" not in df_filtered.columns:
+                df_filtered["Waktu Picking"] = "-"
+            if "Status" not in df_filtered.columns:
+                df_filtered["Status"] = "Pending"
+
+            kolom_tampil = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
+            kolom_tersedia = [col for col in kolom_tampil if col in df_filtered.columns]
+            df_tabel_bersih = df_filtered[kolom_tersedia].copy()
+        else:
+            df_tabel_bersih = pd.DataFrame()
+
+        # --- TAB UTAMA ---
         tab_id, tab_pick, tab_preload, tab_ondelivery = st.tabs([
             "ID", "Picking", "Preload", "On Delivery"
         ])
@@ -207,7 +229,6 @@ else:
         with tab_pick:
             st.subheader(f"Proses Picking - {wilayah}")
             
-            # Inisialisasi session state untuk menyimpan perubahan picking per cabang selama sesi aktif
             session_key = f"df_picking_{wilayah}"
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 st.session_state[session_key] = df_tabel_bersih.copy()
