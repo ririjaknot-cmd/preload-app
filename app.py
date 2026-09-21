@@ -38,7 +38,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # Fungsi untuk membaca data dari sheet "Database log"
 def load_data():
-    # ttl=0 memastikan data dibaca secara real-time tanpa cache yang lama
     df = conn.read(worksheet="Database log", ttl=0)
     return df
 
@@ -115,80 +114,107 @@ else:
 
     st.divider()
 
-    # --- SIDEBAR (Menu Vertikal: Wilayah / Tujuan Pengiriman) ---
-    st.sidebar.header("Tujuan Pengiriman")
-    wilayah = st.sidebar.radio(
-        "Pilih Cabang:",
-        [
-            "Jakarta Pusat", "Jakarta Barat", "Jakarta Utara", 
-            "Tangerang", "Cikupa", "Bandung", "Semarang", 
-            "Surabaya Timur", "Surabaya Barat", "Yogyakarta", 
-            "Makassar", "Medan", "Official Store"
-        ]
-    )
-
-    st.title(f"Cabang - {wilayah}")
-
-# --- AMBIL DATA DARI GOOGLE SHEETS ---
+    # --- AMBIL DATA DARI GOOGLE SHEETS TERLEBIH DAHULU ---
     try:
         df_database = load_data()
-        # Filter data berdasarkan cabang yang dipilih di sidebar
-        if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
-            df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
-        else:
-            df_filtered = pd.DataFrame()
-            st.warning("⚠️ Berhasil terhubung, tetapi kolom 'Tujuan Pengiriman' tidak ditemukan atau data kosong.")
     except Exception as e:
         st.error("❌ Gagal terhubung ke Google Sheets. Detail Error:")
         st.exception(e)
         df_database = pd.DataFrame()
-        df_filtered = pd.DataFrame()
-    # --- TAB UTAMA (Horizontal Tabs) ---
-    tab_summary, tab_pick, tab_preload, tab_ondelivery = st.tabs([
-        "Summary Status", "Picking", "Preload", "On Delivery"
-    ])
 
-    with tab_summary:
-        st.subheader(f"Summary Status untuk {wilayah}")
-        st.metric("Total Log Data Cabang Ini", len(df_filtered))
+    # --- SIDEBAR: NAVIGASI UTAMA & PEMISAHAN MENU ---
+    st.sidebar.markdown("### 🗂️ Menu Navigasi")
+    menu_pilihan = st.sidebar.radio(
+        "Pilih Halaman Utama:",
+        ["Summary Status", "Operasional Cabang"],
+        label_visibility="collapsed"
+    )
 
-    with tab_pick:
-        st.subheader("Proses Picking")
-        id_picking = st.text_input("Input ID Request", key="input_picking")
-        
-        st.markdown("##### Data Logistik Sesuai Cabang")
-        # Menampilkan data dari Google Sheet yang sudah difilter sesuai cabang
-        st.dataframe(df_filtered, use_container_width=True)
+    st.sidebar.divider()
 
-    with tab_preload:
-        st.subheader("Proses Preload")
-        
-        if st.button("📦 Buat Manifest Baru"):
-            st.success("Manifest baru berhasil dibuat!")
+    # Variabel penampung wilayah/cabang aktif
+    wilayah = None
 
-        daftar_manifest = ["MNF-001", "MNF-002", "MNF-003"]
-        manifest_terpilih = st.selectbox("Pilih Nomor Manifest untuk Input ID:", daftar_manifest)
-        
-        if manifest_terpilih:
-            st.info(f"Kolom input aktif untuk Manifest: **{manifest_terpilih}**")
-            st.text_input(f"Input ID Request untuk {manifest_terpilih}", key=f"input_{manifest_terpilih}")
+    if menu_pilihan == "Operasional Cabang":
+        st.sidebar.header("Tujuan Pengiriman")
+        wilayah = st.sidebar.radio(
+            "Pilih Cabang:",
+            [
+                "Jakarta Pusat", "Jakarta Barat", "Jakarta Utara", 
+                "Tangerang", "Cikupa", "Bandung", "Semarang", 
+                "Surabaya Timur", "Surabaya Barat", "Yogyakarta", 
+                "Makassar", "Medan", "Official Store"
+            ]
+        )
 
-        st.markdown("##### Daftar Manifest Preload")
-        df_preload = pd.DataFrame({
-            "ID Manifest": ["MNF-001", "MNF-001", "MNF-002"],
-            "ID Request": ["REQ-001", "REQ-002", "REQ-003"], 
-            "Jumlah Box": [5, 12, 8], 
-            "Status": ["Ready", "Ready", "Pending"],
-            "Zona Mezzanine": ["Zone A", "Zone B", "Zone A"]
-        })
-        st.data_editor(df_preload, key="editor_preload_manifest")
+    # --- LOGIKA TAMPILAN BERDASARKAN MENU SIDEBAR ---
+    if menu_pilihan == "Summary Status":
+        st.title("📊 Summary Status Semua Cabang")
+        st.markdown("Berikut adalah daftar seluruh cabang tujuan pengiriman beserta total jumlah box-nya.")
 
-    with tab_ondelivery:
-        st.subheader("Proses On Delivery")
-        st.write("Centang kotak di bawah untuk menandai status pengiriman:")
-        
-        df_delivery = pd.DataFrame([
-            {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
-            {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
+        if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
+            # Cek apakah kolom 'Jumlah Box' ada untuk dihitung totalnya
+            if "Jumlah Box" in df_database.columns:
+                df_summary = df_database.groupby("Tujuan Pengiriman")["Jumlah Box"].sum().reset_index()
+                df_summary.columns = ["Tujuan Pengiriman", "Total Jumlah Box"]
+            else:
+                # Jika kolom 'Jumlah Box' belum ada, hitung berdasarkan jumlah baris data (count)
+                df_summary = df_database.groupby("Tujuan Pengiriman").size().reset_index(name="Total Log Data")
+
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
+        else:
+            st.warning("⚠️ Data dari Google Sheets kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
+
+    else:
+        # Tampilan Operasional Cabang (Menu Lama dengan Tab Picking, Preload, On Delivery)
+        st.title(f"Cabang - {wilayah}")
+
+        if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
+            df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
+        else:
+            df_filtered = pd.DataFrame()
+
+        # --- TAB UTAMA (Horizontal Tabs) ---
+        tab_pick, tab_preload, tab_ondelivery = st.tabs([
+            "Picking", "Preload", "On Delivery"
         ])
-        st.dataframe(df_delivery)
+
+        with tab_pick:
+            st.subheader(f"Proses Picking - {wilayah}")
+            id_picking = st.text_input("Input ID Request", key="input_picking")
+            
+            st.markdown("##### Data Logistik Sesuai Cabang")
+            st.dataframe(df_filtered, use_container_width=True)
+
+        with tab_preload:
+            st.subheader(f"Proses Preload - {wilayah}")
+            
+            if st.button("📦 Buat Manifest Baru"):
+                st.success("Manifest baru berhasil dibuat!")
+
+            daftar_manifest = ["MNF-001", "MNF-002", "MNF-003"]
+            manifest_terpilih = st.selectbox("Pilih Nomor Manifest untuk Input ID:", daftar_manifest)
+            
+            if manifest_terpilih:
+                st.info(f"Kolom input aktif untuk Manifest: **{manifest_terpilih}**")
+                st.text_input(f"Input ID Request untuk {manifest_terpilih}", key=f"input_{manifest_terpilih}")
+
+            st.markdown("##### Daftar Manifest Preload")
+            df_preload = pd.DataFrame({
+                "ID Manifest": ["MNF-001", "MNF-001", "MNF-002"],
+                "ID Request": ["REQ-001", "REQ-002", "REQ-003"], 
+                "Jumlah Box": [5, 12, 8], 
+                "Status": ["Ready", "Ready", "Pending"],
+                "Zona Mezzanine": ["Zone A", "Zone B", "Zone A"]
+            })
+            st.data_editor(df_preload, key="editor_preload_manifest")
+
+        with tab_ondelivery:
+            st.subheader(f"Proses On Delivery - {wilayah}")
+            st.write("Centang kotak di bawah untuk menandai status pengiriman:")
+            
+            df_delivery = pd.DataFrame([
+                {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
+                {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
+            ])
+            st.dataframe(df_delivery)
