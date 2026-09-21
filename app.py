@@ -262,7 +262,7 @@ else:
                 
             df_pick_current = st.session_state[session_key]
 
-            # --- OPSI 1: SCANNER BARCODE CEPAT (+1 BOX) ---
+            # --- 1. SCANNER BARCODE CEPAT & OTOMATIS SYNC ---
             input_widget_key = f"input_scan_{wilayah}"
             if input_widget_key not in st.session_state:
                 st.session_state[input_widget_key] = ""
@@ -289,12 +289,13 @@ else:
                         
                         new_status = "🟡 Processed" if new_prog >= jml_box else "🔴 Pending"
                         
-                        # Update state lokal
+                        # Update state lokal (tampilan web)
                         df_pick_current.loc[idx, "Progress"] = new_prog
                         df_pick_current.loc[idx, "Picker"] = st.session_state.user_nama
                         df_pick_current.loc[idx, "Waktu Picking"] = waktu_sekarang
                         df_pick_current.loc[idx, "Status"] = new_status
                         
+                        # Sinkronisasi Otomatis ke Database Global & Google Sheets secara langsung
                         try:
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
@@ -313,10 +314,13 @@ else:
                                 if "Status" in df_database.columns:
                                     df_database["Status"] = df_database["Status"].astype(str)
                                     df_database.loc[global_mask, "Status"] = "Processed" if new_prog >= jml_box else "Pending"
-                        except Exception:
-                            pass
+                                
+                                # Kirim langsung ke Google Sheets secara otomatis
+                                conn.update(worksheet="Database log", data=df_database)
+                        except Exception as e:
+                            print(f"Error sync sheets: {e}")
 
-                        st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ **{scan_input}** (+1 Box, Progress: {new_prog}/{jml_box})")
+                        st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ **{scan_input}** berhasil disimpan (+1 Box, Progress: {new_prog}/{jml_box})")
                         st.session_state[f"sound_effect_{wilayah}"] = "success"
                     else:
                         st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak ditemukan!")
@@ -331,7 +335,7 @@ else:
                 on_change=proses_input_scan
             )
 
-            # --- OPSI 2: INPUT MANUAL JUMLAH BESAR (PULUHAN / RATUSAN BOX) ---
+            # --- 2. INPUT MANUAL JUMLAH BESAR & OTOMATIS SYNC ---
             with st.expander("📦 Input Manual Jumlah Box Besar (Untuk Puluhan/Ratusan Box)"):
                 col_m1, col_m2, col_m3 = st.columns([2, 2, 1])
                 with col_m1:
@@ -339,7 +343,7 @@ else:
                 with col_m2:
                     manual_qty = st.number_input("Jumlah Box yang Ingin Ditambahkan", min_value=1, value=1, step=1, key=f"manual_qty_{wilayah}")
                 with col_m3:
-                    st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True) # Penyelaras tinggi tombol
+                    st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
                     btn_proses_manual = st.button("Proses", key=f"btn_manual_{wilayah}", use_container_width=True)
 
                 if btn_proses_manual and manual_id:
@@ -354,7 +358,6 @@ else:
                         jml_box_m = int(df_pick_current.loc[idx_m, "Jumlah Box"])
                         current_prog_m = int(df_pick_current.loc[idx_m, "Progress"])
                         
-                        # Tambahkan jumlah box sesuai input manual
                         new_prog_m = current_prog_m + int(manual_qty)
                         if new_prog_m > jml_box_m:
                             new_prog_m = jml_box_m
@@ -362,7 +365,6 @@ else:
                         
                         new_status_m = "🟡 Processed" if new_prog_m >= jml_box_m else "🔴 Pending"
                         
-                        # Update state lokal
                         df_pick_current.loc[idx_m, "Progress"] = new_prog_m
                         df_pick_current.loc[idx_m, "Picker"] = st.session_state.user_nama
                         df_pick_current.loc[idx_m, "Waktu Picking"] = waktu_sekarang
@@ -386,24 +388,17 @@ else:
                                 if "Status" in df_database.columns:
                                     df_database["Status"] = df_database["Status"].astype(str)
                                     df_database.loc[global_mask_m, "Status"] = "Processed" if new_prog_m >= jml_box_m else "Pending"
-                        except Exception:
-                            pass
+                                
+                                conn.update(worksheet="Database log", data=df_database)
+                        except Exception as e:
+                            st.error(f"Gagal sync ke Google Sheets: {e}")
 
-                        st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box (Progress: {new_prog_m}/{jml_box_m})")
+                        st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box dan tersinkron ke Cloud!")
                         st.rerun()
                     else:
                         st.error(f"❌ ID Request **{clean_manual_id}** tidak ditemukan di cabang ini!")
 
-            # Tombol Sinkronisasi Manual ke Google Sheets
-            col_btn1, col_btn2 = st.columns([2, 4])
-            with col_btn1:
-                if st.button("💾 Simpan/Sinkron ke Cloud", key=f"sync_cloud_{wilayah}", use_container_width=True):
-                    try:
-                        conn.update(worksheet="Database log", data=df_database)
-                        st.success("Berhasil sinkronisasi ke Google Sheets!")
-                    except Exception as e:
-                        st.error(f"Gagal sync: {e}")
-
+            # Feedback pesan & efek suara
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
