@@ -206,9 +206,56 @@ else:
 
         with tab_pick:
             st.subheader(f"Proses Picking - {wilayah}")
-            id_picking = st.text_input("Input ID Request", key="input_picking")
-            st.markdown("##### Panel Kontrol Picking Aktif")
-            st.write("Silakan masukkan ID Request di atas untuk memproses data picking cabang ini.")
+            
+            # Kolom Input Scan / Ketik ID Request
+            scan_input = st.text_input("📷 Scan / Masukkan ID Request:", placeholder="Arahkan scanner ke barcode atau ketik ID...", key="input_picking_scan")
+
+            if scan_input:
+                # Cek apakah ID Request ada di data cabang ini
+                if not df_filtered.empty:
+                    # Asumsikan kolom ID Request bernama 'ID Request' atau sesuaikan dengan kolom di Sheet Anda
+                    id_col = [col for col in df_filtered.columns if 'id' in col.lower() and 'request' in col.lower()]
+                    
+                    if id_col:
+                        target_col = id_col[0]
+                        # Cek apakah ID yang di-scan ada di data
+                        match_data = df_filtered[df_filtered[target_col].astype(str).str.strip() == scan_input.strip()]
+                        
+                        if not match_data.empty:
+                            st.success(f"✅ ID Request **{scan_input}** ditemukan dan berhasil divalidasi!")
+                            # Di sini nanti status di Google Sheets bisa di-update otomatis menjadi 'Completed' / 'Picked'
+                        else:
+                            st.error(f"❌ ID Request **{scan_input}** tidak ditemukan di data cabang {wilayah}!")
+                    else:
+                        st.warning("⚠️ Kolom ID Request tidak terdeteksi pada struktur data sheet.")
+
+            st.markdown("##### 📋 Daftar Monitoring Status Picking")
+            
+            if not df_filtered.empty:
+                # Menambahkan kolom status tiruan (atau ambil dari database jika sudah ada kolom statusnya)
+                df_picking_view = df_filtered.copy()
+                
+                # Contoh penambahan kolom status visual jika belum ada di sheet
+                if "Status Picking" not in df_picking_view.columns:
+                    df_picking_view["Status Picking"] = "Belum (Pending)" # Default merah/pending
+
+                # Fungsi styling warna baris untuk st.dataframe
+                def color_status(val):
+                    if val == "Komplit" or val == "Ready":
+                        return 'background-color: #d4edda; color: #155724;' # Hijau soft
+                    elif val == "Proses":
+                        return 'background-color: #fff3cd; color: #856404;' # Kuning soft
+                    else:
+                        return 'background-color: #f8d7da; color: #721c24;' # Merah soft
+
+                # Tampilkan data dengan format tanpa index
+                st.dataframe(
+                    df_picking_view, 
+                    use_container_width=True, 
+                    hide_index=True
+                )
+            else:
+                st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
         with tab_preload:
             st.subheader(f"Proses Preload - {wilayah}")
