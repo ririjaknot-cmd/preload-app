@@ -233,7 +233,7 @@ else:
                 else:
                     df_filtered_cabang["Progress"] = pd.to_numeric(df_filtered_cabang["Progress"], errors='coerce').fillna(0).astype(int)
                 
-                # Standarisasi Kolom Picker, Waktu, & Status
+                # Standarisasi Kolom Picker, Waktu, & Status berdasarkan aturan baru
                 if "Picker" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Picker"] = "-"
                 else:
@@ -244,19 +244,16 @@ else:
                 else:
                     df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
                 
-                if "Status" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Status"] = "🔴 Pending"
-                else:
-                    def mapping_status(val):
-                        val_str = str(val).strip().lower()
-                        if val_str in ["none", "nan", "", "pending", "🔴 pending"]:
-                            return "🔴 Pending"
-                        elif val_str in ["komplit", "completed", "ready", "🟢 completed"]:
-                            return "🟢 Completed"
-                        elif val_str in ["proses", "process", "🟡 proses"]:
-                            return "🟡 Proses"
+                # Mapping status otomatis berdasarkan perbandingan Progress dan Jumlah Box
+                def mapping_status_picking(row):
+                    prog = row.get("Progress", 0)
+                    jml = row.get("Jumlah Box", 1)
+                    if prog >= jml and jml > 0:
+                        return "🟡 Processed"
+                    else:
                         return "🔴 Pending"
-                    df_filtered_cabang["Status"] = df_filtered_cabang["Status"].apply(mapping_status)
+
+                df_filtered_cabang["Status"] = df_filtered_cabang.apply(mapping_status_picking, axis=1)
                 
                 kolom_picking = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
                 kolom_tersedia = [col for col in kolom_picking if col in df_filtered_cabang.columns]
@@ -292,7 +289,8 @@ else:
                         if new_prog > jml_box:
                             new_prog = jml_box
                         
-                        new_status = "🟢 Completed" if new_prog >= jml_box else "🟡 Proses"
+                        # Tentukan Status Baru (🟡 Processed jika sudah lengkap, 🔴 Pending jika belum)
+                        new_status = "🟡 Processed" if new_prog >= jml_box else "🔴 Pending"
                         
                         # Update state lokal
                         df_pick_current.loc[idx, "Progress"] = new_prog
@@ -318,12 +316,12 @@ else:
                                     df_database.loc[global_mask, "Waktu Picking"] = str(waktu_sekarang)
                                 if "Status" in df_database.columns:
                                     df_database["Status"] = df_database["Status"].astype(str)
-                                    df_database.loc[global_mask, "Status"] = "Completed" if new_prog >= jml_box else "Proses"
+                                    # Simpan teks status bersih ke spreadsheet database
+                                    df_database.loc[global_mask, "Status"] = "Processed" if new_prog >= jml_box else "Pending"
                                 
                                 conn.update(worksheet="Database log", data=df_database)
                             
                             st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID Request **{scan_input}** berhasil diperbarui (Progress: {new_prog}/{jml_box})!")
-                            # Efek Suara Berhasil (Beep pendek bernada tinggi)
                             st.session_state[f"sound_effect_{wilayah}"] = "success"
                         except Exception as e:
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
@@ -332,7 +330,7 @@ else:
                         st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID Request **{scan_input}** tidak ditemukan di daftar cabang {wilayah}!")
                         st.session_state[f"sound_effect_{wilayah}"] = "error"
                 
-                # Kosongkan kembali kotak input secara otomatis setelah diproses
+                # Kosongkan kembali kotak input secara otomatis
                 st.session_state[input_widget_key] = ""
 
             # Input Text Widget utama
@@ -350,21 +348,18 @@ else:
                     st.success(m_text)
                 else:
                     st.error(m_text)
-                # Hapus pesan setelah ditampilkan sekali agar tidak menumpuk
                 del st.session_state[f"last_msg_{wilayah}"]
 
-            # Putar Efek Suara Melalui Audio HTML tersembunyi jika ada trigger
+            # Putar Efek Suara Melalui Audio HTML tersembunyi
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type = st.session_state[f"sound_effect_{wilayah}"]
                 if sound_type == "success":
-                    # Suara beep sukses (nada ceria/tinggi) menggunakan data URI pendek
                     audio_html = """
                         <audio autoplay>
                           <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
                         </audio>
                     """
                 else:
-                    # Suara beep gagal (nada rendah/peringatan)
                     audio_html = """
                         <audio autoplay>
                           <source src="https://assets.mixkit.co/active_storage/sfx/2957/2957-preview.mp3" type="audio/mpeg">
