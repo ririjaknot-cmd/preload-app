@@ -269,12 +269,27 @@ else:
                 
             df_pick_current = st.session_state[session_key]
 
-            # Input Scan Barcode / ID Request
-            scan_input = st.text_input("📷 Scan / Masukkan ID Request:", placeholder="Arahkan scanner atau ketik ID lalu Enter...", key=f"input_scan_{wilayah}")
+            # --- INPUT SCAN BARCODE DENGAN PEMBERSIHAN STATE ---
+            # Menggunakan callback / key management agar input tereset setelah diproses
+            if f"val_{wilayah}" not in st.session_state:
+                st.session_state[f"val_{wilayah}"] = ""
 
-            if scan_input:
+            def submit_scan():
+                st.session_state[f"val_{wilayah}"] = st.session_state[f"input_scan_{wilayah}"]
+
+            scan_input = st.text_input(
+                "📷 Scan / Masukkan ID Request:", 
+                placeholder="Arahkan scanner atau ketik ID lalu Enter...", 
+                key=f"input_scan_{wilayah}",
+                on_change=submit_scan
+            )
+
+            # Ambil nilai aktual yang akan diproses (bisa dari input langsung atau session tersimpan)
+            current_scan = st.session_state[f"val_{wilayah}"]
+
+            if current_scan:
                 if not df_pick_current.empty:
-                    clean_input = str(scan_input).strip()
+                    clean_input = str(current_scan).strip()
                     match_mask = df_pick_current["ID Request"] == clean_input
                     
                     if match_mask.any():
@@ -306,13 +321,12 @@ else:
                         df_pick_current.loc[idx, "Status"] = new_status
                         
                         try:
-                            # Sinkronisasi ke DataFrame Global (`df_database`) dan pastikan kolom teks ber-tipe string
+                            # Sinkronisasi ke DataFrame Global (`df_database`)
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
                                 global_id_col = global_id_candidates[0]
                                 global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == clean_input
                                 
-                                # Paksa konversi kolom database tujuan agar menerima string & angka dengan aman
                                 if "Progress" in df_database.columns:
                                     df_database["Progress"] = pd.to_numeric(df_database["Progress"], errors='coerce').fillna(0).astype(int)
                                     df_database.loc[global_mask, "Progress"] = new_prog
@@ -327,17 +341,20 @@ else:
                                     
                                 if "Status" in df_database.columns:
                                     df_database["Status"] = df_database["Status"].astype(str)
-                                    # Simpan teks bersih ke spreadsheet tanpa emoji jika ingin, atau dengan format status teks bersih
                                     df_database.loc[global_mask, "Status"] = "Completed" if new_prog >= jml_box else "Proses"
                                 
                                 # Kirim pembaruan ke Google Sheets
                                 conn.update(worksheet="Database log", data=df_database)
                             
+                            # RESET VALUE agar tidak terjadi looping saat rerun
+                            st.session_state[f"val_{wilayah}"] = ""
                             st.success(f"✅ ID Request **{clean_input}** berhasil diperbarui (Progress: {new_prog}/{jml_box})!")
                             st.rerun()
                         except Exception as e:
+                            st.session_state[f"val_{wilayah}"] = ""
                             st.error(f"❌ Gagal memperbarui Google Sheets: {e}")
                     else:
+                        st.session_state[f"val_{wilayah}"] = ""
                         st.error(f"❌ ID Request **{clean_input}** tidak ditemukan di daftar cabang {wilayah}!")
 
             st.markdown("##### 📋 Monitoring Data Picking Cabang")
