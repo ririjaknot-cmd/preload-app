@@ -207,50 +207,68 @@ else:
         with tab_pick:
             st.subheader(f"Proses Picking - {wilayah}")
             
-            # Kolom Input Scan / Ketik ID Request
-            scan_input = st.text_input("📷 Scan / Masukkan ID Request:", placeholder="Arahkan scanner ke barcode atau ketik ID...", key="input_picking_scan")
+            # Inisialisasi session state untuk menyimpan perubahan picking per cabang selama sesi aktif
+            session_key = f"df_picking_{wilayah}"
+            if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
+                # Menyiapkan dataframe bersih dengan kolom yang diminta
+                df_filtered_cabang = df_filtered.copy()
+                
+                # Memastikan kolom-kolom yang diperlukan tersedia
+                if "Progress" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Progress"] = "0"
+                if "Picker" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Picker"] = "-"
+                if "Waktu Picking" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Waktu Picking"] = "-"
+                if "Status" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Status"] = "Pending"
+                
+                # Filter hanya 7 kolom utama yang diinginkan
+                kolom_picking = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
+                kolom_tersedia = [col for col in kolom_picking if col in df_filtered_cabang.columns]
+                
+                st.session_state[session_key] = df_filtered_cabang[kolom_tersedia].copy()
+                st.session_state["current_wilayah"] = wilayah
+                
+            df_pick_current = st.session_state[session_key]
+
+            # Input Scan Barcode / ID Request
+            scan_input = st.text_input("📷 Scan / Masukkan ID Request:", placeholder="Arahkan scanner atau ketik ID lalu Enter...", key=f"input_scan_{wilayah}")
 
             if scan_input:
-                # Cek apakah ID Request ada di data cabang ini
-                if not df_filtered.empty:
-                    # Asumsikan kolom ID Request bernama 'ID Request' atau sesuaikan dengan kolom di Sheet Anda
-                    id_col = [col for col in df_filtered.columns if 'id' in col.lower() and 'request' in col.lower()]
+                if not df_pick_current.empty:
+                    # Cek apakah ID Request yang di-scan cocok dengan data di cabang ini
+                    match_mask = df_pick_current["ID Request"].astype(str).str.strip() == scan_input.strip()
                     
-                    if id_col:
-                        target_col = id_col[0]
-                        # Cek apakah ID yang di-scan ada di data
-                        match_data = df_filtered[df_filtered[target_col].astype(str).str.strip() == scan_input.strip()]
+                    if match_mask.any():
+                        import datetime
+                        waktu_sekarang = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
-                        if not match_data.empty:
-                            st.success(f"✅ ID Request **{scan_input}** ditemukan dan berhasil divalidasi!")
-                            # Di sini nanti status di Google Sheets bisa di-update otomatis menjadi 'Completed' / 'Picked'
-                        else:
-                            st.error(f"❌ ID Request **{scan_input}** tidak ditemukan di data cabang {wilayah}!")
+                        # Update data secara otomatis pada baris yang sesuai
+                        # Progress diisi sama dengan Jumlah Box (menandakan sudah terscan penuh/komplit)
+                        df_pick_current.loc[match_mask, "Progress"] = df_pick_current.loc[match_mask, "Jumlah Box"].astype(str)
+                        df_pick_current.loc[match_mask, "Picker"] = st.session_state.user_nama
+                        df_pick_current.loc[match_mask, "Waktu Picking"] = waktu_sekarang
+                        df_pick_current.loc[match_mask, "Status"] = "Komplit"
+                        
+                        st.success(f"✅ ID Request **{scan_input}** berhasil diproses oleh {st.session_state.user_nama}!")
+                        st.rerun()
                     else:
-                        st.warning("⚠️ Kolom ID Request tidak terdeteksi pada struktur data sheet.")
+                        st.error(f"❌ ID Request **{scan_input}** tidak ditemukan di daftar cabang {wilayah}!")
 
-            st.markdown("##### 📋 Daftar Monitoring Status Picking")
+            st.markdown("##### 📋 Monitoring Data Picking Cabang")
             
-            if not df_filtered.empty:
-                # Menambahkan kolom status tiruan (atau ambil dari database jika sudah ada kolom statusnya)
-                df_picking_view = df_filtered.copy()
-                
-                # Contoh penambahan kolom status visual jika belum ada di sheet
-                if "Status Picking" not in df_picking_view.columns:
-                    df_picking_view["Status Picking"] = "Belum (Pending)" # Default merah/pending
-
-                # Fungsi styling warna baris untuk st.dataframe
-                def color_status(val):
-                    if val == "Komplit" or val == "Ready":
-                        return 'background-color: #d4edda; color: #155724;' # Hijau soft
-                    elif val == "Proses":
-                        return 'background-color: #fff3cd; color: #856404;' # Kuning soft
+            if not df_pick_current.empty:
+                # Fungsi styling warna baris berdasarkan status (Hijau = Komplit, Merah = Pending)
+                def color_row_status(row):
+                    if str(row["Status"]).strip().lower() == "komplit":
+                        return ['background-color: #d4edda; color: #155724'] * len(row)
                     else:
-                        return 'background-color: #f8d7da; color: #721c24;' # Merah soft
+                        return ['background-color: #f8d7da; color: #721c24'] * len(row)
 
-                # Tampilkan data dengan format tanpa index
+                # Menampilkan tabel picking interaktif dengan highlight warna dan tanpa kolom index
                 st.dataframe(
-                    df_picking_view, 
+                    df_pick_current.style.apply(color_row_status, axis=1), 
                     use_container_width=True, 
                     hide_index=True
                 )
