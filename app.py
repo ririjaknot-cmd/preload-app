@@ -153,12 +153,10 @@ else:
         st.markdown("Berikut adalah daftar seluruh cabang tujuan pengiriman beserta total jumlah box-nya.")
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
-            # Cek apakah kolom 'Jumlah Box' ada untuk dihitung totalnya
             if "Jumlah Box" in df_database.columns:
                 df_summary = df_database.groupby("Tujuan Pengiriman")["Jumlah Box"].sum().reset_index()
                 df_summary.columns = ["Tujuan Pengiriman", "Total Jumlah Box"]
             else:
-                # Jika kolom 'Jumlah Box' belum ada, hitung berdasarkan jumlah baris data (count)
                 df_summary = df_database.groupby("Tujuan Pengiriman").size().reset_index(name="Total Log Data")
 
             st.dataframe(df_summary, use_container_width=True, hide_index=True)
@@ -166,25 +164,51 @@ else:
             st.warning("⚠️ Data dari Google Sheets kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
 
     else:
-        # Tampilan Operasional Cabang (Menu Lama dengan Tab Picking, Preload, On Delivery)
+        # Tampilan Operasional Cabang
         st.title(f"Cabang - {wilayah}")
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
-            df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah]
+            df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy()
         else:
             df_filtered = pd.DataFrame()
 
-        # --- TAB UTAMA (Horizontal Tabs) ---
-        tab_pick, tab_preload, tab_ondelivery = st.tabs([
-            "Picking", "Preload", "On Delivery"
+        # Terapkan penyesuaian logika format "Jumlah Box" (contoh format "1/1" atau sejenisnya jika kolom ada)
+        if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
+            # Mengubah format angka box menjadi string format "1/1", "2/2", dst.
+            df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].astype(str) + "/" + df_filtered["Jumlah Box"].astype(str)
+
+        # --- TAB UTAMA (Horizontal Tabs): Tambah Tab "ID" di sebelah kiri ---
+        tab_id, tab_pick, tab_preload, tab_ondelivery = st.tabs([
+            "ID", "Picking", "Preload", "On Delivery"
         ])
+
+        with tab_id:
+            st.subheader(f"Data Logistik & Pencarian ID - {wilayah}")
+            
+            # Kolom Pencarian ID Request di atas list
+            keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Ketik ID Request yang ingin dicari...", key="search_id_request")
+            
+            df_display = df_filtered.copy()
+            
+            # Logika filter pencarian jika kolom ID Request ada
+            if keyword_cari and not df_display.empty:
+                # Cari kolom yang mirip dengan ID Request (misal: 'ID Request', 'Request ID', atau 'ID')
+                id_col_candidates = [col for col in df_display.columns if 'id' in col.lower() or 'request' in col.lower()]
+                if id_col_candidates:
+                    target_col = id_col_candidates[0]
+                    df_display = df_display[df_display[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
+
+            if not df_display.empty:
+                # Menampilkan dataframe dengan hide_index=True agar lebih rapi tanpa kolom index
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("Tidak ada data logistik yang cocok atau tersedia untuk cabang ini.")
 
         with tab_pick:
             st.subheader(f"Proses Picking - {wilayah}")
             id_picking = st.text_input("Input ID Request", key="input_picking")
-            
-            st.markdown("##### Data Logistik Sesuai Cabang")
-            st.dataframe(df_filtered, use_container_width=True)
+            st.markdown("##### Panel Kontrol Picking Aktif")
+            st.write("Silakan masukkan ID Request di atas untuk memproses data picking cabang ini.")
 
         with tab_preload:
             st.subheader(f"Proses Preload - {wilayah}")
@@ -203,18 +227,18 @@ else:
             df_preload = pd.DataFrame({
                 "ID Manifest": ["MNF-001", "MNF-001", "MNF-002"],
                 "ID Request": ["REQ-001", "REQ-002", "REQ-003"], 
-                "Jumlah Box": [5, 12, 8], 
+                "Jumlah Box": ["5/5", "12/12", "8/8"], 
                 "Status": ["Ready", "Ready", "Pending"],
                 "Zona Mezzanine": ["Zone A", "Zone B", "Zone A"]
             })
-            st.data_editor(df_preload, key="editor_preload_manifest")
+            st.dataframe(df_preload, use_container_width=True, hide_index=True)
 
         with tab_ondelivery:
             st.subheader(f"Proses On Delivery - {wilayah}")
             st.write("Centang kotak di bawah untuk menandai status pengiriman:")
             
             df_delivery = pd.DataFrame([
-                {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
-                {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
+                {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": "5/5", "Status": "Ready", "Mark as On Delivery": True},
+                {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": "12/12", "Status": "Process", "Mark as On Delivery": False}
             ])
-            st.dataframe(df_delivery)
+            st.dataframe(df_delivery, use_container_width=True, hide_index=True)
