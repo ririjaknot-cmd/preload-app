@@ -212,7 +212,7 @@ else:
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 df_filtered_cabang = df_filtered.copy()
                 
-                # 1. Standarisasi Kolom ID (Paksa jadi string bersih)
+                # Standarisasi Kolom ID (Paksa jadi string bersih)
                 id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
                 if id_col_candidates:
                     actual_id_col = id_col_candidates[0]
@@ -222,25 +222,30 @@ else:
                 
                 df_filtered_cabang["ID Request"] = df_filtered_cabang["ID Request"].astype(str).str.split('.').str[0].str.strip()
                 
-                # 2. Standarisasi Kolom Progress (Paksa jadi string agar tidak error saat di-assign nilai teks)
-                if "Progress" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Progress"] = "0"
+                # Standarisasi Kolom Jumlah Box & Progress (Pastikan integer untuk perhitungan)
+                if "Jumlah Box" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Jumlah Box"] = 1
                 else:
-                    df_filtered_cabang["Progress"] = df_filtered_cabang["Progress"].fillna("0").astype(str).str.split('.').str[0]
+                    df_filtered_cabang["Jumlah Box"] = pd.to_numeric(df_filtered_cabang["Jumlah Box"], errors='coerce').fillna(1).astype(int)
+
+                if "Progress" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Progress"] = 0
+                else:
+                    df_filtered_cabang["Progress"] = pd.to_numeric(df_filtered_cabang["Progress"], errors='coerce').fillna(0).astype(int)
                 
-                # 3. Standarisasi Kolom Picker
+                # Standarisasi Kolom Picker
                 if "Picker" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Picker"] = "-"
                 else:
-                    df_filtered_cabang["Picker"] = df_filtered_cabang["Picker"].fillna("-").replace(["None", "nan", ""], "-")
+                    df_filtered_cabang["Picker"] = df_filtered_cabang["Picker"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
                 
-                # 4. Standarisasi Kolom Waktu Picking
+                # Standarisasi Kolom Waktu Picking
                 if "Waktu Picking" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Waktu Picking"] = "-"
                 else:
-                    df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").replace(["None", "nan", ""], "-")
+                    df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
                 
-                # 5. Standarisasi Kolom Status
+                # Standarisasi Kolom Status
                 if "Status" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Status"] = "🔴 Pending"
                 else:
@@ -274,33 +279,61 @@ else:
                     
                     if match_mask.any():
                         import datetime
-                        waktu_sekarang = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        # Mengatur waktu zona waktu WIB (UTC+7)
+                        waktu_sekarang = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # Update data pada state lokal
-                        df_pick_current.loc[match_mask, "Progress"] = df_pick_current.loc[match_mask, "Jumlah Box"].astype(str)
-                        df_pick_current.loc[match_mask, "Picker"] = st.session_state.user_nama
-                        df_pick_current.loc[match_mask, "Waktu Picking"] = waktu_sekarang
-                        df_pick_current.loc[match_mask, "Status"] = "🟢 Completed"
+                        # Ambil data saat ini untuk baris tersebut
+                        idx = df_pick_current[match_mask].index[0]
+                        jml_box = int(df_pick_current.loc[idx, "Jumlah Box"])
+                        current_prog = int(df_pick_current.loc[idx, "Progress"])
+                        
+                        # Logika Penambahan Bertahap (Progress + 1 setiap kali scan)
+                        new_prog = current_prog + 1
+                        if new_prog > jml_box:
+                            new_prog = jml_box  # Batasi agar tidak melebihi jumlah box
+                            st.warning(f"⚠️ ID Request **{clean_input}** sudah mencapai batas maksimal box ({jml_box})!")
+                        
+                        # Tentukan Status Berdasarkan Progress
+                        if new_prog >= jml_box:
+                            new_status = "🟢 Completed"
+                        else:
+                            new_status = "🟡 Proses"
+                        
+                        # Update state lokal (tampilan tabel web)
+                        df_pick_current.loc[idx, "Progress"] = new_prog
+                        df_pick_current.loc[idx, "Picker"] = st.session_state.user_nama
+                        df_pick_current.loc[idx, "Waktu Picking"] = waktu_sekarang
+                        df_pick_current.loc[idx, "Status"] = new_status
                         
                         try:
-                            # Sinkronisasi ke DataFrame global dan Google Sheets
+                            # Sinkronisasi ke DataFrame Global (`df_database`) dan pastikan kolom teks ber-tipe string
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
                                 global_id_col = global_id_candidates[0]
                                 global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == clean_input
                                 
+                                # Paksa konversi kolom database tujuan agar menerima string & angka dengan aman
                                 if "Progress" in df_database.columns:
-                                    df_database.loc[global_mask, "Progress"] = df_pick_current.loc[match_match, "Progress"].values[0] if 'match_match' in locals() else df_pick_current.loc[match_mask, "Progress"].values[0]
+                                    df_database["Progress"] = pd.to_numeric(df_database["Progress"], errors='coerce').fillna(0).astype(int)
+                                    df_database.loc[global_mask, "Progress"] = new_prog
+                                    
                                 if "Picker" in df_database.columns:
-                                    df_database.loc[global_mask, "Picker"] = st.session_state.user_nama
+                                    df_database["Picker"] = df_database["Picker"].astype(str)
+                                    df_database.loc[global_mask, "Picker"] = str(st.session_state.user_nama)
+                                    
                                 if "Waktu Picking" in df_database.columns:
-                                    df_database.loc[global_mask, "Waktu Picking"] = waktu_sekarang
+                                    df_database["Waktu Picking"] = df_database["Waktu Picking"].astype(str)
+                                    df_database.loc[global_mask, "Waktu Picking"] = str(waktu_sekarang)
+                                    
                                 if "Status" in df_database.columns:
-                                    df_database.loc[global_mask, "Status"] = "Completed"
+                                    df_database["Status"] = df_database["Status"].astype(str)
+                                    # Simpan teks bersih ke spreadsheet tanpa emoji jika ingin, atau dengan format status teks bersih
+                                    df_database.loc[global_mask, "Status"] = "Completed" if new_prog >= jml_box else "Proses"
                                 
+                                # Kirim pembaruan ke Google Sheets
                                 conn.update(worksheet="Database log", data=df_database)
                             
-                            st.success(f"✅ ID Request **{clean_input}** berhasil diproses oleh {st.session_state.user_nama}!")
+                            st.success(f"✅ ID Request **{clean_input}** berhasil diperbarui (Progress: {new_prog}/{jml_box})!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ Gagal memperbarui Google Sheets: {e}")
