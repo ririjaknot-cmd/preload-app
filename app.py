@@ -210,7 +210,6 @@ else:
             # Inisialisasi session state untuk menyimpan perubahan picking per cabang selama sesi aktif
             session_key = f"df_picking_{wilayah}"
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
-                # Menyiapkan dataframe bersih dengan kolom yang diminta
                 df_filtered_cabang = df_filtered.copy()
                 
                 # Memastikan kolom-kolom yang diperlukan tersedia
@@ -221,7 +220,12 @@ else:
                 if "Waktu Picking" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Waktu Picking"] = "-"
                 if "Status" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Status"] = "Pending"
+                    df_filtered_cabang["Status"] = "🔴 Pending"
+                else:
+                    # Menyesuaikan status awal jika belum ada ikon
+                    df_filtered_cabang["Status"] = df_filtered_cabang["Status"].apply(
+                        lambda x: "🟢 Completed" if str(x).lower() in ["komplit", "completed", "ready"] else ("🟡 Proses" if str(x).lower() in ["proses", "process"] else "🔴 Pending")
+                    )
                 
                 # Filter hanya 7 kolom utama yang diinginkan
                 kolom_picking = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
@@ -245,11 +249,10 @@ else:
                         waktu_sekarang = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
                         # Update data secara otomatis pada baris yang sesuai
-                        # Progress diisi sama dengan Jumlah Box (menandakan sudah terscan penuh/komplit)
                         df_pick_current.loc[match_mask, "Progress"] = df_pick_current.loc[match_mask, "Jumlah Box"].astype(str)
                         df_pick_current.loc[match_mask, "Picker"] = st.session_state.user_nama
                         df_pick_current.loc[match_mask, "Waktu Picking"] = waktu_sekarang
-                        df_pick_current.loc[match_mask, "Status"] = "Komplit"
+                        df_pick_current.loc[match_mask, "Status"] = "🟢 Completed"
                         
                         st.success(f"✅ ID Request **{scan_input}** berhasil diproses oleh {st.session_state.user_nama}!")
                         st.rerun()
@@ -259,16 +262,9 @@ else:
             st.markdown("##### 📋 Monitoring Data Picking Cabang")
             
             if not df_pick_current.empty:
-                # Fungsi styling warna baris berdasarkan status (Hijau = Komplit, Merah = Pending)
-                def color_row_status(row):
-                    if str(row["Status"]).strip().lower() == "komplit":
-                        return ['background-color: #d4edda; color: #155724'] * len(row)
-                    else:
-                        return ['background-color: #f8d7da; color: #721c24'] * len(row)
-
-                # Menampilkan tabel picking interaktif dengan highlight warna dan tanpa kolom index
+                # Menampilkan tabel picking standar tanpa styling warna background baris
                 st.dataframe(
-                    df_pick_current.style.apply(color_row_status, axis=1), 
+                    df_pick_current, 
                     use_container_width=True, 
                     hide_index=True
                 )
