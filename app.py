@@ -338,8 +338,14 @@ else:
             # --- 2. INPUT MANUAL JUMLAH BESAR & OTOMATIS SYNC ---
             with st.expander("📦 Input Manual Jumlah Box Besar (Untuk Puluhan/Ratusan Box)"):
                 
-                # Inisialisasi session state khusus input manual agar bisa dibersihkan (reset)
                 manual_id_key = f"manual_id_input_{wilayah}"
+                clear_flag_key = f"clear_manual_flag_{wilayah}"
+                
+                # 1. Bersihkan nilai SEBELUM widget text_input dibuat (mencegah error instisiasi)
+                if st.session_state.get(clear_flag_key, False):
+                    st.session_state[manual_id_key] = ""
+                    st.session_state[clear_flag_key] = False
+
                 if manual_id_key not in st.session_state:
                     st.session_state[manual_id_key] = ""
 
@@ -401,8 +407,8 @@ else:
 
                         st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box dan tersinkron ke Cloud!")
                         
-                        # Kosongkan kembali input manual setelah berhasil diproses
-                        st.session_state[manual_id_key] = ""
+                        # 2. Nyalakan penanda (flag) untuk membersihkan input pada siklus rerun berikutnya
+                        st.session_state[clear_flag_key] = True
                         st.rerun()
                     else:
                         st.error(f"❌ ID Request **{clean_manual_id}** tidak ditemukan di cabang ini!")
