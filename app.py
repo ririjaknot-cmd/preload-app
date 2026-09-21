@@ -172,95 +172,103 @@ else:
         else:
             df_filtered = pd.DataFrame()
 
-        # --- STANDARISASI / PEMBUATAN KOLOM YANG DIBUTUHKAN ---
-        # Memastikan kolom-kolom target tersedia di DataFrame (jika belum ada di Google Sheet, dibuatkan data dummy/kosong aman)
-        if not df_filtered.empty:
-            # Pastikan kolom standar ada atau disesuaikan dengan penamaan di sheet Anda
-            # Mencari kolom ID yang relevan
-            id_col_candidates = [col for col in df_filtered.columns if 'id' in col.lower() or 'request' in col.lower()]
-            main_id_col = id_col_candidates[0] if id_col_candidates else "ID Request"
-            if main_id_col != "ID Request" and "ID Request" not in df_filtered.columns:
-                df_filtered["ID Request"] = df_filtered[main_id_col]
+        # Terapkan format "Jumlah Box" menjadi angka biasa (tanpa tanda kurung) untuk tab ID
+        if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
+            # Mengubah nilai box menjadi integer, lalu dikonversi ke string biasa
+            df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
 
-            # Menyiapkan kolom pendukung jika belum ada di database gsheets
-            if "Jumlah Box" in df_filtered.columns:
-                df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
-            else:
-                df_filtered["Jumlah Box"] = 1 # Default jika kolom tidak ada
-
-            if "Progress" not in df_filtered.columns:
-                df_filtered["Progress"] = "0" # Default progress awal
-            if "Picker" not in df_filtered.columns:
-                df_filtered["Picker"] = "-"
-            if "Waktu Picking" not in df_filtered.columns:
-                df_filtered["Waktu Picking"] = "-"
-            if "Status" not in df_filtered.columns:
-                df_filtered["Status"] = "Pending"
-
-            # Daftar kolom spesifik yang ingin ditampilkan
-            kolom_tampil = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
-            
-            # Filter hanya kolom yang benar-benar ada di dataframe
-            kolom_tersedia = [col for col in kolom_tampil if col in df_filtered.columns]
-            df_tabel_bersih = df_filtered[kolom_tersedia].copy()
-        else:
-            df_tabel_bersih = pd.DataFrame()
-
-        # --- TAB UTAMA (Horizontal Tabs) ---
+        # --- TAB UTAMA (Horizontal Tabs): Tambah Tab "ID" di sebelah kiri ---
         tab_id, tab_pick, tab_preload, tab_ondelivery = st.tabs([
             "ID", "Picking", "Preload", "On Delivery"
         ])
 
         with tab_id:
             st.subheader(f"Data Logistik & Pencarian ID - {wilayah}")
-            
+
             # Kolom Pencarian ID Request di atas list
             keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Ketik ID Request yang ingin dicari...", key="search_id_request")
-            
-            df_display_id = df_tabel_bersih.copy()
-            
-            # Logika filter pencarian
-            if keyword_cari and not df_display_id.empty:
-                df_display_id = df_display_id[df_display_id["ID Request"].astype(str).str.contains(keyword_cari, case=False, na=False)]
 
-            if not df_display_id.empty:
-                st.dataframe(df_display_id, use_container_width=True, hide_index=True)
+            df_display = df_filtered.copy()
+
+            # Logika filter pencarian jika kolom ID Request ada
+            if keyword_cari and not df_display.empty:
+                # Cari kolom yang mirip dengan ID Request (misal: 'ID Request', 'Request ID', atau 'ID')
+                id_col_candidates = [col for col in df_display.columns if 'id' in col.lower() or 'request' in col.lower()]
+                if id_col_candidates:
+                    target_col = id_col_candidates[0]
+                    df_display = df_display[df_display[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
+
+            if not df_display.empty:
+                # Menampilkan dataframe dengan hide_index=True agar lebih rapi tanpa kolom index
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
             else:
                 st.info("Tidak ada data logistik yang cocok atau tersedia untuk cabang ini.")
 
         with tab_pick:
             st.subheader(f"Proses Picking - {wilayah}")
+            id_picking = st.text_input("Input ID Request", key="input_picking")
+            st.markdown("##### Panel Kontrol Picking Aktif")
+            st.write("Silakan masukkan ID Request di atas untuk memproses data picking cabang ini.")
             
-            # Input Scan Barcode / ID Request
-            scan_input = st.text_input("📷 Scan / Masukkan ID Request:", placeholder="Arahkan scanner atau ketik ID...", key="input_picking_scan")
+            # Kolom Input Scan / Ketik ID Request
+            scan_input = st.text_input("📷 Scan / Masukkan ID Request:", placeholder="Arahkan scanner ke barcode atau ketik ID...", key="input_picking_scan")
 
             if scan_input:
-                if not df_tabel_bersih.empty:
-                    # Cek apakah ID yang di-scan ada di data cabang ini
-                    match_idx = df_tabel_bersih[df_tabel_bersih["ID Request"].astype(str).str.strip() == scan_input.strip()]
+                # Cek apakah ID Request ada di data cabang ini
+                if not df_filtered.empty:
+                    # Asumsikan kolom ID Request bernama 'ID Request' atau sesuaikan dengan kolom di Sheet Anda
+                    id_col = [col for col in df_filtered.columns if 'id' in col.lower() and 'request' in col.lower()]
                     
-                    if not match_idx.empty:
-                        st.success(f"✅ ID Request **{scan_input}** berhasil ditemukan dan diproses!")
-                        # Di sini nanti kita bisa integrasikan update data progress/status
+                    if id_col:
+                        target_col = id_col[0]
+                        # Cek apakah ID yang di-scan ada di data
+                        match_data = df_filtered[df_filtered[target_col].astype(str).str.strip() == scan_input.strip()]
+                        
+                        if not match_data.empty:
+                            st.success(f"✅ ID Request **{scan_input}** ditemukan dan berhasil divalidasi!")
+                            # Di sini nanti status di Google Sheets bisa di-update otomatis menjadi 'Completed' / 'Picked'
+                        else:
+                            st.error(f"❌ ID Request **{scan_input}** tidak ditemukan di data cabang {wilayah}!")
                     else:
-                        st.error(f"❌ ID Request **{scan_input}** tidak ditemukan di daftar cabang {wilayah}!")
+                        st.warning("⚠️ Kolom ID Request tidak terdeteksi pada struktur data sheet.")
 
-            st.markdown("##### 📋 Monitoring Data Picking Cabang")
+            st.markdown("##### 📋 Daftar Monitoring Status Picking")
             
-            if not df_tabel_bersih.empty:
-                # Tampilkan tabel khusus picking dengan 7 kolom utama
-                st.dataframe(df_tabel_bersih, use_container_width=True, hide_index=True)
+            if not df_filtered.empty:
+                # Menambahkan kolom status tiruan (atau ambil dari database jika sudah ada kolom statusnya)
+                df_picking_view = df_filtered.copy()
+                
+                # Contoh penambahan kolom status visual jika belum ada di sheet
+                if "Status Picking" not in df_picking_view.columns:
+                    df_picking_view["Status Picking"] = "Belum (Pending)" # Default merah/pending
+
+                # Fungsi styling warna baris untuk st.dataframe
+                def color_status(val):
+                    if val == "Komplit" or val == "Ready":
+                        return 'background-color: #d4edda; color: #155724;' # Hijau soft
+                    elif val == "Proses":
+                        return 'background-color: #fff3cd; color: #856404;' # Kuning soft
+                    else:
+                        return 'background-color: #f8d7da; color: #721c24;' # Merah soft
+
+                # Tampilkan data dengan format tanpa index
+                st.dataframe(
+                    df_picking_view, 
+                    use_container_width=True, 
+                    hide_index=True
+                )
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
         with tab_preload:
             st.subheader(f"Proses Preload - {wilayah}")
+
             if st.button("📦 Buat Manifest Baru"):
                 st.success("Manifest baru berhasil dibuat!")
 
             daftar_manifest = ["MNF-001", "MNF-002", "MNF-003"]
             manifest_terpilih = st.selectbox("Pilih Nomor Manifest untuk Input ID:", daftar_manifest)
-            
+
             if manifest_terpilih:
                 st.info(f"Kolom input aktif untuk Manifest: **{manifest_terpilih}**")
                 st.text_input(f"Input ID Request untuk {manifest_terpilih}", key=f"input_{manifest_terpilih}")
@@ -269,7 +277,7 @@ else:
             df_preload = pd.DataFrame({
                 "ID Manifest": ["MNF-001", "MNF-001", "MNF-002"],
                 "ID Request": ["REQ-001", "REQ-002", "REQ-003"], 
-                "Jumlah Box": [5, 12, 8], 
+                "Jumlah Box": ["5/5", "12/12", "8/8"], 
                 "Status": ["Ready", "Ready", "Pending"],
                 "Zona Mezzanine": ["Zone A", "Zone B", "Zone A"]
             })
@@ -278,9 +286,9 @@ else:
         with tab_ondelivery:
             st.subheader(f"Proses On Delivery - {wilayah}")
             st.write("Centang kotak di bawah untuk menandai status pengiriman:")
-            
+
             df_delivery = pd.DataFrame([
-                {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": 5, "Status": "Ready", "Mark as On Delivery": True},
-                {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": 12, "Status": "Process", "Mark as On Delivery": False}
+                {"ID Manifest": "MNF-001", "ID Request": "REQ-001", "Jumlah Box": "5/5", "Status": "Ready", "Mark as On Delivery": True},
+                {"ID Manifest": "MNF-001", "ID Request": "REQ-002", "Jumlah Box": "12/12", "Status": "Process", "Mark as On Delivery": False}
             ])
             st.dataframe(df_delivery, use_container_width=True, hide_index=True)
