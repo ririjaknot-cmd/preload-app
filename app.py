@@ -172,11 +172,10 @@ else:
         else:
             df_filtered = pd.DataFrame()
 
-        # Terapkan format "Jumlah Box" menjadi format (angka) untuk tab ID
+        # Terapkan format "Jumlah Box" menjadi angka biasa (tanpa tanda kurung) untuk tab ID
         if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
-            # Mengubah nilai box menjadi integer, lalu membungkusnya dengan tanda kurung (contoh: (1))
-            box_series = df_filtered["Jumlah Box"].fillna(0).astype(int)
-            df_filtered["Jumlah Box"] = "(" + box_series.astype(str) + ")"
+            # Mengubah nilai box menjadi integer, lalu dikonversi ke string biasa
+            df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
 
         # --- TAB UTAMA (Horizontal Tabs): Tambah Tab "ID" di sebelah kiri ---
         tab_id, tab_pick, tab_preload, tab_ondelivery = st.tabs([
