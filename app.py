@@ -212,7 +212,7 @@ else:
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 df_filtered_cabang = df_filtered.copy()
                 
-                # --- STANDARISASI KOLOM ID & PAKSA MENJADI STRING ---
+                # 1. Standarisasi Kolom ID (Paksa jadi string bersih)
                 id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
                 if id_col_candidates:
                     actual_id_col = id_col_candidates[0]
@@ -220,28 +220,27 @@ else:
                 else:
                     df_filtered_cabang["ID Request"] = "-"
                 
-                # Ubah isi kolom ID Request menjadi string bersih tanpa desimal/spasi
                 df_filtered_cabang["ID Request"] = df_filtered_cabang["ID Request"].astype(str).str.split('.').str[0].str.strip()
                 
-                # Standarisasi kolom Progress
+                # 2. Standarisasi Kolom Progress (Paksa jadi string agar tidak error saat di-assign nilai teks)
                 if "Progress" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Progress"] = 0
+                    df_filtered_cabang["Progress"] = "0"
                 else:
-                    df_filtered_cabang["Progress"] = df_filtered_cabang["Progress"].fillna(0)
+                    df_filtered_cabang["Progress"] = df_filtered_cabang["Progress"].fillna("0").astype(str).str.split('.').str[0]
                 
-                # Standarisasi kolom Picker (Kolom F)
+                # 3. Standarisasi Kolom Picker
                 if "Picker" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Picker"] = "-"
                 else:
                     df_filtered_cabang["Picker"] = df_filtered_cabang["Picker"].fillna("-").replace(["None", "nan", ""], "-")
                 
-                # Standarisasi kolom Waktu Picking (Kolom G)
+                # 4. Standarisasi Kolom Waktu Picking
                 if "Waktu Picking" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Waktu Picking"] = "-"
                 else:
                     df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").replace(["None", "nan", ""], "-")
                 
-                # Standarisasi kolom Status
+                # 5. Standarisasi Kolom Status
                 if "Status" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Status"] = "🔴 Pending"
                 else:
@@ -270,33 +269,28 @@ else:
 
             if scan_input:
                 if not df_pick_current.empty:
-                    # Bersihkan teks input dari spasi
                     clean_input = str(scan_input).strip()
-                    
-                    # Pencocokan baris berdasarkan string ID Request
                     match_mask = df_pick_current["ID Request"] == clean_input
                     
                     if match_mask.any():
                         import datetime
                         waktu_sekarang = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # 1. Update data pada state lokal (tampilan tabel)
+                        # Update data pada state lokal
                         df_pick_current.loc[match_mask, "Progress"] = df_pick_current.loc[match_mask, "Jumlah Box"].astype(str)
                         df_pick_current.loc[match_mask, "Picker"] = st.session_state.user_nama
                         df_pick_current.loc[match_mask, "Waktu Picking"] = waktu_sekarang
                         df_pick_current.loc[match_mask, "Status"] = "🟢 Completed"
                         
                         try:
-                            # 2. Sinkronisasi perubahan ke DataFrame global dan Google Sheets
+                            # Sinkronisasi ke DataFrame global dan Google Sheets
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
                                 global_id_col = global_id_candidates[0]
-                                
-                                # Samakan juga tipe data di database global menjadi string bersih untuk pencocokan
                                 global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == clean_input
                                 
                                 if "Progress" in df_database.columns:
-                                    df_database.loc[global_mask, "Progress"] = df_pick_current.loc[match_mask, "Progress"].values[0]
+                                    df_database.loc[global_mask, "Progress"] = df_pick_current.loc[match_match, "Progress"].values[0] if 'match_match' in locals() else df_pick_current.loc[match_mask, "Progress"].values[0]
                                 if "Picker" in df_database.columns:
                                     df_database.loc[global_mask, "Picker"] = st.session_state.user_nama
                                 if "Waktu Picking" in df_database.columns:
@@ -304,7 +298,6 @@ else:
                                 if "Status" in df_database.columns:
                                     df_database.loc[global_mask, "Status"] = "Completed"
                                 
-                                # Kirim pembaruan ke Google Sheets
                                 conn.update(worksheet="Database log", data=df_database)
                             
                             st.success(f"✅ ID Request **{clean_input}** berhasil diproses oleh {st.session_state.user_nama}!")
