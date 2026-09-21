@@ -212,13 +212,16 @@ else:
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 df_filtered_cabang = df_filtered.copy()
                 
-                # --- STANDARISASI KOLOM ID (Kolom A / ID Request) ---
+                # --- STANDARISASI KOLOM ID & PAKSA MENJADI STRING ---
                 id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
                 if id_col_candidates:
                     actual_id_col = id_col_candidates[0]
                     df_filtered_cabang.rename(columns={actual_id_col: "ID Request"}, inplace=True)
                 else:
                     df_filtered_cabang["ID Request"] = "-"
+                
+                # Ubah isi kolom ID Request menjadi string bersih tanpa desimal/spasi
+                df_filtered_cabang["ID Request"] = df_filtered_cabang["ID Request"].astype(str).str.split('.').str[0].str.strip()
                 
                 # Standarisasi kolom Progress
                 if "Progress" not in df_filtered_cabang.columns:
@@ -267,8 +270,11 @@ else:
 
             if scan_input:
                 if not df_pick_current.empty:
-                    # Pastikan pencarian membaca kolom "ID Request" secara akurat (membersihkan spasi/tipe data)
-                    match_mask = df_pick_current["ID Request"].astype(str).str.strip() == scan_input.strip()
+                    # Bersihkan teks input dari spasi
+                    clean_input = str(scan_input).strip()
+                    
+                    # Pencocokan baris berdasarkan string ID Request
+                    match_mask = df_pick_current["ID Request"] == clean_input
                     
                     if match_mask.any():
                         import datetime
@@ -282,15 +288,13 @@ else:
                         
                         try:
                             # 2. Sinkronisasi perubahan ke DataFrame global dan Google Sheets
-                            id_target = df_pick_current.loc[match_mask, "ID Request"].values[0]
-                            
-                            # Cari kolom ID di database global
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
                                 global_id_col = global_id_candidates[0]
-                                global_mask = df_database[global_id_col].astype(str).str.strip() == str(id_target).strip()
                                 
-                                # Update ke df_database
+                                # Samakan juga tipe data di database global menjadi string bersih untuk pencocokan
+                                global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == clean_input
+                                
                                 if "Progress" in df_database.columns:
                                     df_database.loc[global_mask, "Progress"] = df_pick_current.loc[match_mask, "Progress"].values[0]
                                 if "Picker" in df_database.columns:
@@ -298,17 +302,17 @@ else:
                                 if "Waktu Picking" in df_database.columns:
                                     df_database.loc[global_mask, "Waktu Picking"] = waktu_sekarang
                                 if "Status" in df_database.columns:
-                                    df_database.loc[global_mask, "Status"] = "Completed" # Simpan teks bersih ke spreadsheet
+                                    df_database.loc[global_mask, "Status"] = "Completed"
                                 
-                                # Kirim update ke Google Sheets
+                                # Kirim pembaruan ke Google Sheets
                                 conn.update(worksheet="Database log", data=df_database)
                             
-                            st.success(f"✅ ID Request **{scan_input}** berhasil diproses oleh {st.session_state.user_nama}!")
+                            st.success(f"✅ ID Request **{clean_input}** berhasil diproses oleh {st.session_state.user_nama}!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ Gagal memperbarui Google Sheets: {e}")
                     else:
-                        st.error(f"❌ ID Request **{scan_input}** tidak ditemukan di daftar cabang {wilayah}!")
+                        st.error(f"❌ ID Request **{clean_input}** tidak ditemukan di daftar cabang {wilayah}!")
 
             st.markdown("##### 📋 Monitoring Data Picking Cabang")
             
