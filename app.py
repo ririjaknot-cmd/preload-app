@@ -212,35 +212,33 @@ else:
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 df_filtered_cabang = df_filtered.copy()
                 
-                # --- STANDARISASI KOLOM ID ---
-                # Mencari kolom yang mengandung kata 'id' atau 'request'
+                # --- STANDARISASI KOLOM ID (Kolom A / ID Request) ---
                 id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
                 if id_col_candidates:
                     actual_id_col = id_col_candidates[0]
-                    # Ubah nama kolom aslinya menjadi "ID Request" agar seragam
                     df_filtered_cabang.rename(columns={actual_id_col: "ID Request"}, inplace=True)
                 else:
                     df_filtered_cabang["ID Request"] = "-"
                 
-                # Menangani nilai kosong / None / NaN pada kolom Progress
+                # Standarisasi kolom Progress
                 if "Progress" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Progress"] = 0
                 else:
                     df_filtered_cabang["Progress"] = df_filtered_cabang["Progress"].fillna(0)
                 
-                # Menangani nilai kosong pada Picker
+                # Standarisasi kolom Picker (Kolom F)
                 if "Picker" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Picker"] = "-"
                 else:
                     df_filtered_cabang["Picker"] = df_filtered_cabang["Picker"].fillna("-").replace(["None", "nan", ""], "-")
                 
-                # Menangani nilai kosong pada Waktu Picking
+                # Standarisasi kolom Waktu Picking (Kolom G)
                 if "Waktu Picking" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Waktu Picking"] = "-"
                 else:
                     df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").replace(["None", "nan", ""], "-")
                 
-                # Mengubah status kosong/None/Pending menjadi format ikon 🔴 Pending secara otomatis
+                # Standarisasi kolom Status
                 if "Status" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Status"] = "🔴 Pending"
                 else:
@@ -256,7 +254,6 @@ else:
                     
                     df_filtered_cabang["Status"] = df_filtered_cabang["Status"].apply(mapping_status)
                 
-                # Memastikan "ID Request" diletakkan di urutan paling depan
                 kolom_picking = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
                 kolom_tersedia = [col for col in kolom_picking if col in df_filtered_cabang.columns]
                 
@@ -270,28 +267,42 @@ else:
 
             if scan_input:
                 if not df_pick_current.empty:
-                    # Cek apakah ID Request yang di-scan cocok dengan data di cabang ini
                     match_mask = df_pick_current["ID Request"].astype(str).str.strip() == scan_input.strip()
                     
                     if match_mask.any():
                         import datetime
                         waktu_sekarang = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # Update data secara otomatis pada baris yang sesuai setelah di-scan
+                        # 1. Update data pada state lokal
                         df_pick_current.loc[match_mask, "Progress"] = df_pick_current.loc[match_mask, "Jumlah Box"].astype(str)
                         df_pick_current.loc[match_mask, "Picker"] = st.session_state.user_nama
                         df_pick_current.loc[match_mask, "Waktu Picking"] = waktu_sekarang
                         df_pick_current.loc[match_mask, "Status"] = "🟢 Completed"
                         
-                        st.success(f"✅ ID Request **{scan_input}** berhasil diproses oleh {st.session_state.user_nama}!")
-                        st.rerun()
+                        try:
+                            # 2. Sinkronisasi perubahan kembali ke DataFrame utama (df_database)
+                            # Mencari baris yang cocok di database global berdasarkan ID Request
+                            id_target = df_pick_current.loc[match_mask, "ID Request"].values[0]
+                            global_mask = df_database["ID Request"].astype(str).str.strip() == str(id_target).strip()
+                            
+                            df_database.loc[global_mask, "Progress"] = df_pick_current.loc[match_mask, "Progress"].values[0]
+                            df_database.loc[global_mask, "Picker"] = st.session_state.user_nama
+                            df_database.loc[global_mask, "Waktu Picking"] = waktu_sekarang
+                            df_database.loc[global_mask, "Status"] = "🟢 Completed"
+                            
+                            # 3. Kirim update ke Google Sheets (worksheet "Database log")
+                            conn.update(worksheet="Database log", data=df_database)
+                            
+                            st.success(f"✅ ID Request **{scan_input}** berhasil diproses dan disinkronkan ke Google Sheets!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Gagal menyimpan ke Google Sheets: {e}")
                     else:
                         st.error(f"❌ ID Request **{scan_input}** tidak ditemukan di daftar cabang {wilayah}!")
 
             st.markdown("##### 📋 Monitoring Data Picking Cabang")
             
             if not df_pick_current.empty:
-                # Menampilkan tabel picking standar tanpa mengubah warna background
                 st.dataframe(
                     df_pick_current, 
                     use_container_width=True, 
