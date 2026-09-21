@@ -337,17 +337,23 @@ else:
 
             # --- 2. INPUT MANUAL JUMLAH BESAR & OTOMATIS SYNC ---
             with st.expander("📦 Input Manual Jumlah Box Besar (Untuk Puluhan/Ratusan Box)"):
+                
+                # Inisialisasi session state khusus input manual agar bisa dibersihkan (reset)
+                manual_id_key = f"manual_id_input_{wilayah}"
+                if manual_id_key not in st.session_state:
+                    st.session_state[manual_id_key] = ""
+
                 col_m1, col_m2, col_m3 = st.columns([2, 2, 1])
                 with col_m1:
-                    manual_id = st.text_input("Ketik ID Request", key=f"manual_id_{wilayah}", placeholder="Masukkan ID...")
+                    manual_id = st.text_input("Ketik ID Request", key=manual_id_key, placeholder="Masukkan ID...")
                 with col_m2:
                     manual_qty = st.number_input("Jumlah Box yang Ingin Ditambahkan", min_value=1, value=1, step=1, key=f"manual_qty_{wilayah}")
                 with col_m3:
                     st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
                     btn_proses_manual = st.button("Proses", key=f"btn_manual_{wilayah}", use_container_width=True)
 
-                if btn_proses_manual and manual_id:
-                    clean_manual_id = manual_id.strip()
+                if btn_proses_manual and st.session_state[manual_id_key]:
+                    clean_manual_id = st.session_state[manual_id_key].strip()
                     match_mask_m = df_pick_current["ID Request"] == clean_manual_id
                     
                     if match_mask_m.any():
@@ -394,6 +400,9 @@ else:
                             st.error(f"Gagal sync ke Google Sheets: {e}")
 
                         st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box dan tersinkron ke Cloud!")
+                        
+                        # Kosongkan kembali input manual setelah berhasil diproses
+                        st.session_state[manual_id_key] = ""
                         st.rerun()
                     else:
                         st.error(f"❌ ID Request **{clean_manual_id}** tidak ditemukan di cabang ini!")
