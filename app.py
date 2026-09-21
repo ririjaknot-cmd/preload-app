@@ -172,10 +172,11 @@ else:
         else:
             df_filtered = pd.DataFrame()
 
-        # Terapkan penyesuaian logika format "Jumlah Box" (contoh format "1/1" atau sejenisnya jika kolom ada)
+        # Terapkan penyesuaian format "Jumlah Box" (dikonversi ke integer dulu agar .0 hilang)
         if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
-            # Mengubah format angka box menjadi string format "1/1", "2/2", dst.
-            df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].astype(str) + "/" + df_filtered["Jumlah Box"].astype(str)
+            # Mengisi NaN dengan 0 (jika ada yang kosong), ubah ke int, lalu ke str
+            box_series = df_filtered["Jumlah Box"].fillna(0).astype(int).astype(str)
+            df_filtered["Jumlah Box"] = box_series + "/" + box_series
 
         # --- TAB UTAMA (Horizontal Tabs): Tambah Tab "ID" di sebelah kiri ---
         tab_id, tab_pick, tab_preload, tab_ondelivery = st.tabs([
