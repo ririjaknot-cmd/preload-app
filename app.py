@@ -81,7 +81,7 @@ else:
         
         # Komponen HTML + JS untuk Jam & Tanggal Live berdetik
         components.html("""
-        <div style="font-family: sans-serif; font-size: 13px; color: #31333F; margin-top: -10px;">
+        <div style="font-family: sans-serif; font-size: 13px; color: #FFFFFF; margin-top: -10px;">
             🕒 <span id="live-clock">Loading...</span>
         </div>
         <script>
