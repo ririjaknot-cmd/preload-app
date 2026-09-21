@@ -212,20 +212,39 @@ else:
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 df_filtered_cabang = df_filtered.copy()
                 
-                # Memastikan kolom-kolom yang diperlukan tersedia
+                # Menangani nilai kosong / None / NaN pada kolom Progress
                 if "Progress" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Progress"] = "0"
+                    df_filtered_cabang["Progress"] = 0
+                else:
+                    df_filtered_cabang["Progress"] = df_filtered_cabang["Progress"].fillna(0)
+                
+                # Menangani nilai kosong pada Picker
                 if "Picker" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Picker"] = "-"
+                else:
+                    df_filtered_cabang["Picker"] = df_filtered_cabang["Picker"].fillna("-").replace(["None", "nan", ""], "-")
+                
+                # Menangani nilai kosong pada Waktu Picking
                 if "Waktu Picking" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Waktu Picking"] = "-"
+                else:
+                    df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").replace(["None", "nan", ""], "-")
+                
+                # Mengubah status kosong/None/Pending menjadi format ikon 🔴 Pending secara otomatis
                 if "Status" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Status"] = "🔴 Pending"
                 else:
-                    # Menyesuaikan status awal jika belum ada ikon
-                    df_filtered_cabang["Status"] = df_filtered_cabang["Status"].apply(
-                        lambda x: "🟢 Completed" if str(x).lower() in ["komplit", "completed", "ready"] else ("🟡 Proses" if str(x).lower() in ["proses", "process"] else "🔴 Pending")
-                    )
+                    def mapping_status(val):
+                        val_str = str(val).strip().lower()
+                        if val_str in ["none", "nan", "", "pending", "🔴 pending"]:
+                            return "🔴 Pending"
+                        elif val_str in ["komplit", "completed", "ready", "🟢 completed"]:
+                            return "🟢 Completed"
+                        elif val_str in ["proses", "process", "🟡 proses"]:
+                            return "🟡 Proses"
+                        return "🔴 Pending"
+                    
+                    df_filtered_cabang["Status"] = df_filtered_cabang["Status"].apply(mapping_status)
                 
                 # Filter hanya 7 kolom utama yang diinginkan
                 kolom_picking = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
@@ -248,7 +267,7 @@ else:
                         import datetime
                         waktu_sekarang = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # Update data secara otomatis pada baris yang sesuai
+                        # Update data secara otomatis pada baris yang sesuai setelah di-scan
                         df_pick_current.loc[match_mask, "Progress"] = df_pick_current.loc[match_mask, "Jumlah Box"].astype(str)
                         df_pick_current.loc[match_mask, "Picker"] = st.session_state.user_nama
                         df_pick_current.loc[match_mask, "Waktu Picking"] = waktu_sekarang
@@ -262,7 +281,7 @@ else:
             st.markdown("##### 📋 Monitoring Data Picking Cabang")
             
             if not df_pick_current.empty:
-                # Menampilkan tabel picking standar tanpa styling warna background baris
+                # Menampilkan tabel picking standar tanpa mengubah warna background
                 st.dataframe(
                     df_pick_current, 
                     use_container_width=True, 
