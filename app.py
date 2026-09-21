@@ -212,6 +212,16 @@ else:
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 df_filtered_cabang = df_filtered.copy()
                 
+                # --- STANDARISASI KOLOM ID ---
+                # Mencari kolom yang mengandung kata 'id' atau 'request'
+                id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
+                if id_col_candidates:
+                    actual_id_col = id_col_candidates[0]
+                    # Ubah nama kolom aslinya menjadi "ID Request" agar seragam
+                    df_filtered_cabang.rename(columns={actual_id_col: "ID Request"}, inplace=True)
+                else:
+                    df_filtered_cabang["ID Request"] = "-"
+                
                 # Menangani nilai kosong / None / NaN pada kolom Progress
                 if "Progress" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Progress"] = 0
@@ -246,7 +256,7 @@ else:
                     
                     df_filtered_cabang["Status"] = df_filtered_cabang["Status"].apply(mapping_status)
                 
-                # Filter hanya 7 kolom utama yang diinginkan
+                # Memastikan "ID Request" diletakkan di urutan paling depan
                 kolom_picking = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
                 kolom_tersedia = [col for col in kolom_picking if col in df_filtered_cabang.columns]
                 
