@@ -22,7 +22,8 @@ USER_DATABASE = {
     "olifiaekmanda7@gmail.com": {"nama": "Olifia Ekmanda", "pin": "1234"},
     "rayadiagung22@gmail.com": {"nama": "Rayadi Agung", "pin": "1234"},
     "siwhayy170@gmail.com": {"nama": "Wahyu Adi Sucipto", "pin": "1234"},
-    "tasyaameliaa05@gmail.com": {"nama": "Tasya Amelia", "pin": "1234"}
+    "tasyaameliaa05@gmail.com": {"nama": "Tasya Amelia", "pin": "1234"},
+    "mahesaagusta28@gmail.com": {"nama": "Mahesa Agusta", "pin": "1234"}
 }
 
 # --- INISIALISASI SESSION STATE ---
