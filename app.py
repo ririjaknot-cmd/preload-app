@@ -467,7 +467,6 @@ else:
                 if not buat_kosong:
                     st.markdown("#### Pilih ID Request yang Berstatus 🟡 Processed:")
                     
-                    # Ambil data dari session picking yang sudah berstatus '🟡 Processed'
                     session_key_pick = f"df_picking_{wilayah}"
                     if session_key_pick in st.session_state:
                         df_pick_data = st.session_state[session_key_pick]
@@ -476,16 +475,11 @@ else:
                         df_processed_only = df_pick_data[df_pick_data["Status"] == "🟡 Processed"]
                         
                         if not df_processed_only.empty:
-                            # Tampilkan tabel interaktif dengan pilihan checkbox menggunakan st.data_editor atau iterasi checkbox
-                            # Cara paling aman dan mudah untuk dipilih adalah menggunakan dataframe dengan kolom pilihan atau loop checkbox
-                            
-                            selected_ids_for_manifest = []
                             for idx, row in df_processed_only.iterrows():
                                 id_req = row["ID Request"]
                                 tujuan = row.get("Tujuan Pengiriman", "-")
                                 box = row.get("Jumlah Box", 0)
                                 
-                                # Buat checkbox untuk tiap ID yang memenuhi syarat
                                 is_checked = st.checkbox(
                                     f"ID: **{id_req}** | Tujuan: {tujuan} | Total Box: {box}", 
                                     key=f"chk_id_{wilayah}_{id_req}"
@@ -505,8 +499,8 @@ else:
                         if not nomor_manifest.strip():
                             st.error("❌ Nomor/Nama Manifest wajib diisi!")
                         else:
-                            # Simpan logika manifest ke session state / database Google Sheets
-                            # (Kita bisa siapkan struktur penyimpanan manifest di sini)
+                            import datetime  # Pastikan datetime diimpor di sini
+                            
                             manifest_storage_key = f"list_manifest_{wilayah}"
                             if manifest_storage_key not in st.session_state:
                                 st.session_state[manifest_storage_key] = []
@@ -523,7 +517,6 @@ else:
                             st.session_state[manifest_storage_key].append(new_manifest_data)
                             st.success(f"✅ Manifest **{nomor_manifest}** berhasil dibuat dengan {len(selected_ids_for_manifest)} ID Request!")
                             
-                            # Tutup form manifest
                             st.session_state[mode_manifest_key] = False
                             st.rerun()
 
@@ -535,7 +528,6 @@ else:
             st.markdown("---")
             st.markdown("##### 📦 Daftar Manifest Aktif")
             
-            # Tampilkan daftar manifest yang sudah dibuat pada sesi ini
             manifest_storage_key = f"list_manifest_{wilayah}"
             if manifest_storage_key in st.session_state and st.session_state[manifest_storage_key]:
                 import pandas as pd
