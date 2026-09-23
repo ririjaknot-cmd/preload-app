@@ -39,42 +39,51 @@ if "user_nama" not in st.session_state:
 # --- KONEKSI GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Fungsi untuk membaca data dari sheet "Database log"
-@st.cache_data(ttl=5)
-def load_data():
-    df = conn.read(worksheet="Database log", ttl=0)
-    df.columns = df.columns.str.strip()
-    return df
+# Fungsi untuk membaca data live dari Google Sheets (Tanpa cache agar selalu sinkron antar akun)
+def load_data_live():
+    try:
+        df = conn.read(worksheet="Database log", ttl=0)
+        df.columns = df.columns.str.strip()
+        return df
+    except Exception as e:
+        print(f"Error load data: {e}")
+        return pd.DataFrame()
 
-# --- FUNGSI AMAN UNTUK UPDATE HANYA KOLOM OPERASIONAL (F KE KANAN) ---
-def safe_conn_update(df_global_master, df_local_updated, id_request_target):
+# --- FUNGSI AMAN UPDATE REAL-TIME (Mulai Kolom F ke Kanan, Tanpa Ubah Kolom A-E) ---
+def safe_conn_update_realtime(id_request_target, updated_values_dict):
     """
-    Fungsi ini memastikan hanya kolom operasional (seperti Progress, Zona Mezzanine, dll)
-    yang diperbarui ke Google Sheets, tanpa menyentuh kolom A sampai E (data murni).
+    Fungsi ini mengambil data terbaru langsung dari cloud, memperbarui baris target
+    pada kolom operasional saja, lalu menyimpannya kembali secara instan.
     """
     try:
-        id_col_candidates = [col for col in df_global_master.columns if 'id' in col.lower() or 'request' in col.lower()]
+        # 1. Tarik data paling fresh detik ini dari Google Sheets
+        df_fresh = conn.read(worksheet="Database log", ttl=0)
+        df_fresh.columns = df_fresh.columns.str.strip()
+
+        id_col_candidates = [col for col in df_fresh.columns if 'id' in col.lower() or 'request' in col.lower()]
         if not id_col_candidates:
-            return
+            return False
         
         global_id_col = id_col_candidates[0]
         
-        mask_master = df_global_master[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_request_target).strip()
-        mask_local = df_local_updated["ID Request"].astype(str).str.split('.').str[0].str.strip() == str(id_request_target).strip()
+        # 2. Cari baris berdasarkan ID Request
+        mask = df_fresh[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_request_target).strip()
         
-        if mask_master.any() and mask_local.any():
-            local_idx = df_local_updated[mask_local].index[0]
-            
+        if mask.any():
+            # 3. Update hanya kolom operasional yang diizinkan
             kolom_operasional = ["Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
+            for col, val in updated_values_dict.items():
+                if col in kolom_operasional and col in df_fresh.columns:
+                    df_fresh.loc[mask, col] = val
             
-            for col in kolom_operasional:
-                if col in df_local_updated.columns and col in df_global_master.columns:
-                    val_to_update = df_local_updated.loc[local_idx, col]
-                    df_global_master.loc[mask_master, col] = val_to_update
-            
-            conn.update(worksheet="Database log", data=df_global_master)
+            # 4. Kirim kembali ke Google Sheets secara langsung
+            conn.update(worksheet="Database log", data=df_fresh)
+            st.cache_data.clear()  # Bersihkan cache Streamlit agar pembacaan berikutnya segar
+            return True
+        return False
     except Exception as e:
-        print(f"Error safe_conn_update: {e}")
+        print(f"Error safe_conn_update_realtime: {e}")
+        return False
 
 # --- FUNGSI HALAMAN LOGIN ---
 def tampilkan_halaman_login():
@@ -144,13 +153,8 @@ else:
 
     st.divider()
 
-    # --- AMBIL DATA DARI GOOGLE SHEETS ---
-    try:
-        df_database = load_data()
-    except Exception as e:
-        st.error("❌ Gagal terhubung ke Google Sheets. Detail Error:")
-        st.exception(e)
-        df_database = pd.DataFrame()
+    # --- AMBIL DATA LIVE DARI GOOGLE SHEETS ---
+    df_database = load_data_live()
 
     # --- SIDEBAR: NAVIGASI UTAMA ---
     st.sidebar.markdown("### 🗂️ Menu Navigasi")
@@ -230,66 +234,62 @@ else:
         with tab_preload:
             st.subheader(f"Proses Preload & Manifest - {wilayah}")
             
-            session_key = f"df_picking_{wilayah}"
-            if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
-                df_filtered_cabang = df_filtered.copy()
-                
-                id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
-                if id_col_candidates:
-                    actual_id_col = id_col_candidates[0]
-                    df_filtered_cabang.rename(columns={actual_id_col: "ID Request"}, inplace=True)
-                else:
-                    df_filtered_cabang["ID Request"] = "-"
-                
-                df_filtered_cabang["ID Request"] = df_filtered_cabang["ID Request"].astype(str).str.split('.').str[0].str.strip()
-                
-                if "Jumlah Box" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Jumlah Box"] = 1
-                else:
-                    df_filtered_cabang["Jumlah Box"] = pd.to_numeric(df_filtered_cabang["Jumlah Box"], errors='coerce').fillna(1).astype(int)
+            # Selalu bangun ulang dataframe lokal dari data live terbaru agar antar akun selalu sama
+            df_filtered_cabang = df_filtered.copy()
+            
+            id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
+            if id_col_candidates:
+                actual_id_col = id_col_candidates[0]
+                df_filtered_cabang.rename(columns={actual_id_col: "ID Request"}, inplace=True)
+            else:
+                df_filtered_cabang["ID Request"] = "-"
+            
+            df_filtered_cabang["ID Request"] = df_filtered_cabang["ID Request"].astype(str).str.split('.').str[0].str.strip()
+            
+            if "Jumlah Box" not in df_filtered_cabang.columns:
+                df_filtered_cabang["Jumlah Box"] = 1
+            else:
+                df_filtered_cabang["Jumlah Box"] = pd.to_numeric(df_filtered_cabang["Jumlah Box"], errors='coerce').fillna(1).astype(int)
 
-                if "Progress" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Progress"] = 0
-                else:
-                    df_filtered_cabang["Progress"] = pd.to_numeric(df_filtered_cabang["Progress"], errors='coerce').fillna(0).astype(int)
-                
-                if "Loader" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Loader"] = "-"
-                else:
-                    df_filtered_cabang["Loader"] = df_filtered_cabang["Loader"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
-                
-                if "Waktu Preload" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Waktu Preload"] = "-"
-                else:
-                    df_filtered_cabang["Waktu Preload"] = df_filtered_cabang["Waktu Preload"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
-                
-                zona_col_candidates = [col for col in df_filtered_cabang.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
-                if zona_col_candidates:
-                    actual_zona_col = zona_col_candidates[0]
-                    if actual_zona_col != "Zona Mezzanine":
-                        df_filtered_cabang.rename(columns={actual_zona_col: "Zona Mezzanine"}, inplace=True)
-                else:
-                    df_filtered_cabang["Zona Mezzanine"] = "-"
+            if "Progress" not in df_filtered_cabang.columns:
+                df_filtered_cabang["Progress"] = 0
+            else:
+                df_filtered_cabang["Progress"] = pd.to_numeric(df_filtered_cabang["Progress"], errors='coerce').fillna(0).astype(int)
+            
+            if "Loader" not in df_filtered_cabang.columns:
+                df_filtered_cabang["Loader"] = "-"
+            else:
+                df_filtered_cabang["Loader"] = df_filtered_cabang["Loader"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
+            
+            if "Waktu Preload" not in df_filtered_cabang.columns:
+                df_filtered_cabang["Waktu Preload"] = "-"
+            else:
+                df_filtered_cabang["Waktu Preload"] = df_filtered_cabang["Waktu Preload"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
+            
+            zona_col_candidates = [col for col in df_filtered_cabang.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
+            if zona_col_candidates:
+                actual_zona_col = zona_col_candidates[0]
+                if actual_zona_col != "Zona Mezzanine":
+                    df_filtered_cabang.rename(columns={actual_zona_col: "Zona Mezzanine"}, inplace=True)
+            else:
+                df_filtered_cabang["Zona Mezzanine"] = "-"
 
-                df_filtered_cabang["Zona Mezzanine"] = df_filtered_cabang["Zona Mezzanine"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
+            df_filtered_cabang["Zona Mezzanine"] = df_filtered_cabang["Zona Mezzanine"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
 
-                def mapping_status_preload(row):
-                    prog = row.get("Progress", 0)
-                    jml = row.get("Jumlah Box", 1)
-                    if prog >= jml and jml > 0:
-                        return "🟡 Processed"
-                    else:
-                        return "🔴 Pending"
+            def mapping_status_preload(row):
+                prog = row.get("Progress", 0)
+                jml = row.get("Jumlah Box", 1)
+                if prog >= jml and jml > 0:
+                    return "🟡 Processed"
+                else:
+                    return "🔴 Pending"
 
-                df_filtered_cabang["Status"] = df_filtered_cabang.apply(mapping_status_preload, axis=1)
-                
-                kolom_preload_display = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
-                kolom_tersedia = [col for col in kolom_preload_display if col in df_filtered_cabang.columns]
-                
-                st.session_state[session_key] = df_filtered_cabang[kolom_tersedia].copy()
-                st.session_state["current_wilayah"] = wilayah
-                
-            df_pick_current = st.session_state[session_key]
+            df_filtered_cabang["Status"] = df_filtered_cabang.apply(mapping_status_preload, axis=1)
+            
+            kolom_preload_display = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
+            kolom_tersedia = [col for col in kolom_preload_display if col in df_filtered_cabang.columns]
+            
+            df_pick_current = df_filtered_cabang[kolom_tersedia].copy()
 
             # --- 1. SCANNER BARCODE CEPAT & OTOMATIS SYNC ---
             input_widget_key = f"input_scan_{wilayah}"
@@ -301,35 +301,49 @@ else:
                 if not scan_input:
                     return
                 
-                if not df_pick_current.empty:
-                    match_mask = df_pick_current["ID Request"] == scan_input
+                # Baca ulang data live untuk mengecek progress terbaru dari database
+                df_live_check = load_data_live()
+                df_cabang_live = df_live_check[df_live_check["Tujuan Pengiriman"] == wilayah].copy()
+                
+                id_col_c = [c for c in df_cabang_live.columns if 'id' in c.lower() or 'request' in c.lower()]
+                if id_col_c:
+                    df_cabang_live.rename(columns={id_col_c[0]: "ID Request"}, inplace=True)
+                    df_cabang_live["ID Request"] = df_cabang_live["ID Request"].astype(str).str.split('.').str[0].str.strip()
+                
+                match_mask = df_cabang_live["ID Request"] == scan_input
+                
+                if match_mask.any():
+                    wib_zone = timezone(timedelta(hours=7))
+                    waktu_sekarang = datetime.datetime.now(wib_zone).strftime("%Y-%m-%d %H:%M:%S")
                     
-                    if match_mask.any():
-                        wib_zone = timezone(timedelta(hours=7))
-                        waktu_sekarang = datetime.datetime.now(wib_zone).strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        idx = df_pick_current[match_mask].index[0]
-                        jml_box = int(df_pick_current.loc[idx, "Jumlah Box"])
-                        current_prog = int(df_pick_current.loc[idx, "Progress"])
-                        
-                        new_prog = current_prog + 1
-                        if new_prog > jml_box:
-                            new_prog = jml_box
-                        
-                        new_status = "🟡 Processed" if new_prog >= jml_box else "🔴 Pending"
-                        
-                        df_pick_current.loc[idx, "Progress"] = new_prog
-                        df_pick_current.loc[idx, "Loader"] = st.session_state.user_nama
-                        df_pick_current.loc[idx, "Waktu Preload"] = waktu_sekarang
-                        df_pick_current.loc[idx, "Status"] = new_status
-                        
-                        safe_conn_update(df_database, df_pick_current, scan_input)
-
+                    idx = df_cabang_live[match_mask].index[0]
+                    jml_box = int(pd.to_numeric(df_cabang_live.loc[idx, "Jumlah Box"], errors='coerce') or 1)
+                    current_prog = int(pd.to_numeric(df_cabang_live.loc[idx, "Progress"], errors='coerce') or 0)
+                    
+                    new_prog = current_prog + 1
+                    if new_prog > jml_box:
+                        new_prog = jml_box
+                    
+                    new_status = "Processed" if new_prog >= jml_box else "Pending"
+                    
+                    update_payload = {
+                        "Progress": new_prog,
+                        "Loader": str(st.session_state.user_nama),
+                        "Waktu Preload": str(waktu_sekarang),
+                        "Status": new_status
+                    }
+                    
+                    success = safe_conn_update_realtime(scan_input, update_payload)
+                    
+                    if success:
                         st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ **{scan_input}** berhasil disimpan (+1 Box, Progress: {new_prog}/{jml_box})")
                         st.session_state[f"sound_effect_{wilayah}"] = "success"
                     else:
-                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak ditemukan!")
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets untuk ID **{scan_input}**")
                         st.session_state[f"sound_effect_{wilayah}"] = "error"
+                else:
+                    st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak ditemukan di cabang ini!")
+                    st.session_state[f"sound_effect_{wilayah}"] = "error"
                 
                 st.session_state[input_widget_key] = ""
 
@@ -363,33 +377,46 @@ else:
 
                 if btn_proses_manual and st.session_state[manual_id_key]:
                     clean_manual_id = st.session_state[manual_id_key].strip()
-                    match_mask_m = df_pick_current["ID Request"] == clean_manual_id
+                    
+                    df_live_check = load_data_live()
+                    df_cabang_live = df_live_check[df_live_check["Tujuan Pengiriman"] == wilayah].copy()
+                    id_col_c = [c for c in df_cabang_live.columns if 'id' in c.lower() or 'request' in c.lower()]
+                    if id_col_c:
+                        df_cabang_live.rename(columns={id_col_c[0]: "ID Request"}, inplace=True)
+                        df_cabang_live["ID Request"] = df_cabang_live["ID Request"].astype(str).str.split('.').str[0].str.strip()
+                    
+                    match_mask_m = df_cabang_live["ID Request"] == clean_manual_id
                     
                     if match_mask_m.any():
                         wib_zone = timezone(timedelta(hours=7))
                         waktu_sekarang = datetime.datetime.now(wib_zone).strftime("%Y-%m-%d %H:%M:%S")
                         
-                        idx_m = df_pick_current[match_mask_m].index[0]
-                        jml_box_m = int(df_pick_current.loc[idx_m, "Jumlah Box"])
-                        current_prog_m = int(df_pick_current.loc[idx_m, "Progress"])
+                        idx_m = df_cabang_live[match_mask_m].index[0]
+                        jml_box_m = int(pd.to_numeric(df_cabang_live.loc[idx_m, "Jumlah Box"], errors='coerce') or 1)
+                        current_prog_m = int(pd.to_numeric(df_cabang_live.loc[idx_m, "Progress"], errors='coerce') or 0)
                         
                         new_prog_m = current_prog_m + int(manual_qty)
                         if new_prog_m > jml_box_m:
                             new_prog_m = jml_box_m
                             st.warning(f"⚠️ Progress dibatasi maksimal sejumlah Jumlah Box ({jml_box_m})!")
                         
-                        new_status_m = "🟡 Processed" if new_prog_m >= jml_box_m else "🔴 Pending"
+                        new_status_m = "Processed" if new_prog_m >= jml_box_m else "Pending"
                         
-                        df_pick_current.loc[idx_m, "Progress"] = new_prog_m
-                        df_pick_current.loc[idx_m, "Loader"] = st.session_state.user_nama
-                        df_pick_current.loc[idx_m, "Waktu Preload"] = waktu_sekarang
-                        df_pick_current.loc[idx_m, "Status"] = new_status_m
+                        update_payload_m = {
+                            "Progress": new_prog_m,
+                            "Loader": str(st.session_state.user_nama),
+                            "Waktu Preload": str(waktu_sekarang),
+                            "Status": new_status_m
+                        }
                         
-                        safe_conn_update(df_database, df_pick_current, clean_manual_id)
-
-                        st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box dan tersinkron ke Cloud!")
-                        st.session_state[clear_flag_key] = True
-                        st.rerun()
+                        success_m = safe_conn_update_realtime(clean_manual_id, update_payload_m)
+                        
+                        if success_m:
+                            st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box dan tersinkron ke Cloud!")
+                            st.session_state[clear_flag_key] = True
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Gagal memperbarui Google Sheets untuk ID **{clean_manual_id}**")
                     else:
                         st.error(f"❌ ID Request **{clean_manual_id}** tidak ditemukan di cabang ini!")
 
@@ -432,17 +459,13 @@ else:
                         changes = edited_data.get("edited_rows", {})
                         
                         if changes:
-                            current_df = st.session_state[session_key]
-                            
                             for row_idx_str, updated_values in changes.items():
                                 row_idx = int(row_idx_str)
                                 if "Zona Mezzanine" in updated_values:
                                     new_zona = str(updated_values["Zona Mezzanine"]).strip()
+                                    id_req = str(df_pick_current.at[row_idx, "ID Request"]).strip()
                                     
-                                    current_df.at[row_idx, "Zona Mezzanine"] = new_zona
-                                    id_req = current_df.at[row_idx, "ID Request"]
-                                    
-                                    safe_conn_update(df_database, current_df, id_req)
+                                    safe_conn_update_realtime(id_req, {"Zona Mezzanine": new_zona})
 
                 kolom_tampil_editor = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
                 df_editor_view = df_pick_current[[col for col in kolom_tampil_editor if col in df_pick_current.columns]].copy()
@@ -494,8 +517,7 @@ else:
                 if not buat_kosong:
                     st.markdown("#### Pilih ID Request yang Berstatus 🟡 Processed:")
                     
-                    df_pick_data = st.session_state[session_key]
-                    df_processed_only = df_pick_data[df_pick_data["Status"] == "🟡 Processed"]
+                    df_processed_only = df_pick_current[df_pick_current["Status"] == "🟡 Processed"]
                     
                     if not df_processed_only.empty:
                         for idx, row in df_processed_only.iterrows():
