@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import datetime
+from datetime import timezone, timedelta
 from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
 
@@ -37,7 +39,8 @@ if "user_nama" not in st.session_state:
 # --- KONEKSI GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Fungsi untuk membaca data dari sheet "Database log"
+# Fungsi untuk membaca data dari sheet "Database log" dengan TTL pendek agar selalu up-to-date
+@st.cache_data(ttl=5)
 def load_data():
     df = conn.read(worksheet="Database log", ttl=0)
     return df
@@ -68,10 +71,6 @@ def tampilkan_halaman_login():
 if not st.session_state.logged_in:
     tampilkan_halaman_login()
 else:
-    # =========================================================================
-    # KODE DASHBOARD UTAMA (Hanya tampil jika sudah login)
-    # =========================================================================
-
     # --- HEADER ---
     col_head1, col_head2 = st.columns([4, 1])
     with col_head1:
@@ -115,7 +114,7 @@ else:
 
     st.divider()
 
-    # --- AMBIL DATA DARI GOOGLE SHEETS TERLEBIH DAHULU ---
+    # --- AMBIL DATA DARI GOOGLE SHEETS ---
     try:
         df_database = load_data()
     except Exception as e:
@@ -133,9 +132,7 @@ else:
 
     st.sidebar.divider()
 
-    # Variabel penampung wilayah/cabang aktif
     wilayah = None
-
     if menu_pilihan == "Operasional Cabang":
         st.sidebar.header("Tujuan Pengiriman")
         wilayah = st.sidebar.radio(
@@ -173,47 +170,41 @@ else:
         else:
             df_filtered = pd.DataFrame()
 
-        # Terapkan format "Jumlah Box" menjadi angka biasa (tanpa tanda kurung) untuk tab ID
         if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
-            # Mengubah nilai box menjadi integer, lalu dikonversi ke string biasa
             df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
 
-        # --- TAB UTAMA (Horizontal Tabs): Tambah Tab "ID" di sebelah kiri ---
-        tab_id, tab_pick, tab_preload, tab_ondelivery = st.tabs([
-            "ID Request", "Picking", "Preload", "On Delivery"
+        # --- TAB UTAMA: ID Request, Preload (Berisi Alur Proses Picking & Manifest), On Delivery ---
+        tab_id, tab_preload, tab_ondelivery = st.tabs([
+            "ID Request", "Preload", "On Delivery"
         ])
 
         with tab_id:
             st.subheader(f"Data Logistik & Pencarian ID - {wilayah}")
             
-            # Kolom Pencarian ID Request di atas list
             keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Ketik ID Request yang ingin dicari...", key="search_id_request")
             
             df_display = df_filtered.copy()
-            
-            # Logika filter pencarian jika kolom ID Request ada
             if keyword_cari and not df_display.empty:
-                # Cari kolom yang mirip dengan ID Request (misal: 'ID Request', 'Request ID', atau 'ID')
                 id_col_candidates = [col for col in df_display.columns if 'id' in col.lower() or 'request' in col.lower()]
                 if id_col_candidates:
                     target_col = id_col_candidates[0]
                     df_display = df_display[df_display[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
 
             if not df_display.empty:
-                # Menampilkan dataframe dengan hide_index=True agar lebih rapi tanpa kolom index
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
             else:
                 st.info("Tidak ada data logistik yang cocok atau tersedia untuk cabang ini.")
 
-        with tab_pick:
-            st.subheader(f"Proses Picking - {wilayah}")
+        # ==========================================
+        # TAB PRELOAD (Menggabungkan Alur Proses Scan/Picking & Pembuatan Manifest)
+        # ==========================================
+        with tab_preload:
+            st.subheader(f"Proses Preload & Manifest - {wilayah}")
             
-            # Inisialisasi session state untuk menyimpan perubahan picking per cabang selama sesi aktif
             session_key = f"df_picking_{wilayah}"
             if session_key not in st.session_state or st.session_state.get("current_wilayah") != wilayah:
                 df_filtered_cabang = df_filtered.copy()
                 
-                # Standarisasi Kolom ID (Paksa jadi string bersih)
                 id_col_candidates = [col for col in df_filtered_cabang.columns if 'id' in col.lower() or 'request' in col.lower()]
                 if id_col_candidates:
                     actual_id_col = id_col_candidates[0]
@@ -223,7 +214,6 @@ else:
                 
                 df_filtered_cabang["ID Request"] = df_filtered_cabang["ID Request"].astype(str).str.split('.').str[0].str.strip()
                 
-                # Standarisasi Kolom Jumlah Box & Progress
                 if "Jumlah Box" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Jumlah Box"] = 1
                 else:
@@ -234,18 +224,23 @@ else:
                 else:
                     df_filtered_cabang["Progress"] = pd.to_numeric(df_filtered_cabang["Progress"], errors='coerce').fillna(0).astype(int)
                 
-                # Standarisasi Kolom Picker, Waktu, & Status
-                if "Picker" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Picker"] = "-"
+                # Pemetaan Kolom Baru Sesuai Permintaan (Loader, Waktu Preload, Status, Zona Mezzanine)
+                if "Loader" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Loader"] = "-"
                 else:
-                    df_filtered_cabang["Picker"] = df_filtered_cabang["Picker"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
+                    df_filtered_cabang["Loader"] = df_filtered_cabang["Loader"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
                 
-                if "Waktu Picking" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Waktu Picking"] = "-"
+                if "Waktu Preload" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Waktu Preload"] = "-"
                 else:
-                    df_filtered_cabang["Waktu Picking"] = df_filtered_cabang["Waktu Picking"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
+                    df_filtered_cabang["Waktu Preload"] = df_filtered_cabang["Waktu Preload"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
                 
-                def mapping_status_picking(row):
+                if "Zona Mezzanine" not in df_filtered_cabang.columns:
+                    df_filtered_cabang["Zona Mezzanine"] = "-"
+                else:
+                    df_filtered_cabang["Zona Mezzanine"] = df_filtered_cabang["Zona Mezzanine"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
+
+                def mapping_status_preload(row):
                     prog = row.get("Progress", 0)
                     jml = row.get("Jumlah Box", 1)
                     if prog >= jml and jml > 0:
@@ -253,10 +248,10 @@ else:
                     else:
                         return "🔴 Pending"
 
-                df_filtered_cabang["Status"] = df_filtered_cabang.apply(mapping_status_picking, axis=1)
+                df_filtered_cabang["Status"] = df_filtered_cabang.apply(mapping_status_preload, axis=1)
                 
-                kolom_picking = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Picker", "Waktu Picking", "Status"]
-                kolom_tersedia = [col for col in kolom_picking if col in df_filtered_cabang.columns]
+                kolom_preload_display = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Loader", "Waktu Preload", "Status", "Zona Mezzanine"]
+                kolom_tersedia = [col for col in kolom_preload_display if col in df_filtered_cabang.columns]
                 
                 st.session_state[session_key] = df_filtered_cabang[kolom_tersedia].copy()
                 st.session_state["current_wilayah"] = wilayah
@@ -277,8 +272,8 @@ else:
                     match_mask = df_pick_current["ID Request"] == scan_input
                     
                     if match_mask.any():
-                        import datetime
-                        waktu_sekarang = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                        wib_zone = timezone(timedelta(hours=7))
+                        waktu_sekarang = datetime.datetime.now(wib_zone).strftime("%Y-%m-%d %H:%M:%S")
                         
                         idx = df_pick_current[match_mask].index[0]
                         jml_box = int(df_pick_current.loc[idx, "Jumlah Box"])
@@ -290,13 +285,12 @@ else:
                         
                         new_status = "🟡 Processed" if new_prog >= jml_box else "🔴 Pending"
                         
-                        # Update state lokal (tampilan web)
+                        # Update State Lokal
                         df_pick_current.loc[idx, "Progress"] = new_prog
-                        df_pick_current.loc[idx, "Picker"] = st.session_state.user_nama
-                        df_pick_current.loc[idx, "Waktu Picking"] = waktu_sekarang
+                        df_pick_current.loc[idx, "Loader"] = st.session_state.user_nama
+                        df_pick_current.loc[idx, "Waktu Preload"] = waktu_sekarang
                         df_pick_current.loc[idx, "Status"] = new_status
                         
-                        # Sinkronisasi Otomatis ke Database Global & Google Sheets secara langsung
                         try:
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
@@ -306,17 +300,16 @@ else:
                                 if "Progress" in df_database.columns:
                                     df_database["Progress"] = pd.to_numeric(df_database["Progress"], errors='coerce').fillna(0).astype(int)
                                     df_database.loc[global_mask, "Progress"] = new_prog
-                                if "Picker" in df_database.columns:
-                                    df_database["Picker"] = df_database["Picker"].astype(str)
-                                    df_database.loc[global_mask, "Picker"] = str(st.session_state.user_nama)
-                                if "Waktu Picking" in df_database.columns:
-                                    df_database["Waktu Picking"] = df_database["Waktu Picking"].astype(str)
-                                    df_database.loc[global_mask, "Waktu Picking"] = str(waktu_sekarang)
+                                if "Loader" in df_database.columns:
+                                    df_database["Loader"] = df_database["Loader"].astype(str)
+                                    df_database.loc[global_mask, "Loader"] = str(st.session_state.user_nama)
+                                if "Waktu Preload" in df_database.columns:
+                                    df_database["Waktu Preload"] = df_database["Waktu Preload"].astype(str)
+                                    df_database.loc[global_mask, "Waktu Preload"] = str(waktu_sekarang)
                                 if "Status" in df_database.columns:
                                     df_database["Status"] = df_database["Status"].astype(str)
                                     df_database.loc[global_mask, "Status"] = "Processed" if new_prog >= jml_box else "Pending"
                                 
-                                # Kirim langsung ke Google Sheets secara otomatis
                                 conn.update(worksheet="Database log", data=df_database)
                         except Exception as e:
                             print(f"Error sync sheets: {e}")
@@ -338,11 +331,9 @@ else:
 
             # --- 2. INPUT MANUAL JUMLAH BESAR & OTOMATIS SYNC ---
             with st.expander("📦 Input Manual Jumlah Box Besar (Untuk Puluhan/Ratusan Box)"):
-                
                 manual_id_key = f"manual_id_input_{wilayah}"
                 clear_flag_key = f"clear_manual_flag_{wilayah}"
                 
-                # 1. Bersihkan nilai SEBELUM widget text_input dibuat (mencegah error instisiasi)
                 if st.session_state.get(clear_flag_key, False):
                     st.session_state[manual_id_key] = ""
                     st.session_state[clear_flag_key] = False
@@ -364,8 +355,8 @@ else:
                     match_mask_m = df_pick_current["ID Request"] == clean_manual_id
                     
                     if match_mask_m.any():
-                        import datetime
-                        waktu_sekarang = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                        wib_zone = timezone(timedelta(hours=7))
+                        waktu_sekarang = datetime.datetime.now(wib_zone).strftime("%Y-%m-%d %H:%M:%S")
                         
                         idx_m = df_pick_current[match_mask_m].index[0]
                         jml_box_m = int(df_pick_current.loc[idx_m, "Jumlah Box"])
@@ -379,8 +370,8 @@ else:
                         new_status_m = "🟡 Processed" if new_prog_m >= jml_box_m else "🔴 Pending"
                         
                         df_pick_current.loc[idx_m, "Progress"] = new_prog_m
-                        df_pick_current.loc[idx_m, "Picker"] = st.session_state.user_nama
-                        df_pick_current.loc[idx_m, "Waktu Picking"] = waktu_sekarang
+                        df_pick_current.loc[idx_m, "Loader"] = st.session_state.user_nama
+                        df_pick_current.loc[idx_m, "Waktu Preload"] = waktu_sekarang
                         df_pick_current.loc[idx_m, "Status"] = new_status_m
                         
                         try:
@@ -392,12 +383,12 @@ else:
                                 if "Progress" in df_database.columns:
                                     df_database["Progress"] = pd.to_numeric(df_database["Progress"], errors='coerce').fillna(0).astype(int)
                                     df_database.loc[global_mask_m, "Progress"] = new_prog_m
-                                if "Picker" in df_database.columns:
-                                    df_database["Picker"] = df_database["Picker"].astype(str)
-                                    df_database.loc[global_mask_m, "Picker"] = str(st.session_state.user_nama)
-                                if "Waktu Picking" in df_database.columns:
-                                    df_database["Waktu Picking"] = df_database["Waktu Picking"].astype(str)
-                                    df_database.loc[global_mask_m, "Waktu Picking"] = str(waktu_sekarang)
+                                if "Loader" in df_database.columns:
+                                    df_database["Loader"] = df_database["Loader"].astype(str)
+                                    df_database.loc[global_mask_m, "Loader"] = str(st.session_state.user_nama)
+                                if "Waktu Preload" in df_database.columns:
+                                    df_database["Waktu Preload"] = df_database["Waktu Preload"].astype(str)
+                                    df_database.loc[global_mask_m, "Waktu Preload"] = str(waktu_sekarang)
                                 if "Status" in df_database.columns:
                                     df_database["Status"] = df_database["Status"].astype(str)
                                     df_database.loc[global_mask_m, "Status"] = "Processed" if new_prog_m >= jml_box_m else "Pending"
@@ -407,14 +398,11 @@ else:
                             st.error(f"Gagal sync ke Google Sheets: {e}")
 
                         st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box dan tersinkron ke Cloud!")
-                        
-                        # 2. Nyalakan penanda (flag) untuk membersihkan input pada siklus rerun berikutnya
                         st.session_state[clear_flag_key] = True
                         st.rerun()
                     else:
                         st.error(f"❌ ID Request **{clean_manual_id}** tidak ditemukan di cabang ini!")
 
-            # Feedback pesan & efek suara
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -432,34 +420,27 @@ else:
                 st.markdown(audio_html, unsafe_allow_html=True)
                 del st.session_state[f"sound_effect_{wilayah}"]
 
-            st.markdown("##### 📋 Monitoring Data Picking Cabang")
+            st.markdown("##### 📋 Monitoring Data Preload & Scanning Cabang")
             if not df_pick_current.empty:
                 st.dataframe(df_pick_current, use_container_width=True, hide_index=True)
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
-        # --- TAB ACTIVE PRELOAD ---
-        with tab_preload:
-            st.subheader(f"Manifest & Preload - {wilayah}")
-            
-            # Inisialisasi state untuk mode pembuatan manifest
+            st.markdown("---")
+
+            # --- 3. MENU MANIFEST DI DALAM TAB PRELOAD ---
             mode_manifest_key = f"mode_buat_manifest_{wilayah}"
             if mode_manifest_key not in st.session_state:
                 st.session_state[mode_manifest_key] = False
 
-            # Tombol Utama untuk memicu form Buat Manifest Baru
             if not st.session_state[mode_manifest_key]:
                 if st.button("➕ Buat Manifest Baru", key=f"btn_buka_manifest_{wilayah}", use_container_width=True):
                     st.session_state[mode_manifest_key] = True
                     st.rerun()
             else:
-                st.markdown("---")
                 st.markdown("### 📝 Form Pembuatan Manifest Baru")
                 
-                # Input Nama/Nomor Manifest
                 nomor_manifest = st.text_input("Nomor / Nama Manifest:", placeholder="Contoh: MNF-JKT-20260922-01", key=f"input_no_manifest_{wilayah}")
-                
-                # Sub menu: Opsi Buat Manifest Kosong
                 buat_kosong = st.checkbox("Buat Manifest Kosong (Tanpa ID Request terlebih dahulu)", key=f"chk_manifest_kosong_{wilayah}")
                 
                 selected_ids_for_manifest = []
@@ -467,31 +448,24 @@ else:
                 if not buat_kosong:
                     st.markdown("#### Pilih ID Request yang Berstatus 🟡 Processed:")
                     
-                    session_key_pick = f"df_picking_{wilayah}"
-                    if session_key_pick in st.session_state:
-                        df_pick_data = st.session_state[session_key_pick]
-                        
-                        # Filter hanya yang berstatus '🟡 Processed'
-                        df_processed_only = df_pick_data[df_pick_data["Status"] == "🟡 Processed"]
-                        
-                        if not df_processed_only.empty:
-                            for idx, row in df_processed_only.iterrows():
-                                id_req = row["ID Request"]
-                                tujuan = row.get("Tujuan Pengiriman", "-")
-                                box = row.get("Jumlah Box", 0)
-                                
-                                is_checked = st.checkbox(
-                                    f"ID: **{id_req}** | Tujuan: {tujuan} | Total Box: {box}", 
-                                    key=f"chk_id_{wilayah}_{id_req}"
-                                )
-                                if is_checked:
-                                    selected_ids_for_manifest.append(id_req)
-                        else:
-                            st.info("⚠️ Belum ada ID Request dengan status '🟡 Processed' yang tersedia untuk dimasukkan ke manifest.")
+                    df_pick_data = st.session_state[session_key]
+                    df_processed_only = df_pick_data[df_pick_data["Status"] == "🟡 Processed"]
+                    
+                    if not df_processed_only.empty:
+                        for idx, row in df_processed_only.iterrows():
+                            id_req = row["ID Request"]
+                            tujuan = row.get("Tujuan Pengiriman", "-")
+                            box = row.get("Jumlah Box", 0)
+                            
+                            is_checked = st.checkbox(
+                                f"ID: **{id_req}** | Tujuan: {tujuan} | Total Box: {box}", 
+                                key=f"chk_id_{wilayah}_{id_req}"
+                            )
+                            if is_checked:
+                                selected_ids_for_manifest.append(id_req)
                     else:
-                        st.warning("⚠️ Data picking untuk wilayah ini belum dimuat.")
+                        st.info("⚠️ Belum ada ID Request dengan status '🟡 Processed' yang tersedia untuk dimasukkan ke manifest.")
 
-                # Tombol Aksi Simpan atau Batal
                 col_m_simpan, col_m_batal = st.columns(2)
                 
                 with col_m_simpan:
@@ -499,8 +473,7 @@ else:
                         if not nomor_manifest.strip():
                             st.error("❌ Nomor/Nama Manifest wajib diisi!")
                         else:
-                            import datetime  # Pastikan datetime diimpor di sini
-                            
+                            wib_zone = timezone(timedelta(hours=7))
                             manifest_storage_key = f"list_manifest_{wilayah}"
                             if manifest_storage_key not in st.session_state:
                                 st.session_state[manifest_storage_key] = []
@@ -509,8 +482,8 @@ else:
                                 "Nomor Manifest": nomor_manifest.strip(),
                                 "Wilayah": wilayah,
                                 "Dibuat Oleh": st.session_state.user_nama,
-                                "Waktu Dibuat": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                "Daftar ID Request": selected_ids_for_manifest,
+                                "Waktu Dibuat": datetime.datetime.now(wib_zone).strftime("%Y-%m-%d %H:%M:%S"),
+                                "Daftar ID Request": str(selected_ids_for_manifest) if selected_ids_for_manifest else "(Kosong)",
                                 "Status Manifest": "Active"
                             }
                             
@@ -525,12 +498,9 @@ else:
                         st.session_state[mode_manifest_key] = False
                         st.rerun()
 
-            st.markdown("---")
             st.markdown("##### 📦 Daftar Manifest Aktif")
-            
             manifest_storage_key = f"list_manifest_{wilayah}"
             if manifest_storage_key in st.session_state and st.session_state[manifest_storage_key]:
-                import pandas as pd
                 df_manifest_list = pd.DataFrame(st.session_state[manifest_storage_key])
                 st.dataframe(df_manifest_list, use_container_width=True, hide_index=True)
             else:
