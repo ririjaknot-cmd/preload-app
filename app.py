@@ -427,7 +427,19 @@ else:
             st.markdown("##### 📋 Monitoring Data Preload & Scanning Cabang")
             
             if not df_pick_current.empty:
-                # Kolom Zona Mezzanine menggunakan st.data_editor agar interaktif (bisa diisi/dipilih langsung)
+                # Daftar lengkap pilihan Zona Mezzanine sesuai gambar referensi Anda
+                list_pilihan_zona = [
+                    "-",
+                    *[f"A{i}" for i in range(1, 12)],
+                    *[f"B{i}" for i in range(1, 10)],
+                    *[f"C{i}" for i in range(1, 12)],
+                    *[f"D{i}" for i in range(1, 12)],
+                    *[f"E{i}" for i in range(1, 10)],
+                    *[f"F{i}" for i in range(1, 10)],
+                    "SC 1", "SC 2"
+                ]
+
+                # Menggunakan st.data_editor dengan SelectboxColumn agar tampil sebagai menu dropdown
                 edited_df = st.data_editor(
                     df_pick_current,
                     column_config={
@@ -435,9 +447,11 @@ else:
                         "Tujuan Pengiriman": st.column_config.TextColumn("Tujuan Pengiriman", disabled=True),
                         "Jumlah Box": st.column_config.NumberColumn("Jumlah Box", disabled=True),
                         "Progress": st.column_config.NumberColumn("Progress", disabled=True),
-                        "Zona Mezzanine": st.column_config.TextColumn(
+                        "Zona Mezzanine": st.column_config.SelectboxColumn(
                             "📍 Zona Mezzanine",
-                            help="Ketik atau pilih zona penyimpanan (misal: A1, B2)"
+                            help="Pilih zona penyimpanan dari dropdown",
+                            options=list_pilihan_zona,
+                            required=False
                         ),
                         "Loader": st.column_config.TextColumn("Loader", disabled=True),
                         "Waktu Preload": st.column_config.TextColumn("Waktu Preload", disabled=True),
