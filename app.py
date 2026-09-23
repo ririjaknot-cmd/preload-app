@@ -53,21 +53,19 @@ def safe_conn_update(df_global_master, df_local_updated, id_request_target):
     yang diperbarui ke Google Sheets, tanpa menyentuh kolom A sampai E (data murni).
     """
     try:
-        # Cari kolom ID di database master
         id_col_candidates = [col for col in df_global_master.columns if 'id' in col.lower() or 'request' in col.lower()]
         if not id_col_candidates:
             return
         
         global_id_col = id_col_candidates[0]
         
-        # Cari baris yang sesuai dengan ID Request yang diubah
+        # Perbaikan dari .str.0 menjadi .str[0]
         mask_master = df_global_master[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_request_target).strip()
-        mask_local = df_local_updated["ID Request"].astype(str).str.split('.').str.0.str.strip() == str(id_request_target).strip()
+        mask_local = df_local_updated["ID Request"].astype(str).str.split('.').str[0].str.strip() == str(id_request_target).strip()
         
         if mask_master.any() and mask_local.any():
             local_idx = df_local_updated[mask_local].index[0]
             
-            # Daftar kolom operasional yang diizinkan untuk di-update (Mulai dari kolom F ke kanan)
             kolom_operasional = ["Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
             
             for col in kolom_operasional:
@@ -75,7 +73,6 @@ def safe_conn_update(df_global_master, df_local_updated, id_request_target):
                     val_to_update = df_local_updated.loc[local_idx, col]
                     df_global_master.loc[mask_master, col] = val_to_update
             
-            # Kirim pembaruan ke Google Sheets
             conn.update(worksheet="Database log", data=df_global_master)
     except Exception as e:
         print(f"Error safe_conn_update: {e}")
@@ -327,7 +324,6 @@ else:
                         df_pick_current.loc[idx, "Waktu Preload"] = waktu_sekarang
                         df_pick_current.loc[idx, "Status"] = new_status
                         
-                        # Sinkronisasi aman (hanya update kolom operasional F ke kanan)
                         safe_conn_update(df_database, df_pick_current, scan_input)
 
                         st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ **{scan_input}** berhasil disimpan (+1 Box, Progress: {new_prog}/{jml_box})")
@@ -390,7 +386,6 @@ else:
                         df_pick_current.loc[idx_m, "Waktu Preload"] = waktu_sekarang
                         df_pick_current.loc[idx_m, "Status"] = new_status_m
                         
-                        # Sinkronisasi aman (hanya update kolom operasional F ke kanan)
                         safe_conn_update(df_database, df_pick_current, clean_manual_id)
 
                         st.success(f"✅ ID **{clean_manual_id}** berhasil ditambah {manual_qty} box dan tersinkron ke Cloud!")
@@ -448,7 +443,6 @@ else:
                                     current_df.at[row_idx, "Zona Mezzanine"] = new_zona
                                     id_req = current_df.at[row_idx, "ID Request"]
                                     
-                                    # Sinkronisasi aman (hanya update kolom operasional F ke kanan)
                                     safe_conn_update(df_database, current_df, id_req)
 
                 kolom_tampil_editor = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
@@ -541,7 +535,7 @@ else:
                             }
                             
                             st.session_state[manifest_storage_key].append(new_manifest_data)
-                            st.success(f"✅ Manifest **{nomor_manifest}** berhasil dibuat dengan {len(selected_ids_for_manifest)} ID Request!")
+.                            st.success(f"✅ Manifest **{nomor_manifest}** berhasil dibuat dengan {len(selected_ids_for_manifest)} ID Request!")
                             
                             st.session_state[mode_manifest_key] = False
                             st.rerun()
