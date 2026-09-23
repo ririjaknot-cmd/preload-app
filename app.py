@@ -427,9 +427,8 @@ else:
             st.markdown("##### 📋 Monitoring Data Preload & Scanning Cabang")
             
             if not df_pick_current.empty:
-                # Daftar lengkap pilihan Zona Mezzanine sesuai gambar referensi Anda
+                # Daftar pilihan Zona Mezzanine sesuai gambar referensi
                 list_pilihan_zona = [
-                    "-",
                     *[f"A{i}" for i in range(1, 12)],
                     *[f"B{i}" for i in range(1, 10)],
                     *[f"C{i}" for i in range(1, 12)],
@@ -439,7 +438,54 @@ else:
                     "SC 1", "SC 2"
                 ]
 
-                # Menggunakan st.data_editor dengan SelectboxColumn agar tampil sebagai menu dropdown
+                # Konversi data string zona di dataframe menjadi list agar tampil sebagai chip multi-select
+                def parse_zona_list(val):
+                    if pd.isna(val) or val == "-" or val == "":
+                        return []
+                    if isinstance(val, list):
+                        return val
+                    return [v.strip() for v in str(val).split(",") if v.strip()]
+
+                if "Zona_List" not in df_pick_current.columns:
+                    df_pick_current["Zona_List"] = df_pick_current["Zona Mezzanine"].apply(parse_zona_list)
+
+                editor_key = f"data_editor_zona_{wilayah}"
+
+                # Fungsi callback otomatis saat ada perubahan pada tabel (tanpa perlu klik tombol simpan)
+                def handle_zona_change():
+                    edited_data = st.session_state[editor_key]
+                    changes = edited_data.get("edited_rows", {})
+                    
+                    if changes:
+                        # Ambil dataframe lokal saat ini
+                        current_df = st.session_state[session_key]
+                        
+                        for row_idx_str, updated_values in changes.items():
+                            row_idx = int(row_idx_str)
+                            if "Zona_List" in updated_values:
+                                new_zones = updated_values["Zona_List"]
+                                zone_str = ", ".join(new_zones) if new_zones else "-"
+                                
+                                # Update ke dataframe sesi lokal
+                                current_df.at[row_idx, "Zona_List"] = new_zones
+                                current_df.at[row_idx, "Zona Mezzanine"] = zone_str
+                                
+                                id_req = current_df.at[row_idx, "ID Request"]
+                                
+                                # Sinkronisasi otomatis ke Google Sheets global
+                                try:
+                                    global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
+                                    if global_id_candidates:
+                                        global_id_col = global_id_candidates[0]
+                                        global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_req)
+                                        global_zona_candidates = [col for col in df_database.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
+                                        if global_zona_candidates:
+                                            df_database.loc[global_mask, global_zona_candidates[0]] = zone_str
+                                            conn.update(worksheet="Database log", data=df_database)
+                                except Exception as e:
+                                    print(f"Gagal auto-sync zona: {e}")
+
+                # Menggunakan st.data_editor dengan MultiselectColumn agar tampil sebagai chip/panah multi-pilihan
                 edited_df = st.data_editor(
                     df_pick_current,
                     column_config={
@@ -447,9 +493,10 @@ else:
                         "Tujuan Pengiriman": st.column_config.TextColumn("Tujuan Pengiriman", disabled=True),
                         "Jumlah Box": st.column_config.NumberColumn("Jumlah Box", disabled=True),
                         "Progress": st.column_config.NumberColumn("Progress", disabled=True),
-                        "Zona Mezzanine": st.column_config.SelectboxColumn(
+                        "Zona Mezzanine": None,  # Sembunyikan kolom teks mentah asli
+                        "Zona_List": st.column_config.MultiselectColumn(
                             "📍 Zona Mezzanine",
-                            help="Pilih zona penyimpanan dari dropdown",
+                            help="Pilih satu atau beberapa zona",
                             options=list_pilihan_zona,
                             required=False
                         ),
@@ -459,30 +506,9 @@ else:
                     },
                     use_container_width=True,
                     hide_index=True,
-                    key=f"data_editor_{wilayah}"
+                    key=editor_key,
+                    on_change=handle_zona_change
                 )
-
-                if st.button("💾 Simpan Perubahan Zona Mezzanine", key=f"btn_save_zona_{wilayah}"):
-                    try:
-                        for idx, row in edited_df.iterrows():
-                            id_req = row["ID Request"]
-                            new_zona = str(row["Zona Mezzanine"]).strip()
-                            
-                            df_pick_current.loc[df_pick_current["ID Request"] == id_req, "Zona Mezzanine"] = new_zona
-                            
-                            global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
-                            if global_id_candidates:
-                                global_id_col = global_id_candidates[0]
-                                global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_req)
-                                global_zona_candidates = [col for col in df_database.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
-                                if global_zona_candidates:
-                                    df_database.loc[global_mask, global_zona_candidates[0]] = new_zona
-
-                        conn.update(worksheet="Database log", data=df_database)
-                        st.success("✅ Zona Mezzanine berhasil diperbarui dan disinkronkan ke Google Sheets!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal menyimpan zona: {e}")
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
