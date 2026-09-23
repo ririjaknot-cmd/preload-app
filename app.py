@@ -28,17 +28,6 @@ USER_DATABASE = {
     "mahesaagusta28@gmail.com": {"nama": "Mahesa Agusta", "pin": "1234"}
 }
 
-# --- LIST PILIHAN ZONA MEZZANINE BERDASARKAN GAMBAR ---
-ZONA_MEZZANINE_OPTIONS = (
-    [f"A{i}" for i in range(1, 12)] +  # A1 - A11
-    [f"B{i}" for i in range(1, 10)] +  # B1 - B9
-    [f"C{i}" for i in range(1, 12)] +  # C1 - C11
-    [f"D{i}" for i in range(1, 12)] +  # D1 - D11
-    [f"E{i}" for i in range(1, 10)] +  # E1 - E9
-    [f"F{i}" for i in range(1, 10)] +  # F1 - F9
-    ["SC 1", "SC 2"]                   # Zona SC
-)
-
 # --- INISIALISASI SESSION STATE ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -50,10 +39,12 @@ if "user_nama" not in st.session_state:
 # --- KONEKSI GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Fungsi untuk membaca data dari sheet "Database log" dengan TTL pendek
+# Fungsi untuk membaca data dari sheet "Database log"
 @st.cache_data(ttl=5)
 def load_data():
     df = conn.read(worksheet="Database log", ttl=0)
+    # Bersihkan spasi berlebih pada nama kolom dari Google Sheets
+    df.columns = df.columns.str.strip()
     return df
 
 # --- FUNGSI HALAMAN LOGIN ---
@@ -243,10 +234,16 @@ else:
                 else:
                     df_filtered_cabang["Waktu Preload"] = df_filtered_cabang["Waktu Preload"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
                 
-                if "Zona Mezzanine" not in df_filtered_cabang.columns:
-                    df_filtered_cabang["Zona Mezzanine"] = "-"
+                # Deteksi fleksibel kolom Zona Mezzanine dari Google Sheets
+                zona_col_candidates = [col for col in df_filtered_cabang.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
+                if zona_col_candidates:
+                    actual_zona_col = zona_col_candidates[0]
+                    if actual_zona_col != "Zona Mezzanine":
+                        df_filtered_cabang.rename(columns={actual_zona_col: "Zona Mezzanine"}, inplace=True)
                 else:
-                    df_filtered_cabang["Zona Mezzanine"] = df_filtered_cabang["Zona Mezzanine"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
+                    df_filtered_cabang["Zona Mezzanine"] = "-"
+
+                df_filtered_cabang["Zona Mezzanine"] = df_filtered_cabang["Zona Mezzanine"].fillna("-").astype(str).replace(["None", "nan", ""], "-")
 
                 def mapping_status_preload(row):
                     prog = row.get("Progress", 0)
@@ -431,8 +428,6 @@ else:
             st.markdown("##### 📋 Monitoring Data Preload & Scanning Cabang")
             
             if not df_pick_current.empty:
-                # Menggunakan st.data_editor untuk kolom Zona Mezzanine agar interaktif (Multi-Select Dropdown)
-                # Memetakan data string zona mezzanine tersimpan menjadi list untuk multiselect
                 def parse_zona(val):
                     if pd.isna(val) or val == "-" or val == "":
                         return []
@@ -445,7 +440,7 @@ else:
                 edited_df = st.data_editor(
                     df_pick_current,
                     column_config={
-                        "Zona Mezzanine": None,  # Sembunyikan kolom teks mentah sementara
+                        "Zona Mezzanine": None,
                         "Zona_List": st.column_config.ListColumn(
                             "📍 Zona Mezzanine (Pilih Zona)",
                             help="Pilih zona mezzanine tempat penyimpanan barang"
@@ -456,7 +451,6 @@ else:
                     key=f"data_editor_{wilayah}"
                 )
 
-                # Tombol untuk menyimpan perubahan Zona Mezzanine secara interaktif
                 if st.button("💾 Simpan Perubahan Zona Mezzanine", key=f"btn_save_zona_{wilayah}"):
                     try:
                         for idx, row in edited_df.iterrows():
@@ -464,16 +458,15 @@ else:
                             selected_zones = row["Zona_List"]
                             zone_str = ", ".join(selected_zones) if selected_zones else "-"
                             
-                            # Update ke session lokal
                             df_pick_current.loc[df_pick_current["ID Request"] == id_req, "Zona Mezzanine"] = zone_str
                             
-                            # Update ke database global
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
                                 global_id_col = global_id_candidates[0]
                                 global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_req)
-                                if "Zona Mezzanine" in df_database.columns:
-                                    df_database.loc[global_mask, "Zona Mezzanine"] = zone_str
+                                global_zona_candidates = [col for col in df_database.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
+                                if global_zona_candidates:
+                                    df_database.loc[global_mask, global_zona_candidates[0]] = zone_str
 
                         conn.update(worksheet="Database log", data=df_database)
                         st.success("✅ Zona Mezzanine berhasil diperbarui dan disinkronkan ke Google Sheets!")
