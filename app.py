@@ -28,6 +28,17 @@ USER_DATABASE = {
     "mahesaagusta28@gmail.com": {"nama": "Mahesa Agusta", "pin": "1234"}
 }
 
+# --- LIST PILIHAN ZONA MEZZANINE BERDASARKAN GAMBAR ---
+ZONA_MEZZANINE_OPTIONS = (
+    [f"A{i}" for i in range(1, 12)] +  # A1 - A11
+    [f"B{i}" for i in range(1, 10)] +  # B1 - B9
+    [f"C{i}" for i in range(1, 12)] +  # C1 - C11
+    [f"D{i}" for i in range(1, 12)] +  # D1 - D11
+    [f"E{i}" for i in range(1, 10)] +  # E1 - E9
+    [f"F{i}" for i in range(1, 10)] +  # F1 - F9
+    ["SC 1", "SC 2"]                   # Zona SC
+)
+
 # --- INISIALISASI SESSION STATE ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -39,7 +50,7 @@ if "user_nama" not in st.session_state:
 # --- KONEKSI GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Fungsi untuk membaca data dari sheet "Database log" dengan TTL pendek agar selalu up-to-date
+# Fungsi untuk membaca data dari sheet "Database log" dengan TTL pendek
 @st.cache_data(ttl=5)
 def load_data():
     df = conn.read(worksheet="Database log", ttl=0)
@@ -78,7 +89,6 @@ else:
     with col_head2:
         st.text(f"👤 {st.session_state.user_nama}")
         
-        # Komponen HTML + JS untuk Jam & Tanggal Live berdetik
         components.html("""
         <div style="font-family: sans-serif; font-size: 13px; color: #FFFFFF; margin-top: -10px;">
             🕒 <span id="live-clock">Loading...</span>
@@ -122,7 +132,7 @@ else:
         st.exception(e)
         df_database = pd.DataFrame()
 
-    # --- SIDEBAR: NAVIGASI UTAMA & PEMISAHAN MENU ---
+    # --- SIDEBAR: NAVIGASI UTAMA ---
     st.sidebar.markdown("### 🗂️ Menu Navigasi")
     menu_pilihan = st.sidebar.radio(
         "Pilih Halaman Utama:",
@@ -162,7 +172,6 @@ else:
             st.warning("⚠️ Data dari Google Sheets kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
 
     else:
-        # Tampilan Operasional Cabang
         st.title(f"Cabang - {wilayah}")
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
@@ -173,7 +182,7 @@ else:
         if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
             df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
 
-        # --- TAB UTAMA: ID Request, Preload (Berisi Alur Proses Picking & Manifest), On Delivery ---
+        # --- TAB UTAMA ---
         tab_id, tab_preload, tab_ondelivery = st.tabs([
             "ID Request", "Preload", "On Delivery"
         ])
@@ -196,7 +205,7 @@ else:
                 st.info("Tidak ada data logistik yang cocok atau tersedia untuk cabang ini.")
 
         # ==========================================
-        # TAB PRELOAD (Menggabungkan Alur Proses Scan/Picking & Pembuatan Manifest)
+        # TAB PRELOAD
         # ==========================================
         with tab_preload:
             st.subheader(f"Proses Preload & Manifest - {wilayah}")
@@ -224,7 +233,6 @@ else:
                 else:
                     df_filtered_cabang["Progress"] = pd.to_numeric(df_filtered_cabang["Progress"], errors='coerce').fillna(0).astype(int)
                 
-                # Pemetaan Kolom Baru Sesuai Permintaan (Loader, Waktu Preload, Status, Zona Mezzanine)
                 if "Loader" not in df_filtered_cabang.columns:
                     df_filtered_cabang["Loader"] = "-"
                 else:
@@ -250,7 +258,8 @@ else:
 
                 df_filtered_cabang["Status"] = df_filtered_cabang.apply(mapping_status_preload, axis=1)
                 
-                kolom_preload_display = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Loader", "Waktu Preload", "Status", "Zona Mezzanine"]
+                # Susunan Kolom Sesuai Permintaan: ID Request - Tujuan Pengiriman - Jumlah Box - Progress - Zona Mezzanine - Loader - Waktu Preload - Status
+                kolom_preload_display = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
                 kolom_tersedia = [col for col in kolom_preload_display if col in df_filtered_cabang.columns]
                 
                 st.session_state[session_key] = df_filtered_cabang[kolom_tersedia].copy()
@@ -285,7 +294,6 @@ else:
                         
                         new_status = "🟡 Processed" if new_prog >= jml_box else "🔴 Pending"
                         
-                        # Update State Lokal
                         df_pick_current.loc[idx, "Progress"] = new_prog
                         df_pick_current.loc[idx, "Loader"] = st.session_state.user_nama
                         df_pick_current.loc[idx, "Waktu Preload"] = waktu_sekarang
@@ -421,8 +429,57 @@ else:
                 del st.session_state[f"sound_effect_{wilayah}"]
 
             st.markdown("##### 📋 Monitoring Data Preload & Scanning Cabang")
+            
             if not df_pick_current.empty:
-                st.dataframe(df_pick_current, use_container_width=True, hide_index=True)
+                # Menggunakan st.data_editor untuk kolom Zona Mezzanine agar interaktif (Multi-Select Dropdown)
+                # Memetakan data string zona mezzanine tersimpan menjadi list untuk multiselect
+                def parse_zona(val):
+                    if pd.isna(val) or val == "-" or val == "":
+                        return []
+                    if isinstance(val, list):
+                        return val
+                    return [v.strip() for v in str(val).split(",") if v.strip()]
+
+                df_pick_current["Zona_List"] = df_pick_current["Zona Mezzanine"].apply(parse_zona)
+
+                edited_df = st.data_editor(
+                    df_pick_current,
+                    column_config={
+                        "Zona Mezzanine": None,  # Sembunyikan kolom teks mentah sementara
+                        "Zona_List": st.column_config.ListColumn(
+                            "📍 Zona Mezzanine (Pilih Zona)",
+                            help="Pilih zona mezzanine tempat penyimpanan barang"
+                        )
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    key=f"data_editor_{wilayah}"
+                )
+
+                # Tombol untuk menyimpan perubahan Zona Mezzanine secara interaktif
+                if st.button("💾 Simpan Perubahan Zona Mezzanine", key=f"btn_save_zona_{wilayah}"):
+                    try:
+                        for idx, row in edited_df.iterrows():
+                            id_req = row["ID Request"]
+                            selected_zones = row["Zona_List"]
+                            zone_str = ", ".join(selected_zones) if selected_zones else "-"
+                            
+                            # Update ke session lokal
+                            df_pick_current.loc[df_pick_current["ID Request"] == id_req, "Zona Mezzanine"] = zone_str
+                            
+                            # Update ke database global
+                            global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
+                            if global_id_candidates:
+                                global_id_col = global_id_candidates[0]
+                                global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_req)
+                                if "Zona Mezzanine" in df_database.columns:
+                                    df_database.loc[global_mask, "Zona Mezzanine"] = zone_str
+
+                        conn.update(worksheet="Database log", data=df_database)
+                        st.success("✅ Zona Mezzanine berhasil diperbarui dan disinkronkan ke Google Sheets!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menyimpan zona: {e}")
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
