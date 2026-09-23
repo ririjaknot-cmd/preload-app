@@ -59,7 +59,6 @@ def safe_conn_update(df_global_master, df_local_updated, id_request_target):
         
         global_id_col = id_col_candidates[0]
         
-        # Perbaikan dari .str.0 menjadi .str[0]
         mask_master = df_global_master[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_request_target).strip()
         mask_local = df_local_updated["ID Request"].astype(str).str.split('.').str[0].str.strip() == str(id_request_target).strip()
         
@@ -535,7 +534,7 @@ else:
                             }
                             
                             st.session_state[manifest_storage_key].append(new_manifest_data)
-.                            st.success(f"✅ Manifest **{nomor_manifest}** berhasil dibuat dengan {len(selected_ids_for_manifest)} ID Request!")
+                            st.success(f"✅ Manifest **{nomor_manifest}** berhasil dibuat dengan {len(selected_ids_for_manifest)} ID Request!")
                             
                             st.session_state[mode_manifest_key] = False
                             st.rerun()
