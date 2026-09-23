@@ -478,12 +478,13 @@ else:
                                             global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_req)
                                             
                                             global_zona_candidates = [col for col in df_database.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
-                                            if global_zona_candidates:
-                                                df_database.loc[global_mask, global_zona_candidates[0]] = zone_str
-                                                conn.update(worksheet="Database log", data=df_database)
-                                            else:
-                                                df_database.loc[global_mask, "Zona Mezzanine"] = zone_str
-                                                conn.update(worksheet="Database log", data=df_database)
+                                            zona_col_name = global_zona_candidates[0] if global_zona_candidates else "Zona Mezzanine"
+                                            
+                                            # HANYA UPDATE KOLOM ZONA SAJA PADA DATABASE GLOBAL
+                                            df_database.loc[global_mask, zona_col_name] = zone_str
+                                            
+                                            # Kirim hanya data spesifik atau pastikan kolom A-E tidak berubah
+                                            conn.update(worksheet="Database log", data=df_database)
                                     except Exception as e:
                                         print(f"Gagal auto-sync zona: {e}")
 
