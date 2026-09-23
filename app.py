@@ -524,73 +524,102 @@ else:
                     st.session_state[mode_manifest_key] = True
                     st.rerun()
             else:
-                st.markdown("### 📝 Form Pembuatan Manifest Baru")
-                
-                nomor_manifest = st.text_input("Nomor / Nama Manifest:", placeholder="Contoh: MNF-JKT-20260922-01", key=f"input_no_manifest_{wilayah}")
-                buat_kosong = st.checkbox("Buat Manifest Kosong (Tanpa ID Request terlebih dahulu)", key=f"chk_manifest_kosong_{wilayah}")
-                
-                selected_ids_for_manifest = []
-                
-                if not buat_kosong:
-                    st.markdown("#### Pilih ID Request yang Berstatus 🟡 Processed:")
+                st.markdown("##### 📋 Monitoring Data Preload & Scanning Cabang")
+            
+            if not df_pick_current.empty:
+                # Daftar lengkap pilihan Zona Mezzanine sesuai referensi
+                list_pilihan_zona = [
+                    *[f"A{i}" for i in range(1, 12)],
+                    *[f"B{i}" for i in range(1, 10)],
+                    *[f"C{i}" for i in range(1, 12)],
+                    *[f"D{i}" for i in range(1, 12)],
+                    *[f"E{i}" for i in range(1, 10)],
+                    *[f"F{i}" for i in range(1, 10)],
+                    "SC 1", "SC 2"
+                ]
+
+                # Fungsi parsing data zona string ke list untuk chip multiselect
+                def parse_zona_list(val):
+                    if pd.isna(val) or val == "-" or val == "":
+                        return []
+                    if isinstance(val, list):
+                        return val
+                    return [v.strip() for v in str(val).split(",") if v.strip()]
+
+                # Pastikan kolom Zona_List tersedia di DataFrame lokal untuk keperluan widget multiselect
+                if "Zona_List" not in df_pick_current.columns:
+                    df_pick_current["Zona_List"] = df_pick_current["Zona Mezzanine"].apply(parse_zona_list)
+
+                editor_key = f"data_editor_zona_{wilayah}"
+
+                # Fungsi callback untuk auto-sync ke Google Sheets saat ada perubahan zona
+                def handle_zona_change():
+                    edited_data = st.session_state[editor_key]
+                    changes = edited_data.get("edited_rows", {})
                     
-                    df_pick_data = st.session_state[session_key]
-                    df_processed_only = df_pick_data[df_pick_data["Status"] == "🟡 Processed"]
-                    
-                    if not df_processed_only.empty:
-                        for idx, row in df_processed_only.iterrows():
-                            id_req = row["ID Request"]
-                            tujuan = row.get("Tujuan Pengiriman", "-")
-                            box = row.get("Jumlah Box", 0)
-                            
-                            is_checked = st.checkbox(
-                                f"ID: **{id_req}** | Tujuan: {tujuan} | Total Box: {box}", 
-                                key=f"chk_id_{wilayah}_{id_req}"
-                            )
-                            if is_checked:
-                                selected_ids_for_manifest.append(id_req)
-                    else:
-                        st.info("⚠️ Belum ada ID Request dengan status '🟡 Processed' yang tersedia untuk dimasukkan ke manifest.")
+                    if changes:
+                        current_df = st.session_state[session_key]
+                        
+                        for row_idx_str, updated_values in changes.items():
+                            row_idx = int(row_idx_str)
+                            if "Zona_List" in updated_values:
+                                new_zones = updated_values["Zona_List"]
+                                zone_str = ", ".join(new_zones) if new_zones else "-"
+                                
+                                # Perbarui nilai di DataFrame sesi lokal
+                                current_df.at[row_idx, "Zona_List"] = new_zones
+                                current_df.at[row_idx, "Zona Mezzanine"] = zone_str
+                                
+                                id_req = current_df.at[row_idx, "ID Request"]
+                                
+                                # Sinkronisasi otomatis ke Google Sheets global berdasarkan kolom Zona Mezzanine
+                                try:
+                                    global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
+                                    if global_id_candidates:
+                                        global_id_col = global_id_candidates[0]
+                                        global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_req)
+                                        
+                                        # Cari kolom Zona Mezzanine secara tepat di database global
+                                        global_zona_candidates = [col for col in df_database.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
+                                        if global_zona_candidates:
+                                            df_database.loc[global_mask, global_zona_candidates[0]] = zone_str
+                                            conn.update(worksheet="Database log", data=df_database)
+                                        else:
+                                            # Jika kolom belum ada di database global, buat atau perbarui langsung
+                                            df_database.loc[global_mask, "Zona Mezzanine"] = zone_str
+                                            conn.update(worksheet="Database log", data=df_database)
+                                except Exception as e:
+                                    print(f"Gagal auto-sync zona: {e}")
 
-                col_m_simpan, col_m_batal = st.columns(2)
-                
-                with col_m_simpan:
-                    if st.button("💾 Simpan Manifest", key=f"btn_simpan_manifest_{wilayah}", use_container_width=True):
-                        if not nomor_manifest.strip():
-                            st.error("❌ Nomor/Nama Manifest wajib diisi!")
-                        else:
-                            wib_zone = timezone(timedelta(hours=7))
-                            manifest_storage_key = f"list_manifest_{wilayah}"
-                            if manifest_storage_key not in st.session_state:
-                                st.session_state[manifest_storage_key] = []
-                            
-                            new_manifest_data = {
-                                "Nomor Manifest": nomor_manifest.strip(),
-                                "Wilayah": wilayah,
-                                "Dibuat Oleh": st.session_state.user_nama,
-                                "Waktu Dibuat": datetime.datetime.now(wib_zone).strftime("%Y-%m-%d %H:%M:%S"),
-                                "Daftar ID Request": str(selected_ids_for_manifest) if selected_ids_for_manifest else "(Kosong)",
-                                "Status Manifest": "Active"
-                            }
-                            
-                            st.session_state[manifest_storage_key].append(new_manifest_data)
-                            st.success(f"✅ Manifest **{nomor_manifest}** berhasil dibuat dengan {len(selected_ids_for_manifest)} ID Request!")
-                            
-                            st.session_state[mode_manifest_key] = False
-                            st.rerun()
+                # Urutkan susunan kolom secara presisi: 
+                # ID Request - Tujuan Pengiriman - Jumlah Box - Progress - Zona_List (Chip) - Loader - Waktu Preload - Status
+                kolom_tampil_editor = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona_List", "Loader", "Waktu Preload", "Status"]
+                df_editor_view = df_pick_current[[col for col in kolom_tampil_editor if col in df_pick_current.columns]].copy()
 
-                with col_m_batal:
-                    if st.button("❌ Batal", key=f"btn_batal_manifest_{wilayah}", use_container_width=True):
-                        st.session_state[mode_manifest_key] = False
-                        st.rerun()
-
-            st.markdown("##### 📦 Daftar Manifest Aktif")
-            manifest_storage_key = f"list_manifest_{wilayah}"
-            if manifest_storage_key in st.session_state and st.session_state[manifest_storage_key]:
-                df_manifest_list = pd.DataFrame(st.session_state[manifest_storage_key])
-                st.dataframe(df_manifest_list, use_container_width=True, hide_index=True)
+                edited_df = st.data_editor(
+                    df_editor_view,
+                    column_config={
+                        "ID Request": st.column_config.TextColumn("ID Request", disabled=True),
+                        "Tujuan Pengiriman": st.column_config.TextColumn("Tujuan Pengiriman", disabled=True),
+                        "Jumlah Box": st.column_config.NumberColumn("Jumlah Box", disabled=True),
+                        "Progress": st.column_config.NumberColumn("Progress", disabled=True),
+                        "Zona_List": st.column_config.MultiselectColumn(
+                            "📍 Zona Mezzanine",
+                            help="Pilih satu atau beberapa zona",
+                            options=list_pilihan_zona,
+                            required=False
+                        ),
+                        "Loader": st.column_config.TextColumn("Loader", disabled=True),
+                        "Waktu Preload": st.column_config.TextColumn("Waktu Preload", disabled=True),
+                        "Status": st.column_config.TextColumn("Status", disabled=True)
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    key=editor_key,
+                    on_change=handle_zona_change
+                )
             else:
-                st.info("Belum ada manifest aktif yang dibuat untuk cabang ini.")
+                st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
         with tab_ondelivery:
             st.subheader(f"Proses On Delivery - {wilayah}")
