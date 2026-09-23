@@ -43,7 +43,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 @st.cache_data(ttl=5)
 def load_data():
     df = conn.read(worksheet="Database log", ttl=0)
-    # Bersihkan spasi berlebih pada nama kolom dari Google Sheets
     df.columns = df.columns.str.strip()
     return df
 
@@ -255,7 +254,7 @@ else:
 
                 df_filtered_cabang["Status"] = df_filtered_cabang.apply(mapping_status_preload, axis=1)
                 
-                # Susunan Kolom Sesuai Permintaan: ID Request - Tujuan Pengiriman - Jumlah Box - Progress - Zona Mezzanine - Loader - Waktu Preload - Status
+                # SUSUNAN KOLOM SESUAI PERMINTAAN: ID Request - Tujuan Pengiriman - Jumlah Box - Progress - Zona Mezzanine - Loader - Waktu Preload - Status
                 kolom_preload_display = ["ID Request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona Mezzanine", "Loader", "Waktu Preload", "Status"]
                 kolom_tersedia = [col for col in kolom_preload_display if col in df_filtered_cabang.columns]
                 
@@ -428,23 +427,21 @@ else:
             st.markdown("##### 📋 Monitoring Data Preload & Scanning Cabang")
             
             if not df_pick_current.empty:
-                def parse_zona(val):
-                    if pd.isna(val) or val == "-" or val == "":
-                        return []
-                    if isinstance(val, list):
-                        return val
-                    return [v.strip() for v in str(val).split(",") if v.strip()]
-
-                df_pick_current["Zona_List"] = df_pick_current["Zona Mezzanine"].apply(parse_zona)
-
+                # Kolom Zona Mezzanine menggunakan st.data_editor agar interaktif (bisa diisi/dipilih langsung)
                 edited_df = st.data_editor(
                     df_pick_current,
                     column_config={
-                        "Zona Mezzanine": None,
-                        "Zona_List": st.column_config.ListColumn(
-                            "📍 Zona Mezzanine (Pilih Zona)",
-                            help="Pilih zona mezzanine tempat penyimpanan barang"
-                        )
+                        "ID Request": st.column_config.TextColumn("ID Request", disabled=True),
+                        "Tujuan Pengiriman": st.column_config.TextColumn("Tujuan Pengiriman", disabled=True),
+                        "Jumlah Box": st.column_config.NumberColumn("Jumlah Box", disabled=True),
+                        "Progress": st.column_config.NumberColumn("Progress", disabled=True),
+                        "Zona Mezzanine": st.column_config.TextColumn(
+                            "📍 Zona Mezzanine",
+                            help="Ketik atau pilih zona penyimpanan (misal: A1, B2)"
+                        ),
+                        "Loader": st.column_config.TextColumn("Loader", disabled=True),
+                        "Waktu Preload": st.column_config.TextColumn("Waktu Preload", disabled=True),
+                        "Status": st.column_config.TextColumn("Status", disabled=True)
                     },
                     use_container_width=True,
                     hide_index=True,
@@ -455,10 +452,9 @@ else:
                     try:
                         for idx, row in edited_df.iterrows():
                             id_req = row["ID Request"]
-                            selected_zones = row["Zona_List"]
-                            zone_str = ", ".join(selected_zones) if selected_zones else "-"
+                            new_zona = str(row["Zona Mezzanine"]).strip()
                             
-                            df_pick_current.loc[df_pick_current["ID Request"] == id_req, "Zona Mezzanine"] = zone_str
+                            df_pick_current.loc[df_pick_current["ID Request"] == id_req, "Zona Mezzanine"] = new_zona
                             
                             global_id_candidates = [col for col in df_database.columns if 'id' in col.lower() or 'request' in col.lower()]
                             if global_id_candidates:
@@ -466,7 +462,7 @@ else:
                                 global_mask = df_database[global_id_col].astype(str).str.split('.').str[0].str.strip() == str(id_req)
                                 global_zona_candidates = [col for col in df_database.columns if 'zona' in col.lower() or 'mezzanine' in col.lower()]
                                 if global_zona_candidates:
-                                    df_database.loc[global_mask, global_zona_candidates[0]] = zone_str
+                                    df_database.loc[global_mask, global_zona_candidates[0]] = new_zona
 
                         conn.update(worksheet="Database log", data=df_database)
                         st.success("✅ Zona Mezzanine berhasil diperbarui dan disinkronkan ke Google Sheets!")
