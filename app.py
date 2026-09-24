@@ -189,10 +189,10 @@ else:
 
         with tab_preload:
             st.subheader(f"Proses Preload & Scanning - {wilayah}")
-            st.markdown("Gunakan **Scan Satuan** (langsung enter/scan) atau **Bulk Input Berdampingan** untuk memperbarui data ke Google Sheets.")
+            st.markdown("Gunakan **Scan Satuan** (langsung enter/scan) atau **Bulk Input** untuk memperbarui data ke Google Sheets.")
 
             # Pilihan Metode Input
-            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Bulk Input (ID & Jumlah Box Terpisah)"], horizontal=True)
+            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Bulk Input"], horizontal=True)
 
             if metode_input == "Scan Satuan":
                 # Input Scan Satuan (Seperti awal)
@@ -251,36 +251,29 @@ else:
                 )
 
             else:
-                # Fitur Bulk Input Terpisah: Kolom ID di kiri, Kolom Jumlah Box di kanan
-                st.markdown("Masukkan daftar ID unik di sebelah kiri dan jumlah box pasangannya di sebelah kanan (berdasarkan baris yang sama).")
+                # Fitur Bulk Input dengan tata letak bertingkat seperti gambar
+                form_bulk_key = f"form_bulk_preload_{wilayah}"
                 
-                col_id, col_box = st.columns(2)
-                
-                bulk_id_key = f"bulk_id_text_{wilayah}"
-                bulk_box_key = f"bulk_box_text_{wilayah}"
-
-                with col_id:
-                    ids_input = st.text_area(
-                        "Masukkan ID (1 per baris)",
-                        placeholder="588834\n588835\n588836",
-                        height=160,
-                        key=bulk_id_key
+                with st.form(key=form_bulk_key, clear_on_submit=True):
+                    bulk_ids_input = st.text_area(
+                        "Masukkan ID",
+                        placeholder="Ketik atau paste daftar ID di sini (1 ID per baris)...",
+                        height=120
                     )
-
-                with col_box:
-                    boxes_input = st.text_area(
-                        "Jumlah Box (Sesuai baris ID)",
-                        placeholder="10\n15\n8",
-                        height=160,
-                        key=bulk_box_key
+                    bulk_jumlah_box = st.number_input(
+                        "Jumlah Box",
+                        min_value=1,
+                        value=1,
+                        step=1
                     )
+                    
+                    submit_bulk = st.form_submit_button("🚀 Proses Bulk Preload", type="primary")
 
-                if st.button("🚀 Proses Bulk Preload", type="primary"):
-                    if not ids_input.strip():
+                if submit_bulk:
+                    if not bulk_ids_input.strip():
                         st.warning("⚠️ Masukkan setidaknya satu ID Request.")
                     else:
-                        list_ids = [line.strip() for line in ids_input.split("\n") if line.strip()]
-                        list_boxes = [line.strip() for line in boxes_input.split("\n") if line.strip()] if boxes_input.strip() else []
+                        list_ids = [line.strip() for line in bulk_ids_input.split("\n") if line.strip()]
 
                         try:
                             creds_dict = dict(st.secrets["connections"]["gsheets"])
@@ -299,9 +292,7 @@ else:
                             berhasil_count = 0
                             gagal_list = []
 
-                            for i, target_id in enumerate(list_ids):
-                                target_box = list_boxes[i] if i < len(list_boxes) and list_boxes[i] != "" else None
-
+                            for target_id in list_ids:
                                 found_row_index = None
                                 for idx, row in enumerate(data_rows):
                                     row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
@@ -310,21 +301,18 @@ else:
                                         break
                                 
                                 if found_row_index:
-                                    # Update Loader (Kolom F = 6), Waktu Preload (Kolom G = 7), Status (Kolom I = 9)
+                                    # Update Kolom E (Jumlah Box = Kolom 5), Kolom F (Loader = 6), Kolom G (Waktu = 7), Kolom I (Status = 9)
+                                    ws.update_cell(found_row_index, 5, int(bulk_jumlah_box))
                                     ws.update_cell(found_row_index, 6, current_loader)
                                     ws.update_cell(found_row_index, 7, current_datetime_str)
                                     ws.update_cell(found_row_index, 9, current_status)
                                     
-                                    # Jika jumlah box diisi, update Kolom E (Jumlah Box = Kolom 5)
-                                    if target_box:
-                                        ws.update_cell(found_row_index, 5, target_box)
-                                        
                                     berhasil_count += 1
                                 else:
                                     gagal_list.append(target_id)
 
                             if berhasil_count > 0:
-                                st.success(f"✅ Berhasil memproses {berhasil_count} data secara bulk!")
+                                st.success(f"✅ Berhasil memproses {berhasil_count} data secara bulk dengan jumlah box {bulk_jumlah_box}!")
                             if gagal_list:
                                 st.error(f"❌ ID berikut tidak ditemukan di database: {', '.join(gagal_list)}")
                                 
