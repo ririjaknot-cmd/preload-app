@@ -661,16 +661,11 @@ else:
                 df_manifest_all = pd.DataFrame()
 
             # Filter manifest berdasarkan wilayah aktif
-            if not df_manifest_all.empty and "Tujuan Pengiriman" in df_manifest_all.columns:
-                df_manifest_wilayah = df_manifest_all[df_manifest_all["Tujuan Pengiriman"] == wilayah].copy()
-            else:
-                df_manifest_wilayah = pd.DataFrame()
-
             if not df_manifest_wilayah.empty:
                 st.dataframe(df_manifest_wilayah, use_container_width=True, hide_index=True)
 
                 # Tombol Edit Manifest (Pilih nomor manifest yang ingin diedit)
-                st.markdown(:tools: **Edit / Kelola Manifest**)
+                st.markdown("🛠️ **Edit / Kelola Manifest**")
                 manifest_list_options = df_manifest_wilayah["Nomor Manifest"].tolist()
                 selected_mnf_to_edit = st.selectbox("Pilih Nomor Manifest untuk dikelola:", options=manifest_list_options)
 
