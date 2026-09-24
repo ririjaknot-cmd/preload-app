@@ -196,7 +196,7 @@ else:
             if input_widget_key not in st.session_state:
                 st.session_state[input_widget_key] = ""
 
-           def proses_scan_preload():
+            def proses_scan_preload():
                 scan_input = st.session_state[input_widget_key].strip()
                 if not scan_input:
                     return
