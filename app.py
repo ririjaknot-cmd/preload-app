@@ -350,38 +350,67 @@ else:
                                     found_row_index = idx + 2
                                     row_tujuan = str(row.get("Tujuan Pengiriman") or list(row.values())[1]).strip()
                                     try:
-                                        max_box_db = int(str(row.get("Jumlah Box") or list(row.values())[4]).strip())
+                                        max_box_db = int(float(str(row.get("Jumlah Box") or list(row.values())[4]).strip()))
                                     except ValueError:
                                         max_box_db = 0
-                                    current_progress_val = row.get("Progress") or list(row.values())[5]
+                                    current_progress_val = row.get("Progress")
                                     break
                             
+                            # Validasi 1: Apakah ID terdaftar?
                             if not found_row_index:
                                 st.error(f"❌ ID **{target_id}** tidak terdaftar di database.")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
+                            
+                            # Validasi 2: Apakah tujuan pengiriman sesuai wilayah aktif?
                             elif row_tujuan.lower() != wilayah.lower():
                                 st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan wilayah aktif ({wilayah}).")
-                            elif int(jumlah_box_val) > max_box_db:
-                                st.error(f"❌ Jumlah box (**{jumlah_box_val}**) melebihi batas maksimal data di database yaitu **{max_box_db}** box.")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
+                            
                             else:
-                                # Tentukan Status otomatis: Not Completed jika jumlah_box_val < max_box_db, Completed jika sudah pas
-                                if int(jumlah_box_val) < max_box_db:
-                                    current_status = "Not Completed"
-                                else:
-                                    current_status = "Completed"
+                                # Konversi progress saat ini ke integer (jika kosong/None dianggap 0)
+                                try:
+                                    prog_lama = int(float(current_progress_val)) if current_progress_val not in [None, "", "None", "nan"] else 0
+                                except (ValueError, TypeError):
+                                    prog_lama = 0
 
-                                now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-                                current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                                current_loader = str(st.session_state.user_nama)
+                                # Validasi 3: Cek apakah ID sudah Completed (progress lama sudah mencapai / melewati max_box_db)
+                                if prog_lama >= max_box_db and max_box_db > 0:
+                                    st.error(f"⚠️ ID **{target_id}** sudah berstatus **Completed** (Progress: {prog_lama}/{max_box_db}). Input ditolak karena sudah selesai.")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
                                 
-                                ws.update_cell(found_row_index, 6, int(jumlah_box_val))
-                                ws.update_cell(found_row_index, 7, current_loader)
-                                ws.update_cell(found_row_index, 8, current_datetime_str)
-                                ws.update_cell(found_row_index, 10, current_status)
+                                # Validasi 4: Cek apakah total progress (lama + input baru) melebihi batas database
+                                elif (prog_lama + int(jumlah_box_val)) > max_box_db:
+                                    sisa_box = max_box_db - prog_lama
+                                    st.error(f"❌ Jumlah box yang dimasukkan (**{jumlah_box_val}**) melebihi sisa kuota. Progress saat ini: {prog_lama}/{max_box_db} (Sisa kuota: {sisa_box} box).")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
                                 
-                                st.success(f"✅ ID **{target_id}** berhasil diperbarui!")
-                                st.rerun()
+                                else:
+                                    # Hitung akumulasi progress baru
+                                    progress_baru = prog_lama + int(jumlah_box_val)
+                                    
+                                    # Tentukan status otomatis
+                                    if progress_baru < max_box_db:
+                                        current_status = "Not Completed"
+                                    else:
+                                        current_status = "Completed"
+
+                                    now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+                                    current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                                    current_loader = str(st.session_state.user_nama)
+                                    
+                                    # Update ke Google Sheets
+                                    ws.update_cell(found_row_index, 6, progress_baru)       # Kolom F: Progress (Akumulasi)
+                                    ws.update_cell(found_row_index, 7, current_loader)        # Kolom G: Loader
+                                    ws.update_cell(found_row_index, 8, current_datetime_str)   # Kolom H: Waktu Preload
+                                    ws.update_cell(found_row_index, 10, current_status)       # Kolom J: Status
+                                    
+                                    st.success(f"✅ ID **{target_id}** berhasil diperbarui! Progress baru: **{progress_baru}/{max_box_db}** (Status: {current_status})")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                    st.rerun()
+                                    
                         except Exception as e:
-                            st.error(f"❌ Terjadi kesalahan: {e}")
+                            st.error(f"❌ Terjadi kesalahan sistem: {e}")
+                            st.session_state[f"sound_effect_{wilayah}"] = "error"
 
             # Notifikasi & suara
             if f"last_msg_{wilayah}" in st.session_state:
