@@ -47,20 +47,29 @@ def load_data():
 def format_status_dengan_ikon(progress_val, jumlah_box_db):
     """
     Menentukan status dan memberikan ikon/warna:
-    - 🔴 Pending: Belum ada progress / kosong
+    - 🔴 Pending: Belum ada progress / kosong / None / 0
     - 🟡 Not Completed: Sudah di-preload tapi progress < jumlah_box_db
-    - 🟢 Completed: Sudah di-preload dan progress == jumlah_box_db
+    - 🟢 Completed: Sudah di-preload dan progress >= jumlah_box_db
     """
-    if progress_val in [None, "", "None", "nan", 0, "0"]:
+    # Cek apakah progress kosong / None / nan / string kosong
+    if progress_val is None:
+        return "🔴 Pending"
+    
+    prog_str = str(progress_val).strip().lower()
+    if prog_str in ["", "none", "nan", "nat", "0"]:
         return "🔴 Pending"
     
     try:
-        prog_int = int(str(progress_val).strip())
-        max_box = int(str(jumlah_box_db).strip())
-    except ValueError:
+        # Konversi ke float dulu untuk mengantisipasi nilai "1.0", lalu ke integer
+        prog_int = int(float(progress_val))
+        max_box = int(float(jumlah_box_db))
+    except (ValueError, TypeError):
         return "🔴 Pending"
         
-    if prog_int < max_box:
+    # Jika progress sudah ada nilainya (angka valid > 0)
+    if prog_int <= 0:
+        return "🔴 Pending"
+    elif prog_int < max_box:
         return "🟡 Not Completed"
     else:
         return "🟢 Completed"
