@@ -208,6 +208,21 @@ else:
             keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Ketik ID Request yang ingin dicari...", key="search_id_request")
             
             df_display = df_filtered.copy()
+            
+            # Terapkan format status dengan ikon warna secara dinamis pada tabel ID Request
+            if not df_display.empty:
+                status_formatted_list = []
+                for idx, row in df_display.iterrows():
+                    try:
+                        jb = row.get("Jumlah Box") or 0
+                        pr = row.get("Progress")
+                        st_formatted = format_status_dengan_ikon(pr, jb)
+                        status_formatted_list.append(st_formatted)
+                    except Exception:
+                        status_formatted_list.append("🔴 Pending")
+                
+                df_display["Status"] = status_formatted_list
+
             if keyword_cari and not df_display.empty:
                 id_col_candidates = [col for col in df_display.columns if 'id' in col.lower() or 'request' in col.lower()]
                 if id_col_candidates:
