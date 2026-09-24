@@ -351,76 +351,88 @@ else:
             st.markdown("---")
 
             # ==========================================
-            # FORM UPDATE ZONA MEZZANINE (MENGGUNAKAN DROPDOWN MULTISELECT)
+            # MENU UPDATE ZONA MEZZANINE (COLLAPSED / EXPANDER)
             # ==========================================
-            st.markdown(f"##### 🏗️ Update Zona Mezzanine - {wilayah}")
-            
-            daftar_zona_mezzanine = [
-                "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
-                "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
-                "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11",
-                "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11",
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9",
-                "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
-                "SC 1", "SC 2"
-            ]
+            with st.expander("🏗️ Menu Update Zona Mezzanine (Klik untuk Buka/Tutup)", expanded=False):
+                st.markdown(f"Pilih **beberapa ID Request** sekaligus dan tentukan **Zona Mezzanine**-nya untuk memperbarui data secara bersamaan.")
+                
+                daftar_zona_mezzanine = [
+                    "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
+                    "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
+                    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11",
+                    "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11",
+                    "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9",
+                    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
+                    "SC 1", "SC 2"
+                ]
 
-            if not df_filtered.empty:
-                list_id_tersedia = []
-                for idx, row in df_filtered.iterrows():
-                    r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
-                    if r_id:
-                        list_id_tersedia.append(r_id)
+                if not df_filtered.empty:
+                    list_id_tersedia = []
+                    for idx, row in df_filtered.iterrows():
+                        r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
+                        if r_id and r_id not in list_id_tersedia:
+                            list_id_tersedia.append(r_id)
 
-                with st.form(key=f"form_update_mezzanine_{wilayah}", clear_on_submit=True):
-                    selected_id_mz = st.selectbox("Pilih ID Request untuk Zona Mezzanine:", options=list_id_tersedia if list_id_tersedia else ["Tidak ada ID"])
-                    
-                    # Dropdown multiselect agar petugas bisa memilih banyak zona sekaligus
-                    selected_zones = st.multiselect(
-                        "Pilih Zona Mezzanine (Bisa pilih lebih dari satu):",
-                        options=daftar_zona_mezzanine,
-                        placeholder="Ketik atau pilih zona (contoh: A1, B2)..."
-                    )
-                    
-                    submit_mz = st.form_submit_button("💾 Simpan Zona Mezzanine", type="primary")
+                    with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
+                        # Diubah menjadi multiselect agar bisa memilih banyak ID sekaligus
+                        selected_ids_mz = st.multiselect(
+                            "Pilih ID Request (Bisa pilih lebih dari satu):",
+                            options=list_id_tersedia,
+                            placeholder="Cari atau pilih beberapa ID..."
+                        )
+                        
+                        # Multiselect untuk zona mezzanine
+                        selected_zones = st.multiselect(
+                            "Pilih Zona Mezzanine (Bisa pilih lebih dari satu):",
+                            options=daftar_zona_mezzanine,
+                            placeholder="Ketik atau pilih zona (contoh: A1, B2)..."
+                        )
+                        
+                        submit_mz = st.form_submit_button("💾 Simpan Zona Mezzanine untuk Semua ID Terpilih", type="primary")
 
-                if submit_mz:
-                    if selected_id_mz == "Tidak ada ID" or not selected_id_mz:
-                        st.warning("⚠️ Pilih ID Request yang valid terlebih dahulu.")
-                    elif not selected_zones:
-                        st.warning("⚠️ Pilih minimal satu Zona Mezzanine.")
-                    else:
-                        try:
-                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                            gc = gspread.service_account_from_dict(creds_dict)
-                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                            ws = sh.worksheet("Database log")
-                            
-                            data_rows = ws.get_all_records()
-                            found_row_index = None
-
-                            for idx, row in enumerate(data_rows):
-                                row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
-                                if row_id == str(selected_id_mz).strip():
-                                    found_row_index = idx + 2
-                                    break
-                            
-                            if found_row_index:
+                    if submit_mz:
+                        if not selected_ids_mz:
+                            st.warning("⚠️ Pilih minimal satu ID Request terlebih dahulu.")
+                        elif not selected_zones:
+                            st.warning("⚠️ Pilih minimal satu Zona Mezzanine.")
+                        else:
+                            try:
+                                creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                gc = gspread.service_account_from_dict(creds_dict)
+                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                ws = sh.worksheet("Database log")
+                                
+                                data_rows = ws.get_all_records()
                                 string_zona_hasil = ", ".join(selected_zones)
                                 
-                                # Disimpan ke Kolom I (Kolom ke-9) di Google Sheets (sesuaikan jika kolomnya berbeda)
-                                ws.update_cell(found_row_index, 9, string_zona_hasil)
+                                berhasilan_count = 0
+                                # Lakukan perulangan untuk setiap ID yang dipilih oleh petugas
+                                for target_id in selected_ids_mz:
+                                    found_row_index = None
+                                    for idx, row in enumerate(data_rows):
+                                        row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
+                                        if row_id == str(target_id).strip():
+                                            found_row_index = idx + 2
+                                            break
+                                    
+                                    if found_row_index:
+                                        # Disimpan ke Kolom I (Kolom ke-9) di Google Sheets (sesuaikan jika berbeda)
+                                        ws.update_cell(found_row_index, 9, string_zona_hasil)
+                                        berhasilan_count += 1
                                 
-                                st.success(f"✅ Zona Mezzanine untuk ID **{selected_id_mz}** berhasil diperbarui: **{string_zona_hasil}**")
-                                st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                st.rerun()
-                            else:
-                                st.error("❌ ID tidak ditemukan di database Google Sheets.")
-                                
-                        except Exception as e:
-                            st.error(f"❌ Gagal memperbarui zona ke Google Sheets: {e}")
-            
+                                if berhasilan_count > 0:
+                                    st.success(f"✅ Berhasil memperbarui Zona Mezzanine (**{string_zona_hasil}**) untuk **{berhasilan_count} ID Request** sekaligus!")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                    st.rerun()
+                                else:
+                                    st.error("❌ ID yang dipilih tidak ditemukan di database Google Sheets.")
+                                    
+                            except Exception as e:
+                                st.error(f"❌ Gagal memperbarui zona ke Google Sheets: {e}")
+                else:
+                    st.info("Belum ada data ID untuk wilayah ini.")
+
             st.markdown("---")
             st.markdown(f"##### 📋 Data Riwayat Preload Cabang: {wilayah}")
             
