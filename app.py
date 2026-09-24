@@ -201,42 +201,52 @@ else:
                 if not scan_input:
                     return
                 
-                # Muat ulang data terbaru dari Google Sheets untuk menghindari konflik state lama
-                df_current_db = load_data()
-                
-                if not df_current_db.empty:
-                    id_col_candidates = [col for col in df_current_db.columns if col.lower() in ['id', 'id request']]
-                    id_col = id_col_candidates[0] if id_col_candidates else df_current_db.columns[0]
+                try:
+                    # Mengakses client gspread dari koneksi gsheets streamlit secara langsung
+                    # agar bisa melakukan update sel secara spesifik (tidak menimpa seluruh sheet)
+                    gsheets_client = conn.client
+                    worksheet = gsheets_client.open_by_url(conn._secrets["spreadsheet"])[col_target if 'col_target' in locals() else "Database log"] # Mengambil sheet aktif
                     
-                    # Konversi kolom ID ke string untuk pencocokan yang akurat
-                    global_mask = df_current_db[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input
+                    # Cara aman mendapatkan worksheet berdasarkan nama "Database log"
+                    sh = gsheets_client.open_by_key(conn._secrets["spreadsheet"]) if "spreadsheet" in conn._secrets else gsheets_client.open(conn._secrets.get("spreadsheet_name", "Database log"))
+                    ws = sh.worksheet("Database log")
                     
-                    if global_mask.any():
+                    # Ambil seluruh data nilai mentah dari sheet
+                    data_rows = ws.get_all_records()
+                    
+                    # Cari baris yang cocok berdasarkan kolom ID (biasanya kolom ke-1 / index 0)
+                    found_row_index = None
+                    for idx, row in enumerate(data_rows):
+                        # Ambil nilai kunci ID dari baris (fleksibel mendeteksi nama key ID)
+                        row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
+                        if row_id == scan_input:
+                            found_row_index = idx + 2 # +2 karena index dimulai dari 0 dan ada baris header di row 1
+                            break
+                    
+                    if found_row_index:
                         now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                         current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                        current_loader = str(st.session_state.user_nama)
+                        current_status = "Preloaded"
                         
-                        # Pastikan kolom target bertipe string
-                        for col_target in ["Loader", "Waktu Preload", "Status"]:
-                            if col_target in df_current_db.columns:
-                                df_current_db[col_target] = df_current_db[col_target].astype(str)
+                        # Berdasarkan struktur Google Sheets Anda:
+                        # Kolom F (6) = Loader
+                        # Kolom G (7) = Waktu Preload
+                        # Kolom I (9) = Status
+                        # Kita update secara spesifik per kolom tanpa menyentuh kolom A sampai E
+                        ws.update_cell(found_row_index, 6, current_loader)       # Kolom F: Loader
+                        ws.update_cell(found_row_index, 7, current_datetime_str)  # Kolom G: Waktu Preload
+                        ws.update_cell(found_row_index, 9, current_status)        # Kolom I: Status
                         
-                        # Hanya update kolom Loader, Waktu Preload, dan Status (biarkan kolom A:E tetap utuh)
-                        if "Loader" in df_current_db.columns:
-                            df_current_db.loc[global_mask, "Loader"] = str(st.session_state.user_nama)
-                        if "Waktu Preload" in df_current_db.columns:
-                            df_current_db.loc[global_mask, "Waktu Preload"] = current_datetime_str
-                        if "Status" in df_current_db.columns:
-                            df_current_db.loc[global_mask, "Status"] = "Preloaded"
-                        
-                        try:
-                            conn.update(worksheet="Database log", data=df_current_db)
-                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload oleh {st.session_state.user_nama} pada {current_datetime_str}!")
-                            st.session_state[f"sound_effect_{wilayah}"] = "success"
-                        except Exception as e:
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
+                        st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload oleh {current_loader} pada {current_datetime_str}!")
+                        st.session_state[f"sound_effect_{wilayah}"] = "success"
                     else:
                         st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak ditemukan di database.")
                         st.session_state[f"sound_effect_{wilayah}"] = "error"
+                        
+                except Exception as e:
+                    st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
+                    st.session_state[f"sound_effect_{wilayah}"] = "error"
                 
                 st.session_state[input_widget_key] = ""
 
@@ -269,7 +279,6 @@ else:
             st.markdown(f"##### 📋 Data Riwayat Preload Cabang: {wilayah}")
             
             if not df_filtered.empty:
-                # Sembunyikan kolom Jam Proses Scan dan Tanggal Proses Scan dari tampilan tab Preload
                 df_preload_display = df_filtered.copy()
                 kolom_dihapus = ["Jam Proses Scan", "Tanggal Proses Scan"]
                 for col in kolom_dihapus:
