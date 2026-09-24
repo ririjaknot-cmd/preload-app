@@ -4,6 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
 import datetime
 import gspread
+
 # Konfigurasi halaman agar menggunakan mode 'wide' (lebar) ala dashboard
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
@@ -256,7 +257,7 @@ else:
                                 ws.update_cell(found_row_index, 6, scan_jumlah_box)       # Kolom F: Progress
                                 ws.update_cell(found_row_index, 7, current_loader)        # Kolom G: Loader
                                 ws.update_cell(found_row_index, 8, current_datetime_str)   # Kolom H: Waktu Preload
-                                ws.update_cell(found_row_index, 10, current_status)        # Kolom J: Status
+                                ws.update_cell(found_row_index, 10, current_status)       # Kolom J: Status
                                 
                                 st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload dengan Progress Jumlah Box: **{scan_jumlah_box}**!")
                                 st.session_state[f"sound_effect_{wilayah}"] = "success"
