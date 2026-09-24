@@ -189,10 +189,10 @@ else:
 
         with tab_preload:
             st.subheader(f"Proses Preload & Scanning - {wilayah}")
-            st.markdown("Gunakan **Scan Satuan** atau **Bulk Input** (mendukung format `ID - Jumlah Box`) untuk memperbarui data langsung ke Google Sheets.")
+            st.markdown("Gunakan **Scan Satuan** atau **Bulk Input Berdampingan (ID & Jumlah Box)** untuk memperbarui data langsung ke Google Sheets.")
 
-            # Pilihan Metode Input: Scan Satuan vs Bulk Input
-            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Bulk Input (ID & Jumlah Box)"], horizontal=True)
+            # Pilihan Metode Input: Scan Satuan vs Bulk Berdampingan
+            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Bulk Input (ID & Jumlah Box Terpisah)"], horizontal=True)
 
             if metode_input == "Scan Satuan":
                 # Input Scan untuk Preload Satuan
@@ -239,7 +239,7 @@ else:
                             
                     except Exception as e:
                         st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
-                        st.session_state[f"sound_effect_{wilayah}"] = "error"
+                        st.session_state[f"sound_effect_{wilayah}"] = ("error")
                     
                     st.session_state[input_widget_key] = ""
 
@@ -251,24 +251,37 @@ else:
                 )
 
             else:
-                # Fitur Bulk Input dengan format ID - Jumlah Box
-                st.markdown("Masukkan daftar ID dan Jumlah Box (satu data per baris).")
-                st.markdown("Format penulisan: `ID_Request - Jumlah_Box` (Contoh: `588834 - 10` atau cukup ketik ID jika jumlah box tidak ingin diubah).")
+                # Fitur Bulk Terpisah: Kolom Input ID di kiri, Kolom Input Jumlah Box di kanan
+                st.markdown("Masukkan daftar ID unik (satu ID per baris di sebelah kiri) dan jumlah box pasangannya di sebelah kanan.")
                 
-                bulk_text_key = f"input_bulk_text_{wilayah}"
-                bulk_input_value = st.text_area(
-                    "Daftar Bulk (Format: ID - Jumlah Box)", 
-                    placeholder="Contoh:\n588834 - 15\n588835 - 20\n588836 - 10",
-                    height=160,
-                    key=bulk_text_key
-                )
+                col_id, col_box = st.columns(2)
+                
+                bulk_id_key = f"bulk_id_text_{wilayah}"
+                bulk_box_key = f"bulk_box_text_{wilayah}"
 
-                if st.button("🚀 Proses Bulk Preload & Box", type="primary"):
-                    if not bulk_input_value.strip():
-                        st.warning("⚠️ Masukkan setidaknya satu data.")
+                with col_id:
+                    ids_input = st.text_area(
+                        "Daftar ID Request (Unik, 1 per baris)",
+                        placeholder="588834\n588835\n588836",
+                        height=180,
+                        key=bulk_id_key
+                    )
+
+                with col_box:
+                    boxes_input = st.text_area(
+                        "Jumlah Box (Sesuai baris ID)",
+                        placeholder="10\n15\n8",
+                        height=180,
+                        key=bulk_box_key
+                    )
+
+                if st.button("🚀 Proses Bulk Preload Terpisah", type="primary"):
+                    if not ids_input.strip():
+                        st.warning("⚠️ Masukkan setidaknya satu ID Request.")
                     else:
-                        lines = [line.strip() for line in bulk_input_value.split("\n") if line.strip()]
-                        
+                        list_ids = [line.strip() for line in ids_input.split("\n") if line.strip()]
+                        list_boxes = [line.strip() for line in boxes_input.split("\n") if line.strip()] if boxes_input.strip() else []
+
                         try:
                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                             gc = gspread.service_account_from_dict(creds_dict)
@@ -286,18 +299,10 @@ else:
                             berhasil_count = 0
                             gagal_list = []
 
-                            for line in lines:
-                                # Parsing baris: memisahkan ID dan Jumlah Box berdasarkan pemisah '-' atau spasi
-                                if "-" in line:
-                                    parts = line.split("-", 1)
-                                    target_id = parts[0].strip()
-                                    input_box = parts[1].strip()
-                                else:
-                                    parts = line.split()
-                                    target_id = parts[0].strip()
-                                    input_box = parts[1].strip() if len(parts) > 1 else None
+                            for i, target_id in enumerate(list_ids):
+                                # Ambil jumlah box yang sebaris, jika tidak ada/kosong, biarkan None
+                                target_box = list_boxes[i] if i < len(list_boxes) and list_boxes[i] != "" else None
 
-                                # Cari baris di database
                                 found_row_index = None
                                 for idx, row in enumerate(data_rows):
                                     row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
@@ -311,9 +316,9 @@ else:
                                     ws.update_cell(found_row_index, 7, current_datetime_str)
                                     ws.update_cell(found_row_index, 9, current_status)
                                     
-                                    # Jika pengguna menyertakan jumlah box, update juga kolom Jumlah Box (Asumsi Kolom E = 5, sesuaikan jika berbeda)
-                                    if input_box:
-                                        ws.update_cell(found_row_index, 5, input_box) # Kolom E: Jumlah Box
+                                    # Jika jumlah box diisi pada baris tersebut, update Kolom E (Jumlah Box = Kolom 5)
+                                    if target_box:
+                                        ws.update_cell(found_row_index, 5, target_box)
                                         
                                     berhasil_count += 1
                                 else:
