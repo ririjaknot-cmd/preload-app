@@ -256,11 +256,11 @@ else:
                                 found_row_index = idx + 2
                                 row_tujuan = str(row.get("Tujuan Pengiriman") or list(row.values())[1]).strip()
                                 try:
-                                    max_box_db = int(str(row.get("Jumlah Box") or list(row.values())[4]).strip())
+                                    max_box_db = int(float(str(row.get("Jumlah Box") or list(row.values())[4]).strip()))
                                 except ValueError:
                                     max_box_db = 0
                                 
-                                current_progress_val = row.get("Progress") or list(row.values())[5]
+                                current_progress_val = row.get("Progress")
                                 break
                         
                         if not found_row_index:
@@ -270,18 +270,25 @@ else:
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan wilayah aktif ({wilayah}).")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         else:
-                            scan_jumlah_box = max_box_db if max_box_db > 0 else 1
-                            try:
-                                prog_int = int(str(current_progress_val).strip()) if current_progress_val not in [None, ""] else None
-                            except ValueError:
-                                prog_int = None
+                            # ATURAN SCAN SATUAN: Selalu bernilai 1 per scan
+                            scan_jumlah_box = 1
 
-                            if prog_int is not None and prog_int == scan_jumlah_box:
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah memiliki Progress Jumlah Box **{scan_jumlah_box}** di database.")
+                            # Ambil nilai progress saat ini untuk divalidasi/ditambahkan
+                            try:
+                                prog_int = int(float(current_progress_val)) if current_progress_val not in [None, "", "None", "nan"] else 0
+                            except (ValueError, TypeError):
+                                prog_int = 0
+
+                            # Validasi apakah jumlah progress sudah mencapai batas maksimum database
+                            if prog_int >= max_box_db:
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah mencapai batas maksimal Jumlah Box ({max_box_db}) di database.")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             else:
-                                # Tentukan Status otomatis: Not Completed jika scan_jumlah_box < max_box_db, Completed jika sudah pas
-                                if scan_jumlah_box < max_box_db:
+                                # Akumulasi progress (tambah 1 setiap kali scan satuan)
+                                progress_baru = prog_int + scan_jumlah_box
+                                
+                                # Tentukan Status otomatis berdasarkan progress baru vs max_box_db
+                                if progress_baru < max_box_db:
                                     current_status = "Not Completed"
                                 else:
                                     current_status = "Completed"
@@ -290,12 +297,13 @@ else:
                                 current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
                                 current_loader = str(st.session_state.user_nama)
                                 
-                                ws.update_cell(found_row_index, 6, scan_jumlah_box)       # Kolom F: Progress
+                                # Update ke Google Sheets
+                                ws.update_cell(found_row_index, 6, progress_baru)       # Kolom F: Progress (Akumulasi +1)
                                 ws.update_cell(found_row_index, 7, current_loader)        # Kolom G: Loader
                                 ws.update_cell(found_row_index, 8, current_datetime_str)   # Kolom H: Waktu Preload
                                 ws.update_cell(found_row_index, 10, current_status)       # Kolom J: Status
                                 
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload dengan Progress Jumlah Box: **{scan_jumlah_box}**!")
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-scan satuan (+1 Box). Total Progress: **{progress_baru}/{max_box_db}**!")
                                 st.session_state[f"sound_effect_{wilayah}"] = "success"
                                 
                     except Exception as e:
