@@ -202,25 +202,30 @@ else:
                     return
                 
                 try:
-                    # Mengakses client gspread dari koneksi gsheets streamlit secara langsung
-                    # agar bisa melakukan update sel secara spesifik (tidak menimpa seluruh sheet)
-                    gsheets_client = conn.client
-                    worksheet = gsheets_client.open_by_url(conn._secrets["spreadsheet"])[col_target if 'col_target' in locals() else "Database log"] # Mengambil sheet aktif
+                    # Mengambil konfigurasi kredensial dari st.secrets secara aman
+                    creds_dict = dict(st.secrets["connections"]["gsheets"])
                     
-                    # Cara aman mendapatkan worksheet berdasarkan nama "Database log"
-                    sh = gsheets_client.open_by_key(conn._secrets["spreadsheet"]) if "spreadsheet" in conn._secrets else gsheets_client.open(conn._secrets.get("spreadsheet_name", "Database log"))
+                    # Otorisasi langsung menggunakan gspread dengan kredensial service account
+                    gc = gspread.service_account_from_dict(creds_dict)
+                    
+                    # Membuka spreadsheet berdasarkan nama file atau URL dari secrets
+                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                    if spreadsheet_name.startswith("http"):
+                        sh = gc.open_by_url(spreadsheet_name)
+                    else:
+                        sh = gc.open(spreadsheet_name)
+                        
                     ws = sh.worksheet("Database log")
                     
-                    # Ambil seluruh data nilai mentah dari sheet
+                    # Ambil seluruh data record untuk pencarian baris
                     data_rows = ws.get_all_records()
                     
-                    # Cari baris yang cocok berdasarkan kolom ID (biasanya kolom ke-1 / index 0)
                     found_row_index = None
                     for idx, row in enumerate(data_rows):
-                        # Ambil nilai kunci ID dari baris (fleksibel mendeteksi nama key ID)
+                        # Mendeteksi kunci kolom ID secara fleksibel
                         row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
                         if row_id == scan_input:
-                            found_row_index = idx + 2 # +2 karena index dimulai dari 0 dan ada baris header di row 1
+                            found_row_index = idx + 2 # +2 karena index dimulai dari 0 dan ada header di baris 1
                             break
                     
                     if found_row_index:
@@ -229,14 +234,11 @@ else:
                         current_loader = str(st.session_state.user_nama)
                         current_status = "Preloaded"
                         
-                        # Berdasarkan struktur Google Sheets Anda:
-                        # Kolom F (6) = Loader
-                        # Kolom G (7) = Waktu Preload
-                        # Kolom I (9) = Status
-                        # Kita update secara spesifik per kolom tanpa menyentuh kolom A sampai E
-                        ws.update_cell(found_row_index, 6, current_loader)       # Kolom F: Loader
-                        ws.update_cell(found_row_index, 7, current_datetime_str)  # Kolom G: Waktu Preload
-                        ws.update_cell(found_row_index, 9, current_status)        # Kolom I: Status
+                        # Update sel spesifik pada kolom F (Loader), G (Waktu Preload), dan I (Status)
+                        # Kolom A sampai E dijamin aman mutlak dan tidak akan tersentuh
+                        ws.update_cell(found_row_index, 6, current_loader)       # Kolom F
+                        ws.update_cell(found_row_index, 7, current_datetime_str)  # Kolom G
+                        ws.update_cell(found_row_index, 9, current_status)        # Kolom I
                         
                         st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload oleh {current_loader} pada {current_datetime_str}!")
                         st.session_state[f"sound_effect_{wilayah}"] = "success"
