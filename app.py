@@ -196,7 +196,7 @@ else:
             if input_widget_key not in st.session_state:
                 st.session_state[input_widget_key] = ""
 
-            def proses_scan_preload():
+           def proses_scan_preload():
                 scan_input = st.session_state[input_widget_key].strip()
                 if not scan_input:
                     return
@@ -205,7 +205,7 @@ else:
                     id_col_candidates = [col for col in df_database.columns if col.lower() in ['id', 'id request']]
                     id_col = id_col_candidates[0] if id_col_candidates else df_database.columns[0]
                     
-                    # Cek apakah ID ada di database
+                    # Konversi kolom ID ke string untuk pencocokan yang akurat
                     global_mask = df_database[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input
                     
                     if global_mask.any():
@@ -213,7 +213,12 @@ else:
                         current_time = now.strftime("%H:%M:%S")
                         current_date = now.strftime("%d/%m/%Y")
                         
-                        # Update kolom yang sesuai dengan struktur Google Sheets
+                        # Konversi tipe data kolom target ke string untuk mencegah error LossySetitemError
+                        for col_target in ["Jam Proses Scan", "Tanggal Proses Scan", "Loader", "Status"]:
+                            if col_target in df_database.columns:
+                                df_database[col_target] = df_database[col_target].astype(str)
+                        
+                        # Update nilai kolom berdasarkan baris yang dicocokkan
                         if "Jam Proses Scan" in df_database.columns:
                             df_database.loc[global_mask, "Jam Proses Scan"] = current_time
                         if "Tanggal Proses Scan" in df_database.columns:
