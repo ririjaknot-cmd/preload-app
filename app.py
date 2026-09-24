@@ -189,74 +189,91 @@ else:
 
         with tab_preload:
             st.subheader(f"Proses Preload & Scanning - {wilayah}")
-            st.markdown("Masukkan **ID Request** dan tentukan **Jumlah Box**, lalu sistem akan memperbarui data ke Google Sheets.")
+            st.markdown("Gunakan **Scan Satuan** (langsung enter/scan) atau **Bulk Input Berdampingan** untuk memperbarui data ke Google Sheets.")
 
-            # Pilihan Metode Input: Scan/Input Satuan vs Bulk
-            metode_input = st.radio("Pilih Metode Input:", ["Input Satuan (Formulir)", "Bulk Input (Banyak ID sekaligus)"], horizontal=True)
+            # Pilihan Metode Input
+            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Bulk Input (ID & Jumlah Box Terpisah)"], horizontal=True)
 
-            if metode_input == "Input Satuan (Formulir)":
-                # Form input vertikal seperti pada gambar
-                form_key = f"form_preload_{wilayah}"
-                
-                with st.form(key=form_key, clear_on_submit=True):
-                    input_id_val = st.text_input("Masukkan ID", placeholder="Ketik atau scan ID di sini...")
-                    jumlah_box_val = st.number_input("Jumlah Box", min_value=1, value=1, step=1)
-                    
-                    submit_button = st.form_submit_button("🚀 Proses Preload", type="primary")
+            if metode_input == "Scan Satuan":
+                # Input Scan Satuan (Seperti awal)
+                input_widget_key = f"input_preload_scan_{wilayah}"
+                if input_widget_key not in st.session_state:
+                    st.session_state[input_widget_key] = ""
 
-                if submit_button:
-                    scan_input = input_id_val.strip()
+                def proses_scan_preload():
+                    scan_input = st.session_state[input_widget_key].strip()
                     if not scan_input:
-                        st.warning("⚠️ Masukkan ID terlebih dahulu.")
-                    else:
-                        try:
-                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                            gc = gspread.service_account_from_dict(creds_dict)
-                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                            ws = sh.worksheet("Database log")
+                        return
+                    
+                    try:
+                        creds_dict = dict(st.secrets["connections"]["gsheets"])
+                        gc = gspread.service_account_from_dict(creds_dict)
+                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                        ws = sh.worksheet("Database log")
+                        
+                        data_rows = ws.get_all_records()
+                        
+                        found_row_index = None
+                        for idx, row in enumerate(data_rows):
+                            row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
+                            if row_id == scan_input:
+                                found_row_index = idx + 2
+                                break
+                        
+                        if found_row_index:
+                            now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+                            current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                            current_loader = str(st.session_state.user_nama)
+                            current_status = "Preloaded"
                             
-                            data_rows = ws.get_all_records()
+                            ws.update_cell(found_row_index, 6, current_loader)       # Kolom F: Loader
+                            ws.update_cell(found_row_index, 7, current_datetime_str)  # Kolom G: Waktu Preload
+                            ws.update_cell(found_row_index, 9, current_status)        # Kolom I: Status
                             
-                            found_row_index = None
-                            for idx, row in enumerate(data_rows):
-                                row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
-                                if row_id == scan_input:
-                                    found_row_index = idx + 2
-                                    break
+                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload oleh {current_loader} pada {current_datetime_str}!")
+                            st.session_state[f"sound_effect_{wilayah}"] = "success"
+                        else:
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak ditemukan di database.")
+                            st.session_state[f"sound_effect_{wilayah}"] = "error"
                             
-                            if found_row_index:
-                                now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-                                current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                                current_loader = str(st.session_state.user_nama)
-                                current_status = "Preloaded"
-                                
-                                # Update sel spesifik secara aman tanpa merusak kolom A:E lainnya
-                                ws.update_cell(found_row_index, 5, int(jumlah_box_val))  # Kolom E: Jumlah Box
-                                ws.update_cell(found_row_index, 6, current_loader)         # Kolom F: Loader
-                                ws.update_cell(found_row_index, 7, current_datetime_str)    # Kolom G: Waktu Preload
-                                ws.update_cell(found_row_index, 9, current_status)          # Kolom I: Status
-                                
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** (Box: {jumlah_box_val}) berhasil di-preload oleh {current_loader} pada {current_datetime_str}!")
-                                st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                st.rerun()
-                            else:
-                                st.error(f"❌ ID **{scan_input}** tidak ditemukan di database.")
-                                st.session_state[f"sound_effect_{wilayah}"] = "error"
-                                
-                        except Exception as e:
-                            st.error(f"❌ Gagal memperbarui Google Sheets: {e}")
+                    except Exception as e:
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
+                        st.session_state[f"sound_effect_{wilayah}"] = "error"
+                    
+                    st.session_state[input_widget_key] = ""
+
+                st.text_input(
+                    "📷 Scan / Masukkan ID Request:", 
+                    placeholder="Arahkan scanner atau ketik ID lalu tekan Enter...", 
+                    key=input_widget_key,
+                    on_change=proses_scan_preload
+                )
 
             else:
-                # Opsi Bulk Input jika sewaktu-waktu dibutuhkan banyak sekaligus
+                # Fitur Bulk Input Terpisah: Kolom ID di kiri, Kolom Jumlah Box di kanan
+                st.markdown("Masukkan daftar ID unik di sebelah kiri dan jumlah box pasangannya di sebelah kanan (berdasarkan baris yang sama).")
+                
                 col_id, col_box = st.columns(2)
+                
                 bulk_id_key = f"bulk_id_text_{wilayah}"
                 bulk_box_key = f"bulk_box_text_{wilayah}"
 
                 with col_id:
-                    ids_input = st.text_area("Daftar ID Request (1 per baris)", placeholder="588834\n588835", height=150, key=bulk_id_key)
+                    ids_input = st.text_area(
+                        "Masukkan ID (1 per baris)",
+                        placeholder="588834\n588835\n588836",
+                        height=160,
+                        key=bulk_id_key
+                    )
+
                 with col_box:
-                    boxes_input = st.text_area("Jumlah Box (Sesuai baris ID)", placeholder="10\n15", height=150, key=bulk_box_key)
+                    boxes_input = st.text_area(
+                        "Jumlah Box (Sesuai baris ID)",
+                        placeholder="10\n15\n8",
+                        height=160,
+                        key=bulk_box_key
+                    )
 
                 if st.button("🚀 Proses Bulk Preload", type="primary"):
                     if not ids_input.strip():
@@ -273,6 +290,7 @@ else:
                             ws = sh.worksheet("Database log")
                             
                             data_rows = ws.get_all_records()
+                            
                             now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                             current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
                             current_loader = str(st.session_state.user_nama)
@@ -292,25 +310,28 @@ else:
                                         break
                                 
                                 if found_row_index:
+                                    # Update Loader (Kolom F = 6), Waktu Preload (Kolom G = 7), Status (Kolom I = 9)
                                     ws.update_cell(found_row_index, 6, current_loader)
                                     ws.update_cell(found_row_index, 7, current_datetime_str)
                                     ws.update_cell(found_row_index, 9, current_status)
+                                    
+                                    # Jika jumlah box diisi, update Kolom E (Jumlah Box = Kolom 5)
                                     if target_box:
                                         ws.update_cell(found_row_index, 5, target_box)
+                                        
                                     berhasil_count += 1
                                 else:
                                     gagal_list.append(target_id)
 
                             if berhasil_count > 0:
                                 st.success(f"✅ Berhasil memproses {berhasil_count} data secara bulk!")
-                                st.rerun()
                             if gagal_list:
                                 st.error(f"❌ ID berikut tidak ditemukan di database: {', '.join(gagal_list)}")
                                 
                         except Exception as e:
                             st.error(f"❌ Terjadi kesalahan sistem saat memproses bulk: {e}")
 
-            # Menampilkan notifikasi & suara hasil proses
+            # Menampilkan notifikasi & suara hasil scan satuan
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
