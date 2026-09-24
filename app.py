@@ -43,6 +43,28 @@ def load_data():
     df = conn.read(worksheet="Database log", ttl=0)
     return df
 
+# --- FUNGSI FORMAT STATUS DENGAN IKON WARNA ---
+def format_status_dengan_ikon(progress_val, jumlah_box_db):
+    """
+    Menentukan status dan memberikan ikon/warna:
+    - 🔴 Pending: Belum ada progress / kosong
+    - 🟡 Not Completed: Sudah di-preload tapi progress < jumlah_box_db
+    - 🟢 Completed: Sudah di-preload dan progress == jumlah_box_db
+    """
+    if progress_val in [None, "", "None", "nan", 0, "0"]:
+        return "🔴 Pending"
+    
+    try:
+        prog_int = int(str(progress_val).strip())
+        max_box = int(str(jumlah_box_db).strip())
+    except ValueError:
+        return "🔴 Pending"
+        
+    if prog_int < max_box:
+        return "🟡 Not Completed"
+    else:
+        return "🟢 Completed"
+
 # --- FUNGSI HALAMAN LOGIN ---
 def tampilkan_halaman_login():
     st.markdown("<h2 style='text-align: center;'>🔐 Login V2 Pre Load System</h2>", unsafe_allow_html=True)
@@ -249,10 +271,15 @@ else:
                                 st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah memiliki Progress Jumlah Box **{scan_jumlah_box}** di database.")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             else:
+                                # Tentukan Status otomatis: Not Completed jika scan_jumlah_box < max_box_db, Completed jika sudah pas
+                                if scan_jumlah_box < max_box_db:
+                                    current_status = "Not Completed"
+                                else:
+                                    current_status = "Completed"
+
                                 now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                                 current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
                                 current_loader = str(st.session_state.user_nama)
-                                current_status = "Preloaded"
                                 
                                 ws.update_cell(found_row_index, 6, scan_jumlah_box)       # Kolom F: Progress
                                 ws.update_cell(found_row_index, 7, current_loader)        # Kolom G: Loader
@@ -319,10 +346,15 @@ else:
                             elif int(jumlah_box_val) > max_box_db:
                                 st.error(f"❌ Jumlah box (**{jumlah_box_val}**) melebihi batas maksimal data di database yaitu **{max_box_db}** box.")
                             else:
+                                # Tentukan Status otomatis: Not Completed jika jumlah_box_val < max_box_db, Completed jika sudah pas
+                                if int(jumlah_box_val) < max_box_db:
+                                    current_status = "Not Completed"
+                                else:
+                                    current_status = "Completed"
+
                                 now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                                 current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
                                 current_loader = str(st.session_state.user_nama)
-                                current_status = "Preloaded"
                                 
                                 ws.update_cell(found_row_index, 6, int(jumlah_box_val))
                                 ws.update_cell(found_row_index, 7, current_loader)
@@ -375,14 +407,12 @@ else:
                             list_id_tersedia.append(r_id)
 
                     with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
-                        # Diubah menjadi multiselect agar bisa memilih banyak ID sekaligus
                         selected_ids_mz = st.multiselect(
                             "Pilih ID Request (Bisa pilih lebih dari satu):",
                             options=list_id_tersedia,
                             placeholder="Cari atau pilih beberapa ID..."
                         )
                         
-                        # Multiselect untuk zona mezzanine
                         selected_zones = st.multiselect(
                             "Pilih Zona Mezzanine (Bisa pilih lebih dari satu):",
                             options=daftar_zona_mezzanine,
@@ -408,7 +438,6 @@ else:
                                 string_zona_hasil = ", ".join(selected_zones)
                                 
                                 berhasilan_count = 0
-                                # Lakukan perulangan untuk setiap ID yang dipilih oleh petugas
                                 for target_id in selected_ids_mz:
                                     found_row_index = None
                                     for idx, row in enumerate(data_rows):
@@ -418,7 +447,6 @@ else:
                                             break
                                     
                                     if found_row_index:
-                                        # Disimpan ke Kolom I (Kolom ke-9) di Google Sheets (sesuaikan jika berbeda)
                                         ws.update_cell(found_row_index, 9, string_zona_hasil)
                                         berhasilan_count += 1
                                 
@@ -439,6 +467,20 @@ else:
             
             if not df_filtered.empty:
                 df_preload_display = df_filtered.copy()
+                
+                # Format Kolom Status dengan Ikon Warna secara dinamis berdasarkan Progress & Jumlah Box
+                status_formatted_list = []
+                for idx, row in df_preload_display.iterrows():
+                    try:
+                        jb = row.get("Jumlah Box") or 0
+                        pr = row.get("Progress")
+                        st_formatted = format_status_dengan_ikon(pr, jb)
+                        status_formatted_list.append(st_formatted)
+                    except Exception:
+                        status_formatted_list.append("🔴 Pending")
+                
+                df_preload_display["Status"] = status_formatted_list
+
                 kolom_dihapus = ["Jam Proses Scan", "Tanggal Proses Scan"]
                 for col in kolom_dihapus:
                     if col in df_preload_display.columns:
