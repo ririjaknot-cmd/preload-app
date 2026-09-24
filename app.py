@@ -559,12 +559,45 @@ else:
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
-        # Tab diubah dari On Delivery menjadi Manifest
+        # Deklarasi tab utama (CUKUP SATU KALI INI SAJA)
         tab_id, tab_preload, tab_manifest = st.tabs([
             "ID Request", "Preload (Scan & Manifest)", "Manifest"
         ])
 
-        # ... (kode tab_id dan tab_preload yang sudah ada sebelumnya tetap di sini) ...
+        with tab_id:
+            st.subheader(f"Data Logistik & Pencarian ID - {wilayah}")
+            keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Ketik ID Request yang ingin dicari...", key="search_id_request")
+            
+            df_display = df_filtered.copy()
+            
+            # Terapkan format status dengan ikon warna secara dinamis pada tabel ID Request
+            if not df_display.empty:
+                status_formatted_list = []
+                for idx, row in df_display.iterrows():
+                    try:
+                        jb = row.get("Jumlah Box") or 0
+                        pr = row.get("Progress")
+                        st_formatted = format_status_dengan_ikon(pr, jb)
+                        status_formatted_list.append(st_formatted)
+                    except Exception:
+                        status_formatted_list.append("🔴 Pending")
+                
+                df_display["Status"] = status_formatted_list
+
+            if keyword_cari and not df_display.empty:
+                id_col_candidates = [col for col in df_display.columns if 'id' in col.lower() or 'request' in col.lower()]
+                if id_col_candidates:
+                    target_col = id_col_candidates[0]
+                    df_display = df_display[df_display[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
+
+            if not df_display.empty:
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("Tidak ada data logistik yang cocok atau tersedia untuk cabang ini.")
+
+        with tab_preload:
+            # ... (Semua kode untuk proses scan satuan, input bulk, dan update mezzanine di sini) ...
+            pass
 
         with tab_manifest:
             st.subheader(f"📦 Manajemen Manifest Pengiriman - {wilayah}")
@@ -600,7 +633,7 @@ else:
                         st.warning("⚠️ Pilih minimal satu ID Request yang berstatus Completed.")
                     else:
                         try:
-                            # Generate Nomor Manifest Otomatis (Contoh: MNF-YYYYMMDD-HHMMSS)
+                            # Generate Nomor Manifest Otomatis
                             now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                             nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
                             
@@ -609,7 +642,6 @@ else:
                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                             
-                            # Pastikan ada sheet bernama 'Manifest log', jika belum buat
                             try:
                                 ws_manifest = sh.worksheet("Manifest log")
                             except gspread.exceptions.WorksheetNotFound:
@@ -627,7 +659,6 @@ else:
                             waktu_buat = now.strftime("%Y-%m-%d %H:%M:%S")
                             status_manifest = "Manifested"
 
-                            # Simpan ke Google Sheets 'Manifest log'
                             ws_manifest.append_row([
                                 nomor_manifest,
                                 wilayah,
@@ -648,9 +679,6 @@ else:
             st.markdown("---")
             st.markdown(f"##### 📋 Daftar Manifest Cabang: {wilayah}")
 
-            # ==========================================
-            # AMBIL DAN INISIALISASI DATA MANIFEST
-            # ==========================================
             df_manifest_wilayah = pd.DataFrame()
             try:
                 creds_dict = dict(st.secrets["connections"]["gsheets"])
@@ -666,12 +694,10 @@ else:
                     if not df_manifest_all.empty and "Tujuan Pengiriman" in df_manifest_all.columns:
                         df_manifest_wilayah = df_manifest_all[df_manifest_all["Tujuan Pengiriman"] == wilayah].copy()
                 except gspread.exceptions.WorksheetNotFound:
-                    # Jika sheet belum ada, buat otomatis agar tidak error
                     sh.add_worksheet(title="Manifest log", rows=100, cols=10)
             except Exception as e:
                 st.warning(f"⚠️ Belum dapat memuat data manifest dari spreadsheet: {e}")
 
-            # Tampilkan tabel jika data ada
             if not df_manifest_wilayah.empty:
                 st.dataframe(df_manifest_wilayah, use_container_width=True, hide_index=True)
 
