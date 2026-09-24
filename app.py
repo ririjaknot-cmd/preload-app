@@ -3,7 +3,7 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
 import datetime
-
+import gspread
 # Konfigurasi halaman agar menggunakan mode 'wide' (lebar) ala dashboard
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
