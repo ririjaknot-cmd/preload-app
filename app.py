@@ -402,14 +402,62 @@ else:
             
             if not df_filtered.empty:
                 df_preload_display = df_filtered.copy()
+                
+                # Hapus kolom yang tidak perlu ditampilkan
                 kolom_dihapus = ["Jam Proses Scan", "Tanggal Proses Scan"]
                 for col in kolom_dihapus:
                     if col in df_preload_display.columns:
                         df_preload_display = df_preload_display.drop(columns=[col])
                 
+                # Mengatur posisi kolom "Zona Mezzanine" agar berada tepat di sebelah "Waktu Preload"
+                # (Pastikan nama kolom di DataFrame Anda sesuai, misal "Zona Mezzanine" dan "Waktu Preload")
+                if "Zona Mezzanine" in df_preload_display.columns and "Waktu Preload" in df_preload_display.columns:
+                    cols = list(df_preload_display.columns)
+                    cols.remove("Zona Mezzanine")
+                    idx_waktu = cols.index("Waktu Preload")
+                    # Sisipkan tepat setelah kolom Waktu Preload
+                    cols.insert(idx_waktu + 1, "Zona Mezzanine")
+                    df_preload_display = df_preload_display[cols]
+                
                 st.dataframe(df_preload_display, use_container_width=True, hide_index=True)
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
+                if submit_mz:
+                    if selected_id_mz == "Tidak ada ID" or not selected_id_mz:
+                        st.warning("⚠️ Pilih ID Request yang valid terlebih dahulu.")
+                    elif not selected_zones:
+                        st.warning("⚠️ Pilih minimal satu Zona Mezzanine.")
+                    else:
+                        try:
+                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                            gc = gspread.service_account_from_dict(creds_dict)
+                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                            ws = sh.worksheet("Database log")
+                            
+                            data_rows = ws.get_all_records()
+                            found_row_index = None
+
+                            for idx, row in enumerate(data_rows):
+                                row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
+                                if row_id == str(selected_id_mz).strip():
+                                    found_row_index = idx + 2
+                                    break
+                            
+                            if found_row_index:
+                                string_zona_hasil = ", ".join(selected_zones)
+                                
+                                # Disimpan ke Kolom I (Kolom ke-9) di Google Sheets (asumsi Waktu Preload ada di Kolom H / ke-8)
+                                ws.update_cell(found_row_index, 9, string_zona_hasil)
+                                
+                                st.success(f"✅ Zona Mezzanine untuk ID **{selected_id_mz}** berhasil diperbarui: **{string_zona_hasil}**")
+                                st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                st.rerun()
+                            else:
+                                st.error("❌ ID tidak ditemukan di database Google Sheets.")
+                                
+                        except Exception as e:
+                            st.error(f"❌ Gagal memperbarui zona ke Google Sheets: {e}")
 
         with tab_ondelivery:
             st.subheader(f"Proses On Delivery - {wilayah}")
