@@ -200,7 +200,7 @@ else:
 
         # Tab diubah fokus utamanya ke Preload menggantikan Picking
         tab_id, tab_preload, tab_manifest = st.tabs([
-            "ID Request", "Preload (Scan & Manifest)", "Manifest"
+            "ID Request", "Preload", "Manifest"
         ])
 
         with tab_id:
