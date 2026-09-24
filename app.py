@@ -189,7 +189,7 @@ else:
 
         with tab_preload:
             st.subheader(f"Proses Preload & Scanning - {wilayah}")
-            st.markdown("Scan ID Request untuk memperbarui data **Jam Proses Scan**, **Tanggal Proses Scan**, **Loader**, dan **Status** langsung ke Google Sheets.")
+            st.markdown("Scan ID Request untuk memperbarui data **Loader**, **Waktu Preload**, dan **Status** langsung ke Google Sheets.")
 
             # Input Scan untuk Preload
             input_widget_key = f"input_preload_scan_{wilayah}"
@@ -201,36 +201,36 @@ else:
                 if not scan_input:
                     return
                 
-                if not df_database.empty:
-                    id_col_candidates = [col for col in df_database.columns if col.lower() in ['id', 'id request']]
-                    id_col = id_col_candidates[0] if id_col_candidates else df_database.columns[0]
+                # Muat ulang data terbaru dari Google Sheets untuk menghindari konflik state lama
+                df_current_db = load_data()
+                
+                if not df_current_db.empty:
+                    id_col_candidates = [col for col in df_current_db.columns if col.lower() in ['id', 'id request']]
+                    id_col = id_col_candidates[0] if id_col_candidates else df_current_db.columns[0]
                     
                     # Konversi kolom ID ke string untuk pencocokan yang akurat
-                    global_mask = df_database[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input
+                    global_mask = df_current_db[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input
                     
                     if global_mask.any():
                         now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-                        current_time = now.strftime("%H:%M:%S")
-                        current_date = now.strftime("%d/%m/%Y")
+                        current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # Konversi tipe data kolom target ke string untuk mencegah error LossySetitemError
-                        for col_target in ["Jam Proses Scan", "Tanggal Proses Scan", "Loader", "Status"]:
-                            if col_target in df_database.columns:
-                                df_database[col_target] = df_database[col_target].astype(str)
+                        # Pastikan kolom target bertipe string
+                        for col_target in ["Loader", "Waktu Preload", "Status"]:
+                            if col_target in df_current_db.columns:
+                                df_current_db[col_target] = df_current_db[col_target].astype(str)
                         
-                        # Update nilai kolom berdasarkan baris yang dicocokkan
-                        if "Jam Proses Scan" in df_database.columns:
-                            df_database.loc[global_mask, "Jam Proses Scan"] = current_time
-                        if "Tanggal Proses Scan" in df_database.columns:
-                            df_database.loc[global_mask, "Tanggal Proses Scan"] = current_date
-                        if "Loader" in df_database.columns:
-                            df_database.loc[global_mask, "Loader"] = str(st.session_state.user_nama)
-                        if "Status" in df_database.columns:
-                            df_database.loc[global_mask, "Status"] = "Preloaded"
+                        # Hanya update kolom Loader, Waktu Preload, dan Status (biarkan kolom A:E tetap utuh)
+                        if "Loader" in df_current_db.columns:
+                            df_current_db.loc[global_mask, "Loader"] = str(st.session_state.user_nama)
+                        if "Waktu Preload" in df_current_db.columns:
+                            df_current_db.loc[global_mask, "Waktu Preload"] = current_datetime_str
+                        if "Status" in df_current_db.columns:
+                            df_current_db.loc[global_mask, "Status"] = "Preloaded"
                         
                         try:
-                            conn.update(worksheet="Database log", data=df_database)
-                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload oleh {st.session_state.user_nama} pada {current_date} {current_time}!")
+                            conn.update(worksheet="Database log", data=df_current_db)
+                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-preload oleh {st.session_state.user_nama} pada {current_datetime_str}!")
                             st.session_state[f"sound_effect_{wilayah}"] = "success"
                         except Exception as e:
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
@@ -267,8 +267,16 @@ else:
 
             st.markdown("---")
             st.markdown(f"##### 📋 Data Riwayat Preload Cabang: {wilayah}")
+            
             if not df_filtered.empty:
-                st.dataframe(df_filtered, use_container_width=True, hide_index=True)
+                # Sembunyikan kolom Jam Proses Scan dan Tanggal Proses Scan dari tampilan tab Preload
+                df_preload_display = df_filtered.copy()
+                kolom_dihapus = ["Jam Proses Scan", "Tanggal Proses Scan"]
+                for col in kolom_dihapus:
+                    if col in df_preload_display.columns:
+                        df_preload_display = df_preload_display.drop(columns=[col])
+                
+                st.dataframe(df_preload_display, use_container_width=True, hide_index=True)
             else:
                 st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
 
