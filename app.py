@@ -609,7 +609,7 @@ else:
                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                             
-                            # Pastikan ada sheet bernama 'Manifest log', jika belum buat atau gunakan try-except
+                            # Pastikan ada sheet bernama 'Manifest log', jika belum buat
                             try:
                                 ws_manifest = sh.worksheet("Manifest log")
                             except gspread.exceptions.WorksheetNotFound:
@@ -648,23 +648,33 @@ else:
             st.markdown("---")
             st.markdown(f"##### 📋 Daftar Manifest Cabang: {wilayah}")
 
-            # Membaca data dari sheet 'Manifest log' untuk ditampilkan
+            # ==========================================
+            # AMBIL DAN INISIALISASI DATA MANIFEST
+            # ==========================================
+            df_manifest_wilayah = pd.DataFrame()
             try:
                 creds_dict = dict(st.secrets["connections"]["gsheets"])
                 gc = gspread.service_account_from_dict(creds_dict)
                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                 sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                ws_manifest = sh.worksheet("Manifest log")
-                data_manifest = ws_manifest.get_all_records()
-                df_manifest_all = pd.DataFrame(data_manifest)
-            except Exception:
-                df_manifest_all = pd.DataFrame()
+                
+                try:
+                    ws_manifest = sh.worksheet("Manifest log")
+                    data_manifest = ws_manifest.get_all_records()
+                    df_manifest_all = pd.DataFrame(data_manifest)
+                    
+                    if not df_manifest_all.empty and "Tujuan Pengiriman" in df_manifest_all.columns:
+                        df_manifest_wilayah = df_manifest_all[df_manifest_all["Tujuan Pengiriman"] == wilayah].copy()
+                except gspread.exceptions.WorksheetNotFound:
+                    # Jika sheet belum ada, buat otomatis agar tidak error
+                    sh.add_worksheet(title="Manifest log", rows=100, cols=10)
+            except Exception as e:
+                st.warning(f"⚠️ Belum dapat memuat data manifest dari spreadsheet: {e}")
 
-            # Filter manifest berdasarkan wilayah aktif
+            # Tampilkan tabel jika data ada
             if not df_manifest_wilayah.empty:
                 st.dataframe(df_manifest_wilayah, use_container_width=True, hide_index=True)
 
-                # Tombol Edit Manifest (Pilih nomor manifest yang ingin diedit)
                 st.markdown("🛠️ **Edit / Kelola Manifest**")
                 manifest_list_options = df_manifest_wilayah["Nomor Manifest"].tolist()
                 selected_mnf_to_edit = st.selectbox("Pilih Nomor Manifest untuk dikelola:", options=manifest_list_options)
