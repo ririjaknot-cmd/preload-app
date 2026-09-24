@@ -195,7 +195,7 @@ else:
             metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Input ID & Jumlah Box"], horizontal=True)
 
             if metode_input == "Scan Satuan":
-                # Input Scan Satuan (Seperti awal)
+                # Input Scan Satuan
                 input_widget_key = f"input_preload_scan_{wilayah}"
                 if input_widget_key not in st.session_state:
                     st.session_state[input_widget_key] = ""
@@ -251,7 +251,7 @@ else:
                 )
 
             else:
-                # Form input 1 ID tunggal dan Jumlah Box dengan number input
+                # Form input 1 ID tunggal dan Jumlah Box dengan Validasi & Pengamanan Kolom A:E
                 form_single_key = f"form_single_box_preload_{wilayah}"
                 
                 with st.form(key=form_single_key, clear_on_submit=True):
@@ -282,34 +282,49 @@ else:
                             
                             data_rows = ws.get_all_records()
                             
-                            now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-                            current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                            current_loader = str(st.session_state.user_nama)
-                            current_status = "Preloaded"
-                            
                             found_row_index = None
+                            current_db_box = None
                             for idx, row in enumerate(data_rows):
                                 row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
                                 if row_id == target_id:
                                     found_row_index = idx + 2
+                                    # Ambil nilai jumlah box yang ada di database saat ini (Kolom E / key 'Jumlah Box')
+                                    current_db_box = row.get("Jumlah Box") or row.get("jumlah box") or list(row.values())[4]
                                     break
                             
                             if found_row_index:
-                                # Update Kolom E (Jumlah Box = Kolom 5), Kolom F (Loader = 6), Kolom G (Waktu = 7), Kolom I (Status = 9)
-                                ws.update_cell(found_row_index, 5, int(jumlah_box_val))
-                                ws.update_cell(found_row_index, 6, current_loader)
-                                ws.update_cell(found_row_index, 7, current_datetime_str)
-                                ws.update_cell(found_row_index, 9, current_status)
-                                
-                                st.success(f"✅ ID **{target_id}** berhasil diperbarui dengan Jumlah Box: **{jumlah_box_val}**!")
-                                st.rerun()
+                                # Cek apakah jumlah box yang diinput sama dengan yang sudah ada di database
+                                try:
+                                    db_box_int = int(str(current_db_box).strip()) if current_db_box not in [None, ""] else None
+                                except ValueError:
+                                    db_box_int = None
+
+                                if db_box_int is not None and db_box_int == int(jumlah_box_val):
+                                    st.warning(f"⚠️ ID **{target_id}** sudah memiliki Jumlah Box **{jumlah_box_val}** di database. Input ditolak karena tidak ada perubahan.")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                else:
+                                    now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+                                    current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                                    current_loader = str(st.session_state.user_nama)
+                                    current_status = "Preloaded"
+                                    
+                                    # PENTING: Hanya update kolom spesifik (Kolom E, F, G, I) agar Kolom A:D aman tidak tertimpa
+                                    ws.update_cell(found_row_index, 5, int(jumlah_box_val))  # Kolom E: Jumlah Box
+                                    ws.update_cell(found_row_index, 6, current_loader)         # Kolom F: Loader
+                                    ws.update_cell(found_row_index, 7, current_datetime_str)    # Kolom G: Waktu Preload
+                                    ws.update_cell(found_row_index, 9, current_status)          # Kolom I: Status
+                                    
+                                    st.success(f"✅ ID **{target_id}** berhasil diperbarui dengan Jumlah Box: **{jumlah_box_val}**!")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                    st.rerun()
                             else:
                                 st.error(f"❌ ID **{target_id}** tidak ditemukan di database.")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
                                 
                         except Exception as e:
                             st.error(f"❌ Terjadi kesalahan sistem saat memperbarui data: {e}")
 
-            # Menampilkan notifikasi & suara hasil scan satuan
+            # Menampilkan notifikasi & suara hasil proses
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
