@@ -189,10 +189,10 @@ else:
 
         with tab_preload:
             st.subheader(f"Proses Preload & Scanning - {wilayah}")
-            st.markdown("Gunakan **Scan Satuan** (langsung enter/scan) atau **Bulk Input** untuk memperbarui data ke Google Sheets.")
+            st.markdown("Gunakan **Scan Satuan** atau **Input ID & Jumlah Box** untuk memperbarui data ke Google Sheets.")
 
             # Pilihan Metode Input
-            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Bulk Input"], horizontal=True)
+            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Input ID & Jumlah Box"], horizontal=True)
 
             if metode_input == "Scan Satuan":
                 # Input Scan Satuan (Seperti awal)
@@ -251,30 +251,28 @@ else:
                 )
 
             else:
-                # Fitur Bulk Input dengan tata letak bertingkat seperti gambar
-                form_bulk_key = f"form_bulk_preload_{wilayah}"
+                # Form input 1 ID tunggal dan Jumlah Box dengan number input
+                form_single_key = f"form_single_box_preload_{wilayah}"
                 
-                with st.form(key=form_bulk_key, clear_on_submit=True):
-                    bulk_ids_input = st.text_area(
+                with st.form(key=form_single_key, clear_on_submit=True):
+                    input_id_val = st.text_input(
                         "Masukkan ID",
-                        placeholder="Ketik atau paste daftar ID di sini (1 ID per baris)...",
-                        height=120
+                        placeholder="Ketik atau scan 1 ID di sini..."
                     )
-                    bulk_jumlah_box = st.number_input(
+                    jumlah_box_val = st.number_input(
                         "Jumlah Box",
                         min_value=1,
                         value=1,
                         step=1
                     )
                     
-                    submit_bulk = st.form_submit_button("🚀 Proses Bulk Preload", type="primary")
+                    submit_single = st.form_submit_button("🚀 Proses Preload", type="primary")
 
-                if submit_bulk:
-                    if not bulk_ids_input.strip():
-                        st.warning("⚠️ Masukkan setidaknya satu ID Request.")
+                if submit_single:
+                    target_id = input_id_val.strip()
+                    if not target_id:
+                        st.warning("⚠️ Masukkan ID terlebih dahulu.")
                     else:
-                        list_ids = [line.strip() for line in bulk_ids_input.split("\n") if line.strip()]
-
                         try:
                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                             gc = gspread.service_account_from_dict(creds_dict)
@@ -289,35 +287,27 @@ else:
                             current_loader = str(st.session_state.user_nama)
                             current_status = "Preloaded"
                             
-                            berhasil_count = 0
-                            gagal_list = []
-
-                            for target_id in list_ids:
-                                found_row_index = None
-                                for idx, row in enumerate(data_rows):
-                                    row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
-                                    if row_id == target_id:
-                                        found_row_index = idx + 2
-                                        break
+                            found_row_index = None
+                            for idx, row in enumerate(data_rows):
+                                row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
+                                if row_id == target_id:
+                                    found_row_index = idx + 2
+                                    break
+                            
+                            if found_row_index:
+                                # Update Kolom E (Jumlah Box = Kolom 5), Kolom F (Loader = 6), Kolom G (Waktu = 7), Kolom I (Status = 9)
+                                ws.update_cell(found_row_index, 5, int(jumlah_box_val))
+                                ws.update_cell(found_row_index, 6, current_loader)
+                                ws.update_cell(found_row_index, 7, current_datetime_str)
+                                ws.update_cell(found_row_index, 9, current_status)
                                 
-                                if found_row_index:
-                                    # Update Kolom E (Jumlah Box = Kolom 5), Kolom F (Loader = 6), Kolom G (Waktu = 7), Kolom I (Status = 9)
-                                    ws.update_cell(found_row_index, 5, int(bulk_jumlah_box))
-                                    ws.update_cell(found_row_index, 6, current_loader)
-                                    ws.update_cell(found_row_index, 7, current_datetime_str)
-                                    ws.update_cell(found_row_index, 9, current_status)
-                                    
-                                    berhasil_count += 1
-                                else:
-                                    gagal_list.append(target_id)
-
-                            if berhasil_count > 0:
-                                st.success(f"✅ Berhasil memproses {berhasil_count} data secara bulk dengan jumlah box {bulk_jumlah_box}!")
-                            if gagal_list:
-                                st.error(f"❌ ID berikut tidak ditemukan di database: {', '.join(gagal_list)}")
+                                st.success(f"✅ ID **{target_id}** berhasil diperbarui dengan Jumlah Box: **{jumlah_box_val}**!")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ ID **{target_id}** tidak ditemukan di database.")
                                 
                         except Exception as e:
-                            st.error(f"❌ Terjadi kesalahan sistem saat memproses bulk: {e}")
+                            st.error(f"❌ Terjadi kesalahan sistem saat memperbarui data: {e}")
 
             # Menampilkan notifikasi & suara hasil scan satuan
             if f"last_msg_{wilayah}" in st.session_state:
