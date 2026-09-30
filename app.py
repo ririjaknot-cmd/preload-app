@@ -830,7 +830,7 @@ else:
                                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                             
-                                            # 1. Kurangi progress di Database log dan cek sisa progress terkini
+                                            # 1. Kurangi progress di Database log
                                             ws_main = sh.worksheet("Database log")
                                             records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
@@ -865,8 +865,6 @@ else:
                                             
                                             if row_idx:
                                                 row_values = ws_m.row_values(row_idx)
-                                                
-                                                # HAPUS ID dari list manifest HANYA JIKA sisa progress/box-nya sudah habis (0)
                                                 if sisa_progress == 0:
                                                     if clean_out_id in ids_in_manifest:
                                                         ids_in_manifest.remove(clean_out_id)
@@ -883,12 +881,75 @@ else:
                                                 ws_m.update_cell(row_idx, idlist_idx, new_id_list_str)
                                                 ws_m.update_cell(row_idx, tbox_idx, int(new_total_box))
                                                 
-                                                st.success(f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest! (Sisa box di preload: {sisa_progress})")
+                                                st.success(f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest!")
                                                 st.rerun()
                                             else:
                                                 st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
                                         except Exception as e:
                                             st.error(f"❌ Gagal mengeluarkan ID: {e}")
+
+                        st.markdown("---")
+
+                        # FITUR BARU: Gabungkan Beberapa ID Menjadi Jumlah Box Tertentu
+                        with st.expander("🔗 Gabungkan Beberapa ID Menjadi 1 Box / Jumlah Box Tertentu", expanded=False):
+                            with st.form(key=f"form_gabung_box_{active_mnf}", clear_on_submit=True):
+                                st.markdown("Pilih beberapa ID yang terdaftar di manifest ini untuk digabungkan jumlah box-nya:")
+                                
+                                selected_ids_to_merge = st.multiselect(
+                                    "Pilih ID yang ingin digabung:",
+                                    options=ids_in_manifest,
+                                    placeholder="Pilih ID..."
+                                )
+                                
+                                target_combined_box = st.number_input(
+                                    "Total Box Hasil Penggabungan:",
+                                    min_value=1,
+                                    value=1,
+                                    step=1,
+                                    help="Masukkan total box akhir setelah ID-ID di atas digabungkan (misal: 1 box)"
+                                )
+                                
+                                btn_submit_merge = st.form_submit_button("🔄 Terapkan Penggabungan Box", type="primary")
+                                
+                                if btn_submit_merge:
+                                    if not selected_ids_to_merge:
+                                        st.warning("⚠️ Pilih minimal satu ID untuk digabungkan.")
+                                    else:
+                                        try:
+                                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                            gc = gspread.service_account_from_dict(creds_dict)
+                                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                            
+                                            ws_main = sh.worksheet("Database log")
+                                            records_main = ws_main.get_all_records()
+                                            header_main = ws_main.row_values(1)
+                                            
+                                            id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                            
+                                            # Update progress database untuk ID-ID yang dipilih sesuai distribusi target_combined_box
+                                            # (Atau alokasikan total box ke ID pertama / dibagi rata sesuai kebutuhan logis)
+                                            # Disini kita set progress ID pertama sejumlah target_combined_box (atau dibagi ke masing-masing ID)
+                                            if id_col_i and prog_col_i:
+                                                for r_idx, r_val in enumerate(records_main, start=2):
+                                                    r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                                    if r_id_str in selected_ids_to_merge:
+                                                        max_b = id_max_box.get(r_id_str, target_combined_box)
+                                                        # Contoh: ID pertama diset target box, ID berikutnya disesuaikan atau digabungkan
+                                                        # Sesuai contoh Anda: ID 599001, 599002, 599003 digabung menjadi total 1 box
+                                                        # Kita set ID utama mendapat target box, sisanya di-nolkan atau diatur proporsional
+                                                        if r_id_str == selected_ids_to_merge[0]:
+                                                            new_p = min(max_b, int(target_combined_box))
+                                                        else:
+                                                            new_p = 0 # Box digabungkan ke ID utama
+                                                        
+                                                        ws_main.update_cell(r_idx, prog_col_i, int(new_p))
+
+                                            st.success(f"✅ Berhasil menggabungkan ID: {', '.join(selected_ids_to_merge)} menjadi {target_combined_box} box!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ Gagal melakukan penggabungan box: {e}")
 
                         st.markdown("---")
                         
