@@ -830,7 +830,7 @@ else:
                                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                             
-                                            # 1. Kurangi progress di Database log berdasarkan jumlah box yang diinput untuk dikeluarkan
+                                            # 1. Kurangi progress di Database log dan cek sisa progress terkini
                                             ws_main = sh.worksheet("Database log")
                                             records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
@@ -838,16 +838,17 @@ else:
                                             id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
                                             prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
                                             
+                                            sisa_progress = 0
                                             if id_col_i and prog_col_i:
                                                 for r_idx, r_val in enumerate(records_main, start=2):
                                                     r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                                     if r_id_str == clean_out_id:
                                                         old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
-                                                        new_p = max(0, old_p - int(removed_box_input))
-                                                        ws_main.update_cell(r_idx, prog_col_i, int(new_p))
+                                                        sisa_progress = max(0, old_p - int(removed_box_input))
+                                                        ws_main.update_cell(r_idx, prog_col_i, int(sisa_progress))
                                                         break
 
-                                            # 2. Update Manifest log (kurangi total box manifest, dan hapus ID dari list jika box sudah habis 0)
+                                            # 2. Update Manifest log
                                             ws_m = sh.worksheet("Manifest log")
                                             header_m = ws_m.row_values(1)
                                             
@@ -865,13 +866,11 @@ else:
                                             if row_idx:
                                                 row_values = ws_m.row_values(row_idx)
                                                 
-                                                # Cek apakah setelah dikurangi, progress ID tersebut di database sudah 0 atau pengguna ingin menghapus ID dari list manifest
-                                                # Jika ingin langsung hapus ID dari list manifest saat dikeluarkan, atau biarkan selama masih ada box. 
-                                                # Di sini kita sesuaikan: jika box yang dikeluarkan sama dengan sisa atau ingin langsung dikeluarkan dari list:
-                                                if clean_out_id in ids_in_manifest:
-                                                    # Jika ingin langsung hapus dari ID list manifest saat dikeluarkan:
-                                                    ids_in_manifest.remove(clean_out_id)
-                                                    
+                                                # HAPUS ID dari list manifest HANYA JIKA sisa progress/box-nya sudah habis (0)
+                                                if sisa_progress == 0:
+                                                    if clean_out_id in ids_in_manifest:
+                                                        ids_in_manifest.remove(clean_out_id)
+                                                
                                                 new_id_list_str = ", ".join(ids_in_manifest)
                                                 
                                                 try:
@@ -884,7 +883,7 @@ else:
                                                 ws_m.update_cell(row_idx, idlist_idx, new_id_list_str)
                                                 ws_m.update_cell(row_idx, tbox_idx, int(new_total_box))
                                                 
-                                                st.success(f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest!")
+                                                st.success(f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest! (Sisa box di preload: {sisa_progress})")
                                                 st.rerun()
                                             else:
                                                 st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
