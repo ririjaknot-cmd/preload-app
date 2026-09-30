@@ -568,13 +568,11 @@ else:
                 with st.form(key=f"form_buat_manifest_zona_{wilayah}", clear_on_submit=True):
                     st.markdown("Pilih satu atau beberapa **Zona Mezzanine** yang ingin dimanifestkan.")
                     
-                    # Ambil daftar Zona Mezzanine yang unik dan sudah terisi dari df_filtered
                     list_zona_tersedia = []
                     if not df_filtered.empty and "Zona Mezzanine" in df_filtered.columns:
                         for z_val in df_filtered["Zona Mezzanine"].dropna():
                             z_str = str(z_val).strip()
                             if z_str and z_str.lower() not in ["none", "", "nan"]:
-                                # Pecah jika ada koma (misal: "A1, A2")
                                 for sub_z in z_str.split(","):
                                     clean_z = sub_z.strip()
                                     if clean_z and clean_z not in list_zona_tersedia:
@@ -595,26 +593,27 @@ else:
                         st.warning("⚠️ Pilih minimal satu Zona Mezzanine terlebih dahulu.")
                     else:
                         try:
-                            # Cari ID apa saja yang berada di zona-zona yang dipilih
                             matched_ids = []
                             total_box_manifest = 0
 
                             for idx, row in df_filtered.iterrows():
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
-                                # Cek apakah salah satu zona yang dipilih ada di dalam kolom Zona Mezzanine baris ini
                                 if any(z.lower() in row_zona.lower() for z in selected_zones_manifest):
                                     r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                     if r_id and r_id not in matched_ids:
                                         matched_ids.append(r_id)
+                                        
+                                        # PERBAIKAN: Hitung berdasarkan kolom "Progress" (aktual box yang di-preload), bukan "Jumlah Box" database
                                         try:
-                                            total_box_manifest += int(float(row.get("Jumlah Box", 0)))
+                                            prog_val = row.get("Progress")
+                                            prog_int = int(float(prog_val)) if prog_val not in [None, "", "None", "nan"] else 0
+                                            total_box_manifest += prog_int
                                         except (ValueError, TypeError):
                                             pass
 
                             if not matched_ids:
                                 st.warning("⚠️ Tidak ada ID Request yang ditemukan pada zona mezzanine yang dipilih.")
                             else:
-                                # Generate Nomor Manifest Otomatis
                                 now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                                 nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
                                 
@@ -643,44 +642,27 @@ else:
                                     dibuat_oleh,
                                     waktu_buat,
                                     status_manifest
-                                ])
-
-                                st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)})!")
-                                st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                st.rerun()
-
-                        except Exception as e:
+@@ -118,17 +118,19 @@
                             st.error(f"❌ Gagal membuat manifest: {e}")
 
             st.markdown("---")
             st.markdown(f"##### 📋 Daftar Manifest Cabang: {wilayah}")
 
-            # Memuat ulang data manifest secara langsung dari Google Sheets untuk ditampilkan ke web
+            # PERBAIKAN: Memuat ulang data manifest dengan ttl=0 agar selalu mengambil data terbaru dari Google Sheets
             df_manifest_wilayah = pd.DataFrame()
             try:
-                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                gc = gspread.service_account_from_dict(creds_dict)
-                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                # Menggunakan koneksi gsheets bawaan streamit dengan ttl=0 agar tidak ada cache lama
+                df_manifest_all = conn.read(worksheet="Manifest log", ttl=0)
                 
-                try:
-                    ws_manifest = sh.worksheet("Manifest log")
-                    data_manifest = ws_manifest.get_all_records()
-                    df_manifest_all = pd.DataFrame(data_manifest)
-                    
-                    if not df_manifest_all.empty and "Tujuan Pengiriman" in df_manifest_all.columns:
-                        # Filter berdasarkan wilayah/cabang aktif
-                        df_manifest_wilayah = df_manifest_all[df_manifest_all["Tujuan Pengiriman"].astype(str).str.lower() == wilayah.lower()].copy()
-                except gspread.exceptions.WorksheetNotFound:
-                    sh.add_worksheet(title="Manifest log", rows=100, cols=10)
+                if not df_manifest_all.empty and "Tujuan Pengiriman" in df_manifest_all.columns:
+                    df_manifest_wilayah = df_manifest_all[df_manifest_all["Tujuan Pengiriman"].astype(str).str.lower() == wilayah.lower()].copy()
             except Exception as e:
-                st.warning(f"⚠️ Belum dapat memuat data manifest dari spreadsheet: {e}")
+                st.warning(f"⚠️ Belum dapat memuat data manifest (Pastikan worksheet 'Manifest log' sudah ada dan memiliki header kolom yang sesuai): {e}")
 
-            # Tampilkan tabel daftar manifest jika ada isinya
             if not df_manifest_wilayah.empty:
                 st.dataframe(df_manifest_wilayah, use_container_width=True, hide_index=True)
 
-                st.markdown("🛠️️ **Edit / Kelola Manifest**")
+                st.markdown("🛠 **Edit / Kelola Manifest**")
                 manifest_list_options = df_manifest_wilayah["Nomor Manifest"].tolist()
                 selected_mnf_to_edit = st.selectbox("Pilih Nomor Manifest untuk dikelola:", options=manifest_list_options, key=f"select_mnf_{wilayah}")
 
