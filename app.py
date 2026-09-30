@@ -563,7 +563,7 @@ else:
             st.subheader(f"📦 Manajemen Manifest Pengiriman - {wilayah}")
             st.markdown("Kelola surat jalan / manifest pengiriman berdasarkan Zona Mezzanine.")
 
-            # Kumpulkan semua ID yang sudah pernah masuk ke manifest manapun untuk cabang ini (agar tidak bisa dobel)
+            # Kumpulkan semua ID yang sudah pernah masuk ke manifest manapun untuk cabang ini
             all_manifested_ids = set()
             df_manifest_all_cache = pd.DataFrame()
             try:
@@ -585,7 +585,7 @@ else:
             # Tombol untuk memunculkan form Buat Manifest Baru Berdasarkan Zona Mezzanine
             with st.expander("➕ Buat Manifest Berdasarkan Zona Mezzanine", expanded=False):
                 with st.form(key=f"form_buat_manifest_zona_{wilayah}", clear_on_submit=True):
-                    st.markdown("Pilih satu atau beberapa **Zona Mezzanine** yang ingin dimanifestkan (ID yang sudah masuk manifest lain akan dilewati).")
+                    st.markdown("Pilih satu atau beberapa **Zona Mezzanine** yang ingin dimanifestkan.")
                     
                     list_zona_tersedia = []
                     if not df_filtered.empty and "Zona Mezzanine" in df_filtered.columns:
@@ -620,22 +620,19 @@ else:
                                 if any(z.lower() in row_zona.lower() for z in selected_zones_manifest):
                                     r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                     
-                                    # Validasi: Jika ID belum pernah masuk manifest manapun
                                     if r_id and r_id not in all_manifested_ids and r_id not in matched_ids:
                                         matched_ids.append(r_id)
+                                        
+                                        # Hitung box dan otomatis sempurnakan progress jika belum lengkap
                                         try:
-                                            prog_val = row.get("Progress")
-                                            prog_int = int(float(prog_val)) if prog_val not in [None, "", "None", "nan"] else 0
-                                            # Jika progress 0 atau kosong saat dimanifestkan, hitung minimal 1 box atau ikuti jumlah box
-                                            if prog_int <= 0:
-                                                box_val = row.get("Jumlah Box", 1)
-                                                prog_int = int(float(box_val)) if box_val not in [None, "", "None", "nan"] else 1
-                                            total_box_manifest += prog_int
+                                            b_val = row.get("Jumlah Box", 1)
+                                            max_box = int(float(b_val)) if b_val not in [None, "", "None", "nan"] else 1
+                                            total_box_manifest += max_box
                                         except (ValueError, TypeError):
                                             total_box_manifest += 1
 
                             if not matched_ids:
-                                st.warning("⚠️ Tidak ada ID Request baru yang ditemukan pada zona mezzanine yang dipilih (semua ID mungkin sudah masuk manifest sebelumnya).")
+                                st.warning("⚠️ Tidak ada ID Request baru yang ditemukan pada zona mezzanine yang dipilih.")
                             else:
                                 now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                                 nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
@@ -666,6 +663,26 @@ else:
                                     waktu_buat,
                                     status_manifest
                                 ])
+
+                                # Update juga progress di sheet utama (preload) jika ada yang belum lengkap
+                                try:
+                                    ws_main = sh.worksheet(wilayah) # Mengasumsikan nama worksheet cabang sesuai variabel wilayah
+                                    data_main = ws_main.get_all_records()
+                                    header_main = ws_main.row_values(1)
+                                    
+                                    # Cari indeks kolom ID dan Progress
+                                    id_col_idx = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                    prog_col_idx = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                    box_col_idx = header_main.index("Jumlah Box") + 1 if "Jumlah Box" in header_main else None
+                                    
+                                    if id_col_idx and prog_col_idx:
+                                        for r_i, r_val in enumerate(data_main, start=2):
+                                            curr_row_id = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                            if curr_row_id in matched_ids:
+                                                max_b = int(float(r_val.get("Jumlah Box", 1))) if r_val.get("Jumlah Box") not in [None, "", "nan"] else 1
+                                                ws_main.update_cell(r_i, prog_col_idx, max_b)
+                                except Exception:
+                                    pass
 
                                 st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)})!")
                                 st.session_state[f"sound_effect_{wilayah}"] = "success"
@@ -725,40 +742,65 @@ else:
                         
                         st.info(f"**Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Total Box:** {row_info.get('Total Box')} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
                         
-                        # --- FITUR SCAN ID SUSUNAN (MASUK) & SCAN ID KELUAR ---
+                        # --- FITUR SCAN ID SUSULAN (MASUK) & SCAN ID KELUAR ---
                         col_scan_in, col_scan_out = st.columns(2)
                         
                         with col_scan_in:
                             with st.form(key=f"form_scan_susulan_{active_mnf}", clear_on_submit=True):
                                 st.markdown("##### ➕ Scan ID Masuk / Susulan")
                                 scan_input_id = st.text_input("Scan/Ketik ID Request Baru:", placeholder="Tempel/Scan ID...")
-                                box_susulan = st.number_input("Jumlah Box Susulan:", min_value=1, value=1, step=1)
                                 btn_submit_susulan = st.form_submit_button("Tambah ke Manifest")
                                 
                                 if btn_submit_susulan:
-                                    clean_new_id = scan_input_id.strip()
+                                    clean_new_id = scan_input_id.strip().split('.')[0]
                                     if not clean_new_id:
                                         st.warning("⚠️ Masukkan ID yang valid.")
                                     elif clean_new_id in all_manifested_ids:
                                         st.error(f"❌ ID `{clean_new_id}` sudah terdaftar di manifest lain!")
                                     elif clean_new_id in ids_in_manifest:
-                                        st.warning(f"⚠️ ID `{clean_new_id}` sudah ada di manifest ini.")
+                                        st.warning(f"⚠️️ ID `{clean_new_id}` sudah ada di manifest ini.")
                                     else:
                                         try:
-                                            # Update Google Sheets untuk Manifest log
                                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                                             gc = gspread.service_account_from_dict(creds_dict)
                                             sh = gc.open_by_url(st.secrets["connections"]["gsheets"].get("spreadsheet"))
+                                            
+                                            # Cek jumlah box dari database utama untuk ID tersebut
+                                            ws_main = sh.worksheet(wilayah)
+                                            data_main = ws_main.get_all_records()
+                                            header_main = ws_main.row_values(1)
+                                            
+                                            id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                            box_col_i = header_main.index("Jumlah Box") + 1 if "Jumlah Box" in header_main else None
+                                            
+                                            added_box = 1
+                                            found_in_db = False
+                                            
+                                            if id_col_i:
+                                                for r_idx, r_val in enumerate(data_main, start=2):
+                                                    r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                                    if r_id_str == clean_new_id:
+                                                        found_in_db = True
+                                                        max_box_val = int(float(r_val.get("Jumlah Box", 1))) if r_val.get("Jumlah Box") not in [None, "", "nan"] else 1
+                                                        added_box = max_box_val
+                                                        # Update progress utama jadi lengkap
+                                                        if prog_col_i:
+                                                            ws_main.update_cell(r_idx, prog_col_i, max_box_val)
+                                                        break
+
                                             ws_m = sh.worksheet("Manifest log")
                                             
-                                            # Cari nomor baris manifest ini di spreadsheet
-                                            cell_mnf = ws_m.find(active_mnf)
-                                            if cell_mnf:
-                                                row_idx = cell_mnf.row
-                                                # Ambil data terbaru dari spreadsheet untuk baris ini
+                                            # Cari baris manifest dengan akurat berdasarkan kolom pertama (Nomor Manifest)
+                                            manifest_col_values = ws_m.col_values(1)
+                                            row_idx = None
+                                            for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                                if str(val_m).strip() == str(active_mnf):
+                                                    row_idx = idx_m
+                                                    break
+                                            
+                                            if row_idx:
                                                 row_values = ws_m.row_values(row_idx)
-                                                
-                                                # Update ID List & Total Box
                                                 ids_in_manifest.append(clean_new_id)
                                                 new_id_list_str = ", ".join(ids_in_manifest)
                                                 
@@ -766,14 +808,15 @@ else:
                                                     current_total_box = int(float(row_values[4])) if len(row_values) > 4 and row_values[4] != '' else 0
                                                 except:
                                                     current_total_box = 0
-                                                new_total_box = current_total_box + int(box_susulan)
+                                                new_total_box = current_total_box + added_box
                                                 
-                                                # Update kolom ID List (indeks kol ke-4 / D) dan Total Box (indeks kol ke-5 / E)
                                                 ws_m.update_cell(row_idx, 4, new_id_list_str)
                                                 ws_m.update_cell(row_idx, 5, new_total_box)
                                                 
-                                                st.success(f"✅ Berhasil menambahkan ID `{clean_new_id}` ke manifest `{active_mnf}`!")
+                                                st.success(f"✅ Berhasil menambahkan ID `{clean_new_id}` (Box: {added_box}) ke manifest!")
                                                 st.rerun()
+                                            else:
+                                                st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
                                         except Exception as e:
                                             st.error(f"❌ Gagal menambahkan ID susulan: {e}")
 
@@ -781,11 +824,10 @@ else:
                             with st.form(key=f"form_scan_keluar_{active_mnf}", clear_on_submit=True):
                                 st.markdown("##### ➖ Scan ID Keluar (Keluarkan dari Manifest)")
                                 scan_out_id = st.text_input("Scan/Ketik ID yang akan dikeluarkan:", placeholder="ID yang ingin dihapus...")
-                                box_keluar_val = st.number_input("Pengurangan Box:", min_value=1, value=1, step=1)
                                 btn_submit_keluar = st.form_submit_button("Keluarkan dari Manifest", type="secondary")
                                 
                                 if btn_submit_keluar:
-                                    clean_out_id = scan_out_id.strip()
+                                    clean_out_id = scan_out_id.strip().split('.')[0]
                                     if clean_out_id not in ids_in_manifest:
                                         st.error(f"❌ ID `{clean_out_id}` tidak ditemukan dalam manifest ini!")
                                     else:
@@ -793,13 +835,32 @@ else:
                                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                                             gc = gspread.service_account_from_dict(creds_dict)
                                             sh = gc.open_by_url(st.secrets["connections"]["gsheets"].get("spreadsheet"))
-                                            ws_m = sh.worksheet("Manifest log")
                                             
-                                            cell_mnf = ws_m.find(active_mnf)
-                                            if cell_mnf:
-                                                row_idx = cell_mnf.row
+                                            # Ambil jumlah box ID tersebut untuk dikurangkan dari total manifest
+                                            ws_main = sh.worksheet(wilayah)
+                                            data_main = ws_main.get_all_records()
+                                            header_main = ws_main.row_values(1)
+                                            
+                                            id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                            
+                                            removed_box = 1
+                                            if id_col_i:
+                                                for r_val in data_main:
+                                                    r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                                    if r_id_str == clean_out_id:
+                                                        removed_box = int(float(r_val.get("Jumlah Box", 1))) if r_val.get("Jumlah Box") not in [None, "", "nan"] else 1
+                                                        break
+
+                                            ws_m = sh.worksheet("Manifest log")
+                                            manifest_col_values = ws_m.col_values(1)
+                                            row_idx = None
+                                            for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                                if str(val_m).strip() == str(active_mnf):
+                                                    row_idx = idx_m
+                                                    break
+                                            
+                                            if row_idx:
                                                 row_values = ws_m.row_values(row_idx)
-                                                
                                                 ids_in_manifest.remove(clean_out_id)
                                                 new_id_list_str = ", ".join(ids_in_manifest)
                                                 
@@ -807,13 +868,15 @@ else:
                                                     current_total_box = int(float(row_values[4])) if len(row_values) > 4 and row_values[4] != '' else 0
                                                 except:
                                                     current_total_box = 0
-                                                new_total_box = max(0, current_total_box - int(box_keluar_val))
+                                                new_total_box = max(0, current_total_box - removed_box)
                                                 
                                                 ws_m.update_cell(row_idx, 4, new_id_list_str)
                                                 ws_m.update_cell(row_idx, 5, new_total_box)
                                                 
                                                 st.success(f"✅ Berhasil mengeluarkan ID `{clean_out_id}` dari manifest!")
                                                 st.rerun()
+                                            else:
+                                                st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
                                         except Exception as e:
                                             st.error(f"❌ Gagal mengeluarkan ID: {e}")
 
@@ -832,8 +895,7 @@ else:
                                         df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
                                     st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
                                 else:
-                                    # Jika ID manual/susulan belum ada di database utama, buatkan baris informasi darurat agar tetap tampil
-                                    st.info("ℹ️ Beberapa ID dalam manifest ini adalah ID susulan manual. Daftar ID yang terdaftar dalam manifest:")
+                                    st.info("ℹ️ ID yang terdaftar dalam manifest ini:")
                                     st.write(ids_in_manifest)
                         
                         if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
