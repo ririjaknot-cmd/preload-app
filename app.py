@@ -654,15 +654,26 @@ else:
             st.markdown("---")
             st.markdown(f"##### 📋 Daftar Manifest Cabang: {wilayah}")
 
-            # Memuat ulang data manifest menggunakan conn.read dengan ttl=0 agar data langsung tampil di web
             df_manifest_wilayah = pd.DataFrame()
             try:
+                # Coba baca sheet Manifest log
                 df_manifest_all = conn.read(worksheet="Manifest log", ttl=0)
                 
-                if not df_manifest_all.empty and "Tujuan Pengiriman" in df_manifest_all.columns:
-                    df_manifest_wilayah = df_manifest_all[df_manifest_all["Tujuan Pengiriman"].astype(str).str.lower() == wilayah.lower()].copy()
+                if df_manifest_all is not None and not df_manifest_all.empty:
+                    # Normalisasi nama kolom (mengubah ke string biasa)
+                    df_manifest_all.columns = [str(c).strip() for c in df_manifest_all.columns]
+                    
+                    if "Tujuan Pengiriman" in df_manifest_all.columns:
+                        # Filter sesuai wilayah aktif
+                        df_manifest_wilayah = df_manifest_all[
+                            df_manifest_all["Tujuan Pengiriman"].astype(str).str.strip().str.lower() == wilayah.strip().lower()
+                        ].copy()
+                    else:
+                        st.warning("⚠️️ Kolom 'Tujuan Pengiriman' tidak ditemukan di worksheet 'Manifest log'.")
+                else:
+                    st.info("ℹ️ Worksheet 'Manifest log' di Google Sheets masih kosong.")
             except Exception as e:
-                st.warning(f"⚠️ Belum dapat memuat data manifest (Pastikan worksheet 'Manifest log' sudah ada): {e}")
+                st.error(f"❌ Gagal membaca worksheet 'Manifest log'. Pastikan tab sheet tersebut sudah dibuat di Google Spreadsheet: {e}")
 
             if not df_manifest_wilayah.empty:
                 st.dataframe(df_manifest_wilayah, use_container_width=True, hide_index=True)
@@ -674,4 +685,4 @@ else:
                 if st.button("🔍 Detail / Edit Manifest Ini", key=f"btn_edit_mnf_{wilayah}"):
                     st.info(f"Fitur edit untuk manifest **{selected_mnf_to_edit}** siap dikonfigurasi.")
             else:
-                st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
+                st.info(f"Belum ada data Manifest yang terdata untuk cabang {wilayah}.")
