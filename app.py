@@ -622,8 +622,6 @@ else:
                                     
                                     if r_id and r_id not in all_manifested_ids and r_id not in matched_ids:
                                         matched_ids.append(r_id)
-                                        
-                                        # Hitung jumlah box dari data utama
                                         try:
                                             b_val = row.get("Jumlah Box", 1)
                                             max_box = int(float(b_val)) if b_val not in [None, "", "None", "nan"] else 1
@@ -646,7 +644,7 @@ else:
                                     ws_manifest = sh.worksheet("Manifest log")
                                 except gspread.exceptions.WorksheetNotFound:
                                     ws_manifest = sh.add_worksheet(title="Manifest log", rows=100, cols=10)
-                                    ws_manifest.append_row(["Nomor Manifest", "Tujuan Pengiriman", "Zona Mezzanine", "ID List", "Total Box", "Dibuat Oleh", "Waktu Buat", "Status Manifest"])
+                                    ws_manifest.append_row(["Nomor Manifest", "Tujuan Pengiriman", "Zona Mezzanine", "ID List", "Jumlah Box", "Dibuat Oleh", "Waktu Buat", "Status Manifest"])
 
                                 dibuat_oleh = str(st.session_state.user_nama)
                                 waktu_buat = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -664,21 +662,22 @@ else:
                                     status_manifest
                                 ])
 
-                                # Update juga progress di sheet utama (preload) jika ada yang belum lengkap
+                                # Update progress di sheet database log / preload
                                 try:
-                                    ws_main = sh.worksheet(wilayah)
-                                    data_main = ws_main.get_all_records()
+                                    ws_main = sh.worksheet("Database log")
+                                    records_main = ws_main.get_all_records()
                                     header_main = ws_main.row_values(1)
                                     
-                                    id_col_idx = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
-                                    prog_col_idx = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                    id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                    prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                    box_col_i = header_main.index("Jumlah Box") + 1 if "Jumlah Box" in header_main else None
                                     
-                                    if id_col_idx and prog_col_idx:
-                                        for r_i, r_val in enumerate(data_main, start=2):
+                                    if id_col_i and prog_col_i:
+                                        for r_i, r_val in enumerate(records_main, start=2):
                                             curr_row_id = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                             if curr_row_id in matched_ids:
                                                 max_b = int(float(r_val.get("Jumlah Box", 1))) if r_val.get("Jumlah Box") not in [None, "", "nan"] else 1
-                                                ws_main.update_cell(r_i, prog_col_idx, max_b)
+                                                ws_main.update_cell(r_i, prog_col_i, max_b)
                                 except Exception:
                                     pass
 
@@ -708,7 +707,7 @@ else:
                 for index, row_mnf in df_manifest_wilayah.iterrows():
                     m_no = str(row_mnf.get("Nomor Manifest", ""))
                     m_zona = str(row_mnf.get("Zona Mezzanine", ""))
-                    m_tbox = str(row_mnf.get("Total Box", "0"))
+                    m_tbox = str(row_mnf.get("Jumlah Box", "0"))
                     m_oleh = str(row_mnf.get("Dibuat Oleh", ""))
                     m_waktu = str(row_mnf.get("Waktu Buat", ""))
                     m_status = str(row_mnf.get("Status Manifest", "Manifested"))
@@ -716,7 +715,7 @@ else:
                     c_info, c_btn = st.columns([5, 1])
                     with c_info:
                         st.markdown(
-                            f"**No. Manifest:** `{m_no}` | **Zona:** {m_zona} | **Total Box:** `{m_tbox}` | "
+                            f"**No. Manifest:** `{m_no}` | **Zona:** {m_zona} | **Jumlah Box:** `{m_tbox}` | "
                             f"**Status:** `{m_status}` | **Oleh:** {m_oleh} ({m_waktu})"
                         )
                     with c_btn:
@@ -726,10 +725,9 @@ else:
 
                     st.markdown("---")
 
-                # Detail Manifest Aktif (Hanya muncul jika tombol detail salah satu manifest diklik)
+                # Detail Manifest Aktif (Hanya muncul jika tombol detail diklik)
                 active_mnf = st.session_state.get(f"active_detail_manifest_{wilayah}")
                 if active_mnf:
-                    # Pastikan manifest yang dipilih benar-benar ada di dataframe wilayah ini
                     selected_row_data = df_manifest_wilayah[df_manifest_wilayah["Nomor Manifest"].astype(str) == str(active_mnf)]
                     
                     if not selected_row_data.empty:
@@ -740,9 +738,9 @@ else:
                         current_id_list_str = str(row_info.get("ID List", ""))
                         ids_in_manifest = [i.strip() for i in current_id_list_str.split(",") if i.strip()]
                         
-                        st.info(f"**Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Total Box:** {row_info.get('Total Box')} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
+                        st.info(f"**Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Jumlah Box:** {row_info.get('Jumlah Box')} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
                         
-                        # --- FITUR SCAN ID SUSULAN (MASUK) & SCAN ID KELUAR ---
+                        # --- FORM SCAN ID SUSULAN (MASUK) & SCAN ID KELUAR ---
                         col_scan_in, col_scan_out = st.columns(2)
                         
                         with col_scan_in:
@@ -763,10 +761,12 @@ else:
                                         try:
                                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                                             gc = gspread.service_account_from_dict(creds_dict)
-                                            sh = gc.open_by_url(st.secrets["connections"]["gsheets"].get("spreadsheet"))
+                                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                             
-                                            ws_main = sh.worksheet(wilayah)
-                                            data_main = ws_main.get_all_records()
+                                            # Cek database log / preload untuk ambil jumlah box dan update progress
+                                            ws_main = sh.worksheet("Database log")
+                                            records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
                                             
                                             id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
@@ -774,7 +774,7 @@ else:
                                             
                                             added_box = 1
                                             if id_col_i:
-                                                for r_idx, r_val in enumerate(data_main, start=2):
+                                                for r_idx, r_val in enumerate(records_main, start=2):
                                                     r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                                     if r_id_str == clean_new_id:
                                                         max_box_val = int(float(r_val.get("Jumlah Box", 1))) if r_val.get("Jumlah Box") not in [None, "", "nan"] else 1
@@ -783,15 +783,15 @@ else:
                                                             ws_main.update_cell(r_idx, prog_col_i, max_box_val)
                                                         break
 
+                                            # Update Manifest log
                                             ws_m = sh.worksheet("Manifest log")
                                             header_m = ws_m.row_values(1)
                                             
-                                            # Ambil indeks kolom secara dinamis berdasarkan nama header
-                                            mnf_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                            mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
                                             idlist_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
-                                            tbox_idx = header_m.index("Total Box") + 1 if "Total Box" in header_m else 5
+                                            tbox_idx = header_m.index("Jumlah Box") + 1 if "Jumlah Box" in header_m else 5
                                             
-                                            manifest_col_values = ws_m.col_values(mnf_idx)
+                                            manifest_col_values = ws_m.col_values(mnf_col_idx)
                                             row_idx = None
                                             for idx_m, val_m in enumerate(manifest_col_values, start=1):
                                                 if str(val_m).strip() == str(active_mnf):
@@ -833,30 +833,37 @@ else:
                                         try:
                                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                                             gc = gspread.service_account_from_dict(creds_dict)
-                                            sh = gc.open_by_url(st.secrets["connections"]["gsheets"].get("spreadsheet"))
+                                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                             
-                                            ws_main = sh.worksheet(wilayah)
-                                            data_main = ws_main.get_all_records()
+                                            # Ambil jumlah box ID tersebut dan kembalikan progress di Database log menjadi 0 (atau dikurangi)
+                                            ws_main = sh.worksheet("Database log")
+                                            records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
                                             
                                             id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
                                             
                                             removed_box = 1
                                             if id_col_i:
-                                                for r_val in data_main:
+                                                for r_idx, r_val in enumerate(records_main, start=2):
                                                     r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                                     if r_id_str == clean_out_id:
                                                         removed_box = int(float(r_val.get("Jumlah Box", 1))) if r_val.get("Jumlah Box") not in [None, "", "nan"] else 1
+                                                        # Reset progress di database log menjadi 0 atau dikurangi
+                                                        if prog_col_i:
+                                                            ws_main.update_cell(r_idx, prog_col_i, 0)
                                                         break
 
+                                            # Update Manifest log
                                             ws_m = sh.worksheet("Manifest log")
                                             header_m = ws_m.row_values(1)
                                             
-                                            mnf_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                            mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
                                             idlist_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
-                                            tbox_idx = header_m.index("Total Box") + 1 if "Total Box" in header_m else 5
+                                            tbox_idx = header_m.index("Jumlah Box") + 1 if "Jumlah Box" in header_m else 5
                                             
-                                            manifest_col_values = ws_m.col_values(mnf_idx)
+                                            manifest_col_values = ws_m.col_values(mnf_col_idx)
                                             row_idx = None
                                             for idx_m, val_m in enumerate(manifest_col_values, start=1):
                                                 if str(val_m).strip() == str(active_mnf):
