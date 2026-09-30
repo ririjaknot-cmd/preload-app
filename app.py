@@ -603,7 +603,7 @@ else:
                                     if r_id and r_id not in matched_ids:
                                         matched_ids.append(r_id)
                                         
-                                        # PERBAIKAN: Hitung berdasarkan kolom "Progress" (aktual box yang di-preload), bukan "Jumlah Box" database
+                                        # Hitung berdasarkan kolom "Progress" (aktual box yang sudah di-preload)
                                         try:
                                             prog_val = row.get("Progress")
                                             prog_int = int(float(prog_val)) if prog_val not in [None, "", "None", "nan"] else 0
@@ -642,22 +642,27 @@ else:
                                     dibuat_oleh,
                                     waktu_buat,
                                     status_manifest
-@@ -118,17 +118,19 @@
+                                ])
+
+                                st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)})!")
+                                st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                st.rerun()
+
+                        except Exception as e:
                             st.error(f"❌ Gagal membuat manifest: {e}")
 
             st.markdown("---")
             st.markdown(f"##### 📋 Daftar Manifest Cabang: {wilayah}")
 
-            # PERBAIKAN: Memuat ulang data manifest dengan ttl=0 agar selalu mengambil data terbaru dari Google Sheets
+            # Memuat ulang data manifest menggunakan conn.read dengan ttl=0 agar data langsung tampil di web
             df_manifest_wilayah = pd.DataFrame()
             try:
-                # Menggunakan koneksi gsheets bawaan streamit dengan ttl=0 agar tidak ada cache lama
                 df_manifest_all = conn.read(worksheet="Manifest log", ttl=0)
                 
                 if not df_manifest_all.empty and "Tujuan Pengiriman" in df_manifest_all.columns:
                     df_manifest_wilayah = df_manifest_all[df_manifest_all["Tujuan Pengiriman"].astype(str).str.lower() == wilayah.lower()].copy()
             except Exception as e:
-                st.warning(f"⚠️ Belum dapat memuat data manifest (Pastikan worksheet 'Manifest log' sudah ada dan memiliki header kolom yang sesuai): {e}")
+                st.warning(f"⚠️ Belum dapat memuat data manifest (Pastikan worksheet 'Manifest log' sudah ada): {e}")
 
             if not df_manifest_wilayah.empty:
                 st.dataframe(df_manifest_wilayah, use_container_width=True, hide_index=True)
