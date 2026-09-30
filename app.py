@@ -602,8 +602,6 @@ else:
                                     r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                     if r_id and r_id not in matched_ids:
                                         matched_ids.append(r_id)
-                                        
-                                        # Hitung berdasarkan kolom "Progress" (aktual box yang sudah di-preload)
                                         try:
                                             prog_val = row.get("Progress")
                                             prog_int = int(float(prog_val)) if prog_val not in [None, "", "None", "nan"] else 0
@@ -656,33 +654,77 @@ else:
 
             df_manifest_wilayah = pd.DataFrame()
             try:
-                # Coba baca sheet Manifest log
                 df_manifest_all = conn.read(worksheet="Manifest log", ttl=0)
-                
                 if df_manifest_all is not None and not df_manifest_all.empty:
-                    # Normalisasi nama kolom (mengubah ke string biasa)
                     df_manifest_all.columns = [str(c).strip() for c in df_manifest_all.columns]
-                    
                     if "Tujuan Pengiriman" in df_manifest_all.columns:
-                        # Filter sesuai wilayah aktif
                         df_manifest_wilayah = df_manifest_all[
                             df_manifest_all["Tujuan Pengiriman"].astype(str).str.strip().str.lower() == wilayah.strip().lower()
                         ].copy()
-                    else:
-                        st.warning("⚠️️ Kolom 'Tujuan Pengiriman' tidak ditemukan di worksheet 'Manifest log'.")
-                else:
-                    st.info("ℹ️ Worksheet 'Manifest log' di Google Sheets masih kosong.")
             except Exception as e:
-                st.error(f"❌ Gagal membaca worksheet 'Manifest log'. Pastikan tab sheet tersebut sudah dibuat di Google Spreadsheet: {e}")
+                st.warning(f"⚠️ Gagal memuat data manifest: {e}")
 
             if not df_manifest_wilayah.empty:
-                st.dataframe(df_manifest_wilayah, use_container_width=True, hide_index=True)
+                # Menampilkan daftar manifest dengan tombol interaktif per baris
+                for index, row_mnf in df_manifest_wilayah.iterrows():
+                    m_no = str(row_mnf.get("Nomor Manifest", ""))
+                    m_zona = str(row_mnf.get("Zona Mezzanine", ""))
+                    m_tbox = str(row_mnf.get("Total Box", ""))
+                    m_oleh = str(row_mnf.get("Dibuat Oleh", ""))
+                    m_waktu = str(row_mnf.get("Waktu Buat", ""))
+                    m_status = str(row_mnf.get("Status Manifest", "Manifested"))
+                    m_idlist = str(row_mnf.get("ID List", ""))
 
-                st.markdown("🛠 **Edit / Kelola Manifest**")
-                manifest_list_options = df_manifest_wilayah["Nomor Manifest"].tolist()
-                selected_mnf_to_edit = st.selectbox("Pilih Nomor Manifest untuk dikelola:", options=manifest_list_options, key=f"select_mnf_{wilayah}")
+                    # Layout baris menggunakan kolom agar tombol berada di ujung kanan
+                    c_info, c_btn = st.columns([5, 1])
+                    with c_info:
+                        st.markdown(
+                            f"**No. Manifest:** `{m_no}` | **Zona:** {m_zona} | **Total Box:** {m_tbox} | "
+                            f"**Status:** `{m_status}` | **Oleh:** {m_oleh} ({m_waktu})"
+                        )
+                    with c_btn:
+                        btn_key = f"detail_mnf_{wilayah}_{m_no}_{index}"
+                        if st.button("🔍 Detail", key=btn_key, use_container_width=True):
+                            st.session_state[f"active_detail_manifest_{wilayah}"] = m_no
 
-                if st.button("🔍 Detail / Edit Manifest Ini", key=f"btn_edit_mnf_{wilayah}"):
-                    st.info(f"Fitur edit untuk manifest **{selected_mnf_to_edit}** siap dikonfigurasi.")
+                    st.markdown("---")
+
+                # Jika ada manifest yang dipilih untuk dilihat detailnya
+                active_mnf = st.session_state.get(f"active_detail_manifest_{wilayah}")
+                if active_mnf:
+                    st.markdown(f"### 🔍 Detail Manifest: `{active_mnf}`")
+                    
+                    # Ambil baris data manifest yang dipilih
+                    selected_row_data = df_manifest_wilayah[df_manifest_wilayah["Nomor Manifest"].astype(str) == str(active_mnf)]
+                    
+                    if not selected_row_data.empty:
+                        row_info = selected_row_data.iloc[0]
+                        ids_in_manifest = [i.strip() for i in str(row_info.get("ID List", "")).split(",") if i.strip()]
+                        
+                        st.info(f"**Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Total Box:** {row_info.get('Total Box')} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
+                        
+                        # Filter dataframe utama (`df_filtered`) untuk mencocokkan ID yang ada di manifest ini
+                        if not df_filtered.empty:
+                            # Cari kolom ID yang valid di dataframe utama
+                            col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
+                            
+                            if col_id_name:
+                                # Bersihkan dan cocokkan ID
+                                df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
+                                df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
+                                
+                                if not df_detail_manifest.empty:
+                                    st.markdown("##### Rincian Item / ID Request dalam Manifest Ini:")
+                                    # Hapus kolom helper sementara jika ada
+                                    if "clean_id" in df_detail_manifest.columns:
+                                        df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
+                                        
+                                    st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
+                                else:
+                                    st.warning("⚠️ Data detail ID tidak ditemukan pada log database saat ini.")
+                        
+                        if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
+                            st.session_state[f"active_detail_manifest_{wilayah}"] = None
+                            st.rerun()
             else:
-                st.info(f"Belum ada data Manifest yang terdata untuk cabang {wilayah}.")
+                st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
