@@ -563,10 +563,29 @@ else:
             st.subheader(f"📦 Manajemen Manifest Pengiriman - {wilayah}")
             st.markdown("Kelola surat jalan / manifest pengiriman berdasarkan Zona Mezzanine.")
 
+            # Kumpulkan semua ID yang sudah pernah masuk ke manifest manapun untuk cabang ini (agar tidak bisa dobel)
+            all_manifested_ids = set()
+            df_manifest_all_cache = pd.DataFrame()
+            try:
+                df_manifest_all_cache = conn.read(worksheet="Manifest log", ttl=0)
+                if df_manifest_all_cache is not None and not df_manifest_all_cache.empty:
+                    df_manifest_all_cache.columns = [str(c).strip() for c in df_manifest_all_cache.columns]
+                    if "Tujuan Pengiriman" in df_manifest_all_cache.columns:
+                        df_wilayah_mnf = df_manifest_all_cache[
+                            df_manifest_all_cache["Tujuan Pengiriman"].astype(str).str.strip().str.lower() == wilayah.strip().lower()
+                        ]
+                        for id_str_val in df_wilayah_mnf["ID List"].dropna():
+                            for single_id in str(id_str_val).split(","):
+                                cl_id = single_id.strip()
+                                if cl_id:
+                                    all_manifested_ids.add(cl_id)
+            except Exception:
+                pass
+
             # Tombol untuk memunculkan form Buat Manifest Baru Berdasarkan Zona Mezzanine
             with st.expander("➕ Buat Manifest Berdasarkan Zona Mezzanine", expanded=False):
                 with st.form(key=f"form_buat_manifest_zona_{wilayah}", clear_on_submit=True):
-                    st.markdown("Pilih satu atau beberapa **Zona Mezzanine** yang ingin dimanifestkan.")
+                    st.markdown("Pilih satu atau beberapa **Zona Mezzanine** yang ingin dimanifestkan (ID yang sudah masuk manifest lain akan dilewati).")
                     
                     list_zona_tersedia = []
                     if not df_filtered.empty and "Zona Mezzanine" in df_filtered.columns:
@@ -600,17 +619,23 @@ else:
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
                                 if any(z.lower() in row_zona.lower() for z in selected_zones_manifest):
                                     r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
-                                    if r_id and r_id not in matched_ids:
+                                    
+                                    # Validasi: Jika ID belum pernah masuk manifest manapun
+                                    if r_id and r_id not in all_manifested_ids and r_id not in matched_ids:
                                         matched_ids.append(r_id)
                                         try:
                                             prog_val = row.get("Progress")
                                             prog_int = int(float(prog_val)) if prog_val not in [None, "", "None", "nan"] else 0
+                                            # Jika progress 0 atau kosong saat dimanifestkan, hitung minimal 1 box atau ikuti jumlah box
+                                            if prog_int <= 0:
+                                                box_val = row.get("Jumlah Box", 1)
+                                                prog_int = int(float(box_val)) if box_val not in [None, "", "None", "nan"] else 1
                                             total_box_manifest += prog_int
                                         except (ValueError, TypeError):
-                                            pass
+                                            total_box_manifest += 1
 
                             if not matched_ids:
-                                st.warning("⚠️ Tidak ada ID Request yang ditemukan pada zona mezzanine yang dipilih.")
+                                st.warning("⚠️ Tidak ada ID Request baru yang ditemukan pada zona mezzanine yang dipilih (semua ID mungkin sudah masuk manifest sebelumnya).")
                             else:
                                 now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                                 nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
@@ -665,21 +690,18 @@ else:
                 st.warning(f"⚠️ Gagal memuat data manifest: {e}")
 
             if not df_manifest_wilayah.empty:
-                # Menampilkan daftar manifest dengan tombol interaktif per baris
                 for index, row_mnf in df_manifest_wilayah.iterrows():
                     m_no = str(row_mnf.get("Nomor Manifest", ""))
                     m_zona = str(row_mnf.get("Zona Mezzanine", ""))
-                    m_tbox = str(row_mnf.get("Total Box", ""))
+                    m_tbox = str(row_mnf.get("Total Box", "0"))
                     m_oleh = str(row_mnf.get("Dibuat Oleh", ""))
                     m_waktu = str(row_mnf.get("Waktu Buat", ""))
                     m_status = str(row_mnf.get("Status Manifest", "Manifested"))
-                    m_idlist = str(row_mnf.get("ID List", ""))
 
-                    # Layout baris menggunakan kolom agar tombol berada di ujung kanan
                     c_info, c_btn = st.columns([5, 1])
                     with c_info:
                         st.markdown(
-                            f"**No. Manifest:** `{m_no}` | **Zona:** {m_zona} | **Total Box:** {m_tbox} | "
+                            f"**No. Manifest:** `{m_no}` | **Zona:** {m_zona} | **Total Box:** `{m_tbox}` | "
                             f"**Status:** `{m_status}` | **Oleh:** {m_oleh} ({m_waktu})"
                         )
                     with c_btn:
@@ -689,39 +711,130 @@ else:
 
                     st.markdown("---")
 
-                # Jika ada manifest yang dipilih untuk dilihat detailnya
+                # Detail Manifest Aktif
                 active_mnf = st.session_state.get(f"active_detail_manifest_{wilayah}")
                 if active_mnf:
                     st.markdown(f"### 🔍 Detail Manifest: `{active_mnf}`")
                     
-                    # Ambil baris data manifest yang dipilih
                     selected_row_data = df_manifest_wilayah[df_manifest_wilayah["Nomor Manifest"].astype(str) == str(active_mnf)]
                     
                     if not selected_row_data.empty:
                         row_info = selected_row_data.iloc[0]
-                        ids_in_manifest = [i.strip() for i in str(row_info.get("ID List", "")).split(",") if i.strip()]
+                        current_id_list_str = str(row_info.get("ID List", ""))
+                        ids_in_manifest = [i.strip() for i in current_id_list_str.split(",") if i.strip()]
                         
                         st.info(f"**Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Total Box:** {row_info.get('Total Box')} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
                         
-                        # Filter dataframe utama (`df_filtered`) untuk mencocokkan ID yang ada di manifest ini
+                        # --- FITUR SCAN ID SUSUNAN (MASUK) & SCAN ID KELUAR ---
+                        col_scan_in, col_scan_out = st.columns(2)
+                        
+                        with col_scan_in:
+                            with st.form(key=f"form_scan_susulan_{active_mnf}", clear_on_submit=True):
+                                st.markdown("##### ➕ Scan ID Masuk / Susulan")
+                                scan_input_id = st.text_input("Scan/Ketik ID Request Baru:", placeholder="Tempel/Scan ID...")
+                                box_susulan = st.number_input("Jumlah Box Susulan:", min_value=1, value=1, step=1)
+                                btn_submit_susulan = st.form_submit_button("Tambah ke Manifest")
+                                
+                                if btn_submit_susulan:
+                                    clean_new_id = scan_input_id.strip()
+                                    if not clean_new_id:
+                                        st.warning("⚠️ Masukkan ID yang valid.")
+                                    elif clean_new_id in all_manifested_ids:
+                                        st.error(f"❌ ID `{clean_new_id}` sudah terdaftar di manifest lain!")
+                                    elif clean_new_id in ids_in_manifest:
+                                        st.warning(f"⚠️ ID `{clean_new_id}` sudah ada di manifest ini.")
+                                    else:
+                                        try:
+                                            # Update Google Sheets untuk Manifest log
+                                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                            gc = gspread.service_account_from_dict(creds_dict)
+                                            sh = gc.open_by_url(st.secrets["connections"]["gsheets"].get("spreadsheet"))
+                                            ws_m = sh.worksheet("Manifest log")
+                                            
+                                            # Cari nomor baris manifest ini di spreadsheet
+                                            cell_mnf = ws_m.find(active_mnf)
+                                            if cell_mnf:
+                                                row_idx = cell_mnf.row
+                                                # Ambil data terbaru dari spreadsheet untuk baris ini
+                                                row_values = ws_m.row_values(row_idx)
+                                                
+                                                # Update ID List & Total Box
+                                                ids_in_manifest.append(clean_new_id)
+                                                new_id_list_str = ", ".join(ids_in_manifest)
+                                                
+                                                try:
+                                                    current_total_box = int(float(row_values[4])) if len(row_values) > 4 and row_values[4] != '' else 0
+                                                except:
+                                                    current_total_box = 0
+                                                new_total_box = current_total_box + int(box_susulan)
+                                                
+                                                # Update kolom ID List (indeks kol ke-4 / D) dan Total Box (indeks kol ke-5 / E)
+                                                ws_m.update_cell(row_idx, 4, new_id_list_str)
+                                                ws_m.update_cell(row_idx, 5, new_total_box)
+                                                
+                                                st.success(f"✅ Berhasil menambahkan ID `{clean_new_id}` ke manifest `{active_mnf}`!")
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ Gagal menambahkan ID susulan: {e}")
+
+                        with col_scan_out:
+                            with st.form(key=f"form_scan_keluar_{active_mnf}", clear_on_submit=True):
+                                st.markdown("##### ➖ Scan ID Keluar (Keluarkan dari Manifest)")
+                                scan_out_id = st.text_input("Scan/Ketik ID yang akan dikeluarkan:", placeholder="ID yang ingin dihapus...")
+                                box_keluar_val = st.number_input("Pengurangan Box:", min_value=1, value=1, step=1)
+                                btn_submit_keluar = st.form_submit_button("Keluarkan dari Manifest", type="secondary")
+                                
+                                if btn_submit_keluar:
+                                    clean_out_id = scan_out_id.strip()
+                                    if clean_out_id not in ids_in_manifest:
+                                        st.error(f"❌ ID `{clean_out_id}` tidak ditemukan dalam manifest ini!")
+                                    else:
+                                        try:
+                                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                            gc = gspread.service_account_from_dict(creds_dict)
+                                            sh = gc.open_by_url(st.secrets["connections"]["gsheets"].get("spreadsheet"))
+                                            ws_m = sh.worksheet("Manifest log")
+                                            
+                                            cell_mnf = ws_m.find(active_mnf)
+                                            if cell_mnf:
+                                                row_idx = cell_mnf.row
+                                                row_values = ws_m.row_values(row_idx)
+                                                
+                                                ids_in_manifest.remove(clean_out_id)
+                                                new_id_list_str = ", ".join(ids_in_manifest)
+                                                
+                                                try:
+                                                    current_total_box = int(float(row_values[4])) if len(row_values) > 4 and row_values[4] != '' else 0
+                                                except:
+                                                    current_total_box = 0
+                                                new_total_box = max(0, current_total_box - int(box_keluar_val))
+                                                
+                                                ws_m.update_cell(row_idx, 4, new_id_list_str)
+                                                ws_m.update_cell(row_idx, 5, new_total_box)
+                                                
+                                                st.success(f"✅ Berhasil mengeluarkan ID `{clean_out_id}` dari manifest!")
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ Gagal mengeluarkan ID: {e}")
+
+                        st.markdown("---")
+                        
+                        # Tampilkan rincian item dalam manifest
                         if not df_filtered.empty:
-                            # Cari kolom ID yang valid di dataframe utama
                             col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
-                            
                             if col_id_name:
-                                # Bersihkan dan cocokkan ID
                                 df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
                                 df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
                                 
                                 if not df_detail_manifest.empty:
                                     st.markdown("##### Rincian Item / ID Request dalam Manifest Ini:")
-                                    # Hapus kolom helper sementara jika ada
                                     if "clean_id" in df_detail_manifest.columns:
                                         df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
-                                        
                                     st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
                                 else:
-                                    st.warning("⚠️ Data detail ID tidak ditemukan pada log database saat ini.")
+                                    # Jika ID manual/susulan belum ada di database utama, buatkan baris informasi darurat agar tetap tampil
+                                    st.info("ℹ️ Beberapa ID dalam manifest ini adalah ID susulan manual. Daftar ID yang terdaftar dalam manifest:")
+                                    st.write(ids_in_manifest)
                         
                         if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                             st.session_state[f"active_detail_manifest_{wilayah}"] = None
