@@ -634,10 +634,7 @@ else:
                                     if r_id and r_id not in matched_ids:
                                         # Ambil jumlah box sesuai progress aktual yang diinput di preload
                                         curr_p = id_current_progress.get(r_id, 0)
-                                        max_b = id_max_box.get(r_id, 1)
-                                        
-                                        # Jika progress di preload sudah diisi (misal 1 dari 10), gunakan nilai progress tersebut
-                                        box_to_manifest = curr_p if curr_p > 0 else 1 # Default minimal 1 jika progress 0
+                                        box_to_manifest = curr_p if curr_p > 0 else 1 
                                         
                                         if box_to_manifest > 0:
                                             matched_ids.append(r_id)
@@ -675,7 +672,7 @@ else:
                                     dibuat_oleh,
                                     waktu_buat,
                                     status_manifest
-                                ]))
+                                ])
 
                                 st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)})!")
                                 st.session_state[f"sound_effect_{wilayah}"] = "success"
@@ -761,7 +758,7 @@ else:
                                                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                                 sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                                 
-                                                # 1. Update Progress di Database log (tambahkan box sesuai input manual di manifest)
+                                                # 1. Update Progress di Database log
                                                 ws_main = sh.worksheet("Database log")
                                                 records_main = ws_main.get_all_records()
                                                 header_main = ws_main.row_values(1)
@@ -778,7 +775,7 @@ else:
                                                             ws_main.update_cell(r_idx, prog_col_i, int(new_p))
                                                             break
 
-                                                # 2. Update Manifest log (masukkan ID jika belum ada, dan tambahkan jumlah box)
+                                                # 2. Update Manifest log
                                                 ws_m = sh.worksheet("Manifest log")
                                                 header_m = ws_m.row_values(1)
                                                 
@@ -832,7 +829,7 @@ else:
                                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                             
-                                            # 1. Kurangi progress di Database log berdasarkan progress/box aktual ID tersebut
+                                            # 1. Kurangi progress di Database log
                                             ws_main = sh.worksheet("Database log")
                                             records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
@@ -848,12 +845,11 @@ else:
                                                         old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
                                                         removed_box = old_p
                                                         
-                                                        # Reset progress menjadi 0 atau kurangi sesuai kebutuhan
                                                         if prog_col_i:
                                                             ws_main.update_cell(r_idx, prog_col_i, 0)
                                                         break
 
-                                            # 2. Update Manifest log (hapus ID dari list dan kurangi jumlah box total manifest)
+                                            # 2. Update Manifest log
                                             ws_m = sh.worksheet("Manifest log")
                                             header_m = ws_m.row_values(1)
                                             
@@ -879,7 +875,6 @@ else:
                                                 except:
                                                     current_total_box = 0
                                                 
-                                                # Jika removed_box tidak ditemukan di loop, gunakan estimasi minimal 1
                                                 box_to_sub = removed_box if removed_box > 0 else 1
                                                 new_total_box = max(0, current_total_box - box_to_sub)
                                                 
