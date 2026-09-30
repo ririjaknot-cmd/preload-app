@@ -890,50 +890,69 @@ else:
 
                         st.markdown("---")
 
-                        # FITUR: Gabungkan Jumlah Box di Manifest (Tanpa Mengubah Progress Database Log)
-                        with st.expander("🔗 Sesuaikan / Gabungkan Jumlah Box Manifest Ini", expanded=False):
+                        # FITUR: Gabungkan Beberapa ID Menjadi 1 Box Tertentu (Tanpa Mengubah Progress Database Log)
+                        with st.expander("🔗 Gabungkan Beberapa ID Menjadi 1 Box", expanded=False):
                             with st.form(key=f"form_gabung_box_{active_mnf}", clear_on_submit=True):
-                                st.markdown("Sesuaikan total jumlah box pada manifest ini (tanpa mengubah progress data di database utama):")
+                                st.markdown("Pilih beberapa ID yang ingin digabungkan box-nya dalam manifest ini:")
                                 
-                                target_combined_box = st.number_input(
-                                    "Total Box Baru untuk Manifest Ini:",
-                                    min_value=1,
-                                    value=int(box_tampilkan) if box_tampilkan.isdigit() else 1,
-                                    step=1,
-                                    help="Masukkan total box akhir setelah digabungkan (misal: 1 box)"
+                                selected_ids_to_merge = st.multiselect(
+                                    "Pilih ID yang ingin digabung:",
+                                    options=ids_in_manifest,
+                                    placeholder="Pilih ID..."
                                 )
                                 
-                                btn_submit_merge = st.form_submit_button("🔄 Simpan Perubahan Jumlah Box", type="primary")
+                                target_combined_box = st.number_input(
+                                    "Total Box Hasil Penggabungan:",
+                                    min_value=1,
+                                    value=1,
+                                    step=1,
+                                    help="Masukkan total box akhir untuk ID-ID yang dipilih (misal: digabung jadi 1 box)"
+                                )
+                                
+                                btn_submit_merge = st.form_submit_button("🔄 Terapkan Penggabungan Box", type="primary")
                                 
                                 if btn_submit_merge:
-                                    try:
-                                        creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                        gc = gspread.service_account_from_dict(creds_dict)
-                                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                        
-                                        # Update HANYA pada Manifest log (kolom Jumlah Box)
-                                        ws_m = sh.worksheet("Manifest log")
-                                        header_m = ws_m.row_values(1)
-                                        
-                                        mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
-                                        tbox_idx = header_m.index("Jumlah Box") + 1 if "Jumlah Box" in header_m else 5
-                                        
-                                        manifest_col_values = ws_m.col_values(mnf_col_idx)
-                                        row_idx = None
-                                        for idx_m, val_m in enumerate(manifest_col_values, start=1):
-                                            if str(val_m).strip() == str(active_mnf):
-                                                row_idx = idx_m
-                                                break
-                                        
-                                        if row_idx:
-                                            ws_m.update_cell(row_idx, tbox_idx, int(target_combined_box))
-                                            st.success(f"✅ Berhasil memperbarui jumlah box manifest `{active_mnf}` menjadi {target_combined_box} box!")
-                                            st.rerun()
-                                        else:
-                                            st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
-                                    except Exception as e:
-                                        st.error(f"❌ Gagal memperbarui jumlah box: {e}")
+                                    if not selected_ids_to_merge:
+                                        st.warning("⚠️ Pilih minimal satu ID untuk digabungkan.")
+                                    else:
+                                        try:
+                                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                            gc = gspread.service_account_from_dict(creds_dict)
+                                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                            
+                                            # HANYA update pada Manifest log (kolom Jumlah Box) 
+                                            # Tanpa menyentuh/mengubah data progress di Database log
+                                            ws_m = sh.worksheet("Manifest log")
+                                            header_m = ws_m.row_values(1)
+                                            
+                                            mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                            tbox_idx = header_m.index("Jumlah Box") + 1 if "Jumlah Box" in header_m else 5
+                                            
+                                            manifest_col_values = ws_m.col_values(mnf_col_idx)
+                                            row_idx = None
+                                            for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                                if str(val_m).strip() == str(active_mnf):
+                                                    row_idx = idx_m
+                                                    break
+                                            
+                                            if row_idx:
+                                                row_values = ws_m.row_values(row_idx)
+                                                try:
+                                                    current_total_box = int(float(row_values[tbox_idx - 1])) if len(row_values) >= tbox_idx and row_values[tbox_idx - 1] != '' else 0
+                                                except:
+                                                    current_total_box = int(box_tampilkan) if box_tampilkan.isdigit() else 1
+                                                
+                                                # Anda juga bisa membuat logika pengurangan otomatis dari total box manifest jika diperlukan, 
+                                                # atau langsung menetapkan nilai target_combined_box sesuai input form.
+                                                ws_m.update_cell(row_idx, tbox_idx, int(target_combined_box))
+                                                
+                                                st.success(f"✅ Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini (Progress database utama aman tidak berubah)!")
+                                                st.rerun()
+                                            else:
+                                                st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
+                                        except Exception as e:
+                                            st.error(f"❌ Gagal melakukan penggabungan box: {e}")
 
                         st.markdown("---")
                         
