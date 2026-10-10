@@ -105,7 +105,7 @@ else:
     with col_head1:
         st.markdown("### V2 Pre Load Shipment Cabang ")
     with col_head2:
-        st.text(f"👤 {st.session_state.user_nama}")
+        st.text(f"👽 {st.session_state.user_nama}")
         
         components.html("""
         <div style="font-family: sans-serif; font-size: 13px; color: #FFFFFF; margin-top: -10px;">
@@ -173,7 +173,7 @@ else:
         )
 
     if menu_pilihan == "Summary Status":
-        st.title("📊 Summary Status Cabang")
+        st.title(" Summary Status Cabang")
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
             if "Jumlah Box" in df_database.columns:
