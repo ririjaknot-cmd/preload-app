@@ -76,7 +76,7 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
 
 # --- FUNGSI HALAMAN LOGIN ---
 def tampilkan_halaman_login():
-    st.markdown("<h2 style='text-align: center;'>🔐 Login V2 Pre Load System</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan email terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -103,7 +103,7 @@ else:
     # --- HEADER ---
     col_head1, col_head2 = st.columns([4, 1])
     with col_head1:
-        st.markdown("### V2 Pre Load 2026")
+        st.markdown("### Pre Load")
     with col_head2:
         st.text(f"👤 {st.session_state.user_nama}")
         
@@ -150,7 +150,7 @@ else:
         df_database = pd.DataFrame()
 
     # --- SIDEBAR: NAVIGASI UTAMA ---
-    st.sidebar.markdown("### 🗂️ Menu Navigasi")
+    st.sidebar.markdown("### Internal Menu")
     menu_pilihan = st.sidebar.radio(
         "Pilih Halaman Utama:",
         ["Summary Status", "Operasional Cabang"],
@@ -173,8 +173,7 @@ else:
         )
 
     if menu_pilihan == "Summary Status":
-        st.title("📊 Summary Status Semua Cabang")
-        st.markdown("Berikut adalah daftar seluruh cabang tujuan pengiriman beserta total jumlah box-nya.")
+        st.title("📊 Summary Status Cabang")
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
             if "Jumlah Box" in df_database.columns:
@@ -204,8 +203,8 @@ else:
         ])
 
         with tab_id:
-            st.subheader(f"Data Logistik & Pencarian ID - {wilayah}")
-            keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Ketik ID Request yang ingin dicari...", key="search_id_request")
+            st.subheader(f"Data Preload & Pencarian ID - {wilayah}")
+            keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Masukkan ID Request yang ingin dicari...", key="search_id_request")
             
             df_display = df_filtered.copy()
             
@@ -232,12 +231,11 @@ else:
             if not df_display.empty:
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
             else:
-                st.info("Tidak ada data logistik yang cocok atau tersedia untuk cabang ini.")
+                st.info("Tidak ada data preload yang cocok atau tersedia untuk cabang ini.")
 
         with tab_preload:
-            st.subheader(f"Proses Preload & Scanning - {wilayah}")
-            st.markdown("Gunakan **Scan Satuan** (langsung enter/scan) atau **Input ID & Jumlah Box** untuk memperbarui data ke Kolom Progress Google Sheets.")
-
+            st.subheader(f"Proses Preload & Scan - {wilayah}")
+            
             # Pilihan Metode Input
             metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Input ID & Jumlah Box"], horizontal=True)
 
@@ -282,7 +280,7 @@ else:
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak terdaftar di database.")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         elif row_tujuan.lower() != wilayah.lower():
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan wilayah aktif ({wilayah}).")
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan cabang dipilih ({wilayah}).")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         else:
                             # ATURAN SCAN SATUAN: Selalu bernilai 1 per scan
@@ -337,9 +335,9 @@ else:
             else:
                 form_single_key = f"form_single_box_preload_{wilayah}"
                 with st.form(key=form_single_key, clear_on_submit=True):
-                    input_id_val = st.text_input("Masukkan ID", placeholder="Ketik atau scan 1 ID di sini...")
+                    input_id_val = st.text_input("Masukkan ID", placeholder="Ketik atau scan ID di sini...")
                     jumlah_box_val = st.number_input("Jumlah Box (Progress)", min_value=1, value=1, step=1)
-                    submit_single = st.form_submit_button("🚀 Proses Preload", type="primary")
+                    submit_single = st.form_submit_button("Proses Preload", type="primary")
 
                 if submit_single:
                     target_id = input_id_val.strip()
@@ -378,7 +376,7 @@ else:
                             
                             # Validasi 2: Apakah tujuan pengiriman sesuai wilayah aktif?
                             elif row_tujuan.lower() != wilayah.lower():
-                                st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan wilayah aktif ({wilayah}).")
+                                st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan cabang dipilih ({wilayah}).")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             
                             else:
@@ -447,8 +445,7 @@ else:
             # ==========================================
             # MENU UPDATE ZONA MEZZANINE (COLLAPSED / EXPANDER)
             # ==========================================
-            with st.expander("🏗️ Menu Update Zona Mezzanine (Klik untuk Buka/Tutup)", expanded=False):
-                st.markdown(f"Pilih **beberapa ID Request** sekaligus dan tentukan **Zona Mezzanine**-nya untuk memperbarui data secara bersamaan.")
+            with st.expander("Update Zona Mezzanine", expanded=False):
                 
                 daftar_zona_mezzanine = [
                     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
@@ -469,18 +466,18 @@ else:
 
                     with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
                         selected_ids_mz = st.multiselect(
-                            "Pilih ID Request (Bisa pilih lebih dari satu):",
+                            "Pilih ID Request (Single/Multiple):",
                             options=list_id_tersedia,
                             placeholder="Cari atau pilih beberapa ID..."
                         )
                         
                         selected_zones = st.multiselect(
-                            "Pilih Zona Mezzanine (Bisa pilih lebih dari satu):",
+                            "Pilih Zona Mezzanine (Single/Multiple):",
                             options=daftar_zona_mezzanine,
-                            placeholder="Ketik atau pilih zona (contoh: A1, B2)..."
+                            placeholder="Ketik atau pilih zona..."
                         )
                         
-                        submit_mz = st.form_submit_button("💾 Simpan Zona Mezzanine untuk Semua ID Terpilih", type="primary")
+                        submit_mz = st.form_submit_button("Simpan Zona Mezzanine untuk Semua ID Terpilih", type="primary")
 
                     if submit_mz:
                         if not selected_ids_mz:
@@ -512,7 +509,7 @@ else:
                                         berhasilan_count += 1
                                 
                                 if berhasilan_count > 0:
-                                    st.success(f"✅ Berhasil memperbarui Zona Mezzanine (**{string_zona_hasil}**) untuk **{berhasilan_count} ID Request** sekaligus!")
+                                    st.success(f"✅ Berhasil memperbarui Zona Mezzanine (**{string_zona_hasil}**) untuk **{berhasilan_count} ID Request** ")
                                     st.session_state[f"sound_effect_{wilayah}"] = "success"
                                     st.rerun()
                                 else:
@@ -524,7 +521,7 @@ else:
                     st.info("Belum ada data ID untuk wilayah ini.")
 
             st.markdown("---")
-            st.markdown(f"##### 📋 Data Riwayat Preload Cabang: {wilayah}")
+            st.markdown(f"##### Data Preload Cabang: {wilayah}")
             
             if not df_filtered.empty:
                 df_preload_display = df_filtered.copy()
@@ -557,11 +554,10 @@ else:
                 
                 st.dataframe(df_preload_display, use_container_width=True, hide_index=True)
             else:
-                st.info("Belum ada data logistik untuk ditampilkan pada cabang ini.")
+                st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
         with tab_manifest:
-            st.subheader(f"📦 Manajemen Manifest Pengiriman - {wilayah}")
-            st.markdown("Kelola surat jalan / manifest pengiriman berdasarkan Zona Mezzanine.")
+            st.subheader(f" Manifest Pengiriman - {wilayah}")
 
             # Kumpulkan data mapping manifest dan progress terpakai untuk setiap ID
             id_current_progress = {}
@@ -593,9 +589,8 @@ else:
                 pass
 
             # Tombol untuk memunculkan form Buat Manifest Baru Berdasarkan Zona Mezzanine
-            with st.expander("➕ Buat Manifest Berdasarkan Zona Mezzanine", expanded=False):
+            with st.expander("➕ New Manifest", expanded=False):
                 with st.form(key=f"form_buat_manifest_zona_{wilayah}", clear_on_submit=True):
-                    st.markdown("Pilih satu atau beberapa **Zona Mezzanine** yang ingin dimanifestkan.")
                     
                     list_zona_tersedia = []
                     if not df_filtered.empty and "Zona Mezzanine" in df_filtered.columns:
@@ -610,12 +605,12 @@ else:
                     list_zona_tersedia.sort()
 
                     selected_zones_manifest = st.multiselect(
-                        "Pilih Zona Mezzanine:",
+                        "Zona Mezzanine:",
                         options=list_zona_tersedia,
                         placeholder="Pilih zona (contoh: A1, B2)..."
                     )
                     
-                    submit_manifest = st.form_submit_button("🚀 Generate Manifest dari Zona", type="primary")
+                    submit_manifest = st.form_submit_button("Buat Manifest", type="primary")
 
                 if submit_manifest:
                     if not selected_zones_manifest:
@@ -682,7 +677,7 @@ else:
                             st.error(f"❌ Gagal membuat manifest: {e}")
 
             st.markdown("---")
-            st.markdown(f"##### 📋 Daftar Manifest Cabang: {wilayah}")
+            st.markdown(f"##### Daftar Manifest Cabang: {wilayah}")
 
             df_manifest_wilayah = pd.DataFrame()
             try:
@@ -738,8 +733,8 @@ else:
                         
                         with col_scan_in:
                             with st.form(key=f"form_scan_susulan_{active_mnf}", clear_on_submit=True):
-                                st.markdown("##### ➕ Tambah / Scan ID ke Manifest")
-                                scan_input_id = st.text_input("Scan/Ketik ID Request:", placeholder="Tempel/Scan ID...")
+                                st.markdown("##### ➕ Tambah ID baru ke Manifest")
+                                scan_input_id = st.text_input("ID Request:", placeholder="Scan/Ketik ID...")
                                 added_box_input = st.number_input("Jumlah Box yang Dimasukkan:", min_value=1, value=1, step=1)
                                 btn_submit_susulan = st.form_submit_button("Tambah ke Manifest")
                                 
@@ -750,7 +745,7 @@ else:
                                     else:
                                         max_b = id_max_box.get(clean_new_id, None)
                                         if max_b is None:
-                                            st.error(f"❌ ID `{clean_new_id}` tidak ditemukan dalam data preload.")
+                                            st.error(f"❌ ID `{clean_new_id}` tidak ditemukan pada data preload.")
                                         else:
                                             try:
                                                 creds_dict = dict(st.secrets["connections"]["gsheets"])
@@ -815,7 +810,7 @@ else:
                         with col_scan_out:
                             with st.form(key=f"form_scan_keluar_{active_mnf}", clear_on_submit=True):
                                 st.markdown("##### ➖ Keluarkan ID dari Manifest")
-                                scan_out_id = st.text_input("Scan/Ketik ID yang akan dikeluarkan:", placeholder="ID yang ingin dihapus...")
+                                scan_out_id = st.text_input("ID Request:", placeholder="Scan/Ketik ID...")
                                 removed_box_input = st.number_input("Jumlah Box yang Dikeluarkan:", min_value=1, value=1, step=1)
                                 btn_submit_keluar = st.form_submit_button("Keluarkan dari Manifest", type="secondary")
                                 
@@ -909,7 +904,7 @@ else:
                                     help="Masukkan total box akhir untuk ID-ID yang dipilih (misal: digabung jadi 1 box)"
                                 )
                                 
-                                btn_submit_merge = st.form_submit_button("🔄 Terapkan Penggabungan Box", type="primary")
+                                btn_submit_merge = st.form_submit_button("🔄 Buat ID Gabungan", type="primary")
                                 
                                 if btn_submit_merge:
                                     if not selected_ids_to_merge:
@@ -964,7 +959,7 @@ else:
                                 df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
                                 
                                 if not df_detail_manifest.empty:
-                                    st.markdown("##### Rincian Item / ID Request dalam Manifest Ini:")
+                                    st.markdown("##### List ID Request Manifest :")
                                     
                                     for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
                                         if col_num_check in df_detail_manifest.columns:
@@ -975,7 +970,7 @@ else:
                                         
                                     st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
                                 else:
-                                    st.info("ℹ️ ID yang terdaftar dalam manifest ini:")
+                                    st.info("ℹ️ ID Terdaftar:")
                                     st.write(ids_in_manifest)
                         
                         if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
