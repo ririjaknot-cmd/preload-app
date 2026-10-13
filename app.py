@@ -211,6 +211,25 @@ else:
             
             df_display = df_filtered.copy()
             
+            # Gabungkan juga dengan data asli (df_database) agar ID yang berstatus On Delivery tetap bisa ditemukan di tab ID Request
+            if keyword_cari and not df_database.empty:
+                df_all_branch = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy() if "Tujuan Pengiriman" in df_database.columns else pd.DataFrame()
+                if not df_all_branch.empty:
+                    id_col_candidates = [col for col in df_all_branch.columns if 'id' in col.lower() or 'request' in col.lower()]
+                    if id_col_candidates:
+                        target_col = id_col_candidates[0]
+                        # Cari yang cocok dengan keyword
+                        df_matched = df_all_branch[df_all_branch[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
+                        if not df_matched.empty:
+                            df_display = df_matched
+                            
+                            # Cek status untuk memunculkan notifikasi khusus jika On Delivery
+                            for _, m_row in df_matched.iterrows():
+                                m_id = str(m_row.get(target_col, "")).split('.')[0].strip()
+                                m_status = str(m_row.get("Status", "")).strip().lower()
+                                if m_status == "on delivery":
+                                    st.warning(f"**Status ID {m_id} : On Delivery** (ID sudah dalam proses pengiriman).")
+
             # Terapkan format status dengan ikon warna secara dinamis pada tabel ID Request
             if not df_display.empty:
                 status_formatted_list = []
@@ -219,17 +238,14 @@ else:
                         jb = row.get("Jumlah Box") or 0
                         pr = row.get("Progress")
                         st_formatted = format_status_dengan_ikon(pr, jb)
+                        # Jika status di gsheet sudah On Delivery, tampilkan teks khusus
+                        if str(row.get("Status", "")).strip().lower() == "on delivery":
+                            st_formatted = "On Delivery"
                         status_formatted_list.append(st_formatted)
                     except Exception:
                         status_formatted_list.append("🔴 Pending")
                 
                 df_display["Status"] = status_formatted_list
-
-            if keyword_cari and not df_display.empty:
-                id_col_candidates = [col for col in df_display.columns if 'id' in col.lower() or 'request' in col.lower()]
-                if id_col_candidates:
-                    target_col = id_col_candidates[0]
-                    df_display = df_display[df_display[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
 
             if not df_display.empty:
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
@@ -279,14 +295,19 @@ else:
                                 current_progress_val = row.get("Progress")
                                 break
                         
+                        status_db_val = str(row.get("Status", "")).strip().lower()
+                        
                         if not found_row_index:
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak terdaftar di database.")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         elif row_tujuan.lower() != wilayah.lower():
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan cabang dipilih ({wilayah}).")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
+                        elif status_db_val == "on delivery":
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 **Status ID {scan_input} : On Delivery**. Input ditolak karena barang sudah dikirim.")
+                            st.session_state[f"sound_effect_{wilayah}"] = "error"
                         else:
-                            # ATURAN SCAN SATUAN: Selalu bernilai 1 per scan
+                            # ... (lanjutan logika scan berikutnya)
                             scan_jumlah_box = 1
 
                             # Ambil nilai progress saat ini untuk divalidasi/ditambahkan
@@ -372,6 +393,9 @@ else:
                                     current_progress_val = row.get("Progress")
                                     break
                             
+                            # Ambil status dari baris data
+                            status_db_val = str(row.get("Status", "")).strip().lower()
+
                             # Validasi 1: Apakah ID terdaftar?
                             if not found_row_index:
                                 st.error(f"❌ ID **{target_id}** tidak terdaftar di database.")
@@ -380,6 +404,11 @@ else:
                             # Validasi 2: Apakah tujuan pengiriman sesuai wilayah aktif?
                             elif row_tujuan.lower() != wilayah.lower():
                                 st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan cabang dipilih ({wilayah}).")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                
+                            # Validasi Status On Delivery
+                            elif status_db_val == "on delivery":
+                                st.error(f"🚚 **Status ID {target_id} : On Delivery**. Input ditolak karena barang sudah dalam status pengiriman.")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             
                             else:
