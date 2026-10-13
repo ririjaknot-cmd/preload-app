@@ -40,7 +40,7 @@ if "user_nama" not in st.session_state:
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
-    df = conn.read(worksheet="Database log", ttl=15)
+    df = conn.read(worksheet="Database log", ttl=0)
     return df
 
 # --- FUNGSI FORMAT STATUS DENGAN IKON WARNA ---
