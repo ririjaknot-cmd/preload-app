@@ -703,16 +703,68 @@ else:
                     m_waktu = str(row_mnf.get("Waktu Buat", ""))
                     m_status = str(row_mnf.get("Status Manifest", "Manifested"))
 
-                    c_info, c_btn = st.columns([5, 1])
+                    c_info, c_btn1, c_btn2 = st.columns([4, 1, 1])
                     with c_info:
                         st.markdown(
                             f"**No. Manifest:** `{m_no}` | **Zona:** {m_zona} | **Jumlah Box:** `{m_tbox}` | "
                             f"**Status:** `{m_status}` | **Oleh:** {m_oleh} ({m_waktu})"
                         )
-                    with c_btn:
+                    with c_btn1:
                         btn_key = f"detail_mnf_{wilayah}_{m_no}_{index}"
                         if st.button("🔍 Detail", key=btn_key, use_container_width=True):
                             st.session_state[f"active_detail_manifest_{wilayah}"] = m_no
+                            
+                    with c_btn2:
+                        btn_od_key = f"od_mnf_{wilayah}_{m_no}_{index}"
+                        if m_status.lower() != "on delivery":
+                            if st.button("🚚 On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
+                                try:
+                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                    gc = gspread.service_account_from_dict(creds_dict)
+                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                    
+                                    # 1. Update Status di Manifest log
+                                    ws_m = sh.worksheet("Manifest log")
+                                    header_m = ws_m.row_values(1)
+                                    mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                    status_m_idx = header_m.index("Status Manifest") + 1 if "Status Manifest" in header_m else 8
+                                    idlist_m_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
+                                    
+                                    manifest_col_values = ws_m.col_values(mnf_col_idx)
+                                    row_idx_m = None
+                                    ids_to_update = []
+                                    for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                        if str(val_m).strip() == str(m_no):
+                                            row_idx_m = idx_m
+                                            row_vals_m = ws_m.row_values(idx_m)
+                                            if len(row_vals_m) >= idlist_m_idx:
+                                                ids_to_update = [i.strip().split('.')[0] for i in row_vals_m[idlist_m_idx - 1].split(",") if i.strip()]
+                                            break
+                                            
+                                    if row_idx_m:
+                                        ws_m.update_cell(row_idx_m, status_m_idx, "On Delivery")
+                                        
+                                    # 2. Update Status di Database log (preload) untuk seluruh ID dalam manifest ini menjadi "On Delivery"
+                                    ws_main = sh.worksheet("Database log")
+                                    records_main = ws_main.get_all_records()
+                                    header_main = ws_main.row_values(1)
+                                    
+                                    id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                    status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
+                                    
+                                    if id_col_i and status_col_i and ids_to_update:
+                                        for r_i, r_v in enumerate(records_main, start=2):
+                                            r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
+                                            if r_id_str in ids_to_update:
+                                                ws_main.update_cell(r_i, status_col_i, "On Delivery")
+                                                
+                                    st.success(f"✅ Manifest `{m_no}` dan seluruh ID di dalamnya berhasil diubah menjadi **On Delivery**!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Gagal merubah status On Delivery: {e}")
+                        else:
+                            st.markdown("🚚 *On Delivery*")
 
                     st.markdown("---")
 
