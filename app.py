@@ -191,6 +191,9 @@ else:
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
             df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy()
+            # Sembunyikan ID yang sudah berstatus On Delivery agar tidak tampil di tab Preload
+            if "Status" in df_filtered.columns:
+                df_filtered = df_filtered[df_filtered["Status"].astype(str).str.strip().str.lower() != "on delivery"]
         else:
             df_filtered = pd.DataFrame()
 
