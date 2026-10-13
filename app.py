@@ -717,7 +717,7 @@ else:
                     with c_btn2:
                         btn_od_key = f"od_mnf_{wilayah}_{m_no}_{index}"
                         if m_status.lower() != "on delivery":
-                            if st.button("🚚 On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
+                            if st.button("On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
                                 try:
                                     creds_dict = dict(st.secrets["connections"]["gsheets"])
                                     gc = gspread.service_account_from_dict(creds_dict)
@@ -764,7 +764,7 @@ else:
                                 except Exception as e:
                                     st.error(f"❌ Gagal merubah status On Delivery: {e}")
                         else:
-                            st.markdown("🚚 *On Delivery*")
+                            st.markdown("*On Delivery*")
 
                     st.markdown("---")
 
