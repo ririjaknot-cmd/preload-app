@@ -52,18 +52,10 @@ def load_cached_database():
     df = conn.read(worksheet="Database log", ttl=0)
     return df
 
-# Ganti pemanggilan load_data() lama dengan fungsi baru ini:
 df_database = load_cached_database()
 
 # --- FUNGSI FORMAT STATUS DENGAN IKON WARNA ---
 def format_status_dengan_ikon(progress_val, jumlah_box_db):
-    """
-    Menentukan status dan memberikan ikon/warna:
-    - 🔴 Pending: Belum ada progress / kosong / None / 0
-    - 🟡 Not Completed: Sudah di-preload tapi progress < jumlah_box_db
-    - 🟢 Completed: Sudah di-preload dan progress >= jumlah_box_db
-    """
-    # Cek apakah progress kosong / None / nan / string kosong
     if progress_val is None:
         return "🔴 Pending"
     
@@ -72,13 +64,11 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
         return "🔴 Pending"
     
     try:
-        # Konversi ke float dulu untuk mengantisipasi nilai "1.0", lalu ke integer
         prog_int = int(float(progress_val))
         max_box = int(float(jumlah_box_db))
     except (ValueError, TypeError):
         return "🔴 Pending"
         
-    # Jika progress sudah ada nilainya (angka valid > 0)
     if prog_int <= 0:
         return "🔴 Pending"
     elif prog_int < max_box:
@@ -203,7 +193,6 @@ else:
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
             df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy()
-            # Sembunyikan ID yang sudah berstatus On Delivery agar tidak tampil di tab Preload
             if "Status" in df_filtered.columns:
                 df_filtered = df_filtered[df_filtered["Status"].astype(str).str.strip().str.lower() != "on delivery"]
         else:
@@ -212,7 +201,6 @@ else:
         if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
             df_filtered["Jumlah Box"] = df_filtered["Jumlah Box"].fillna(0).astype(int)
 
-        # Tab diubah fokus utamanya ke Preload menggantikan Picking
         tab_id, tab_preload, tab_manifest = st.tabs([
             "ID Request", "Preload", "Manifest"
         ])
@@ -223,26 +211,22 @@ else:
             
             df_display = df_filtered.copy()
             
-            # Gabungkan juga dengan data asli (df_database) agar ID yang berstatus On Delivery tetap bisa ditemukan di tab ID Request
             if keyword_cari and not df_database.empty:
                 df_all_branch = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy() if "Tujuan Pengiriman" in df_database.columns else pd.DataFrame()
                 if not df_all_branch.empty:
                     id_col_candidates = [col for col in df_all_branch.columns if 'id' in col.lower() or 'request' in col.lower()]
                     if id_col_candidates:
                         target_col = id_col_candidates[0]
-                        # Cari yang cocok dengan keyword
                         df_matched = df_all_branch[df_all_branch[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
                         if not df_matched.empty:
                             df_display = df_matched
                             
-                            # Cek status untuk memunculkan notifikasi khusus jika On Delivery
                             for _, m_row in df_matched.iterrows():
                                 m_id = str(m_row.get(target_col, "")).split('.')[0].strip()
                                 m_status = str(m_row.get("Status", "")).strip().lower()
                                 if m_status == "on delivery":
                                     st.warning(f"**Status ID {m_id} : On Delivery** (ID sudah dalam proses pengiriman).")
 
-            # Terapkan format status dengan ikon warna secara dinamis pada tabel ID Request
             if not df_display.empty:
                 status_formatted_list = []
                 for idx, row in df_display.iterrows():
@@ -250,7 +234,6 @@ else:
                         jb = row.get("Jumlah Box") or 0
                         pr = row.get("Progress")
                         st_formatted = format_status_dengan_ikon(pr, jb)
-                        # Jika status di gsheet sudah On Delivery, tampilkan teks khusus
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
                             st_formatted = "On Delivery"
                         status_formatted_list.append(st_formatted)
@@ -267,7 +250,6 @@ else:
         with tab_preload:
             st.subheader(f"Proses Preload & Scan - {wilayah}")
             
-            # Pilihan Metode Input
             metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Input ID & Jumlah Box"], horizontal=True)
 
             if metode_input == "Scan Satuan":
@@ -275,88 +257,80 @@ else:
                 if input_widget_key not in st.session_state:
                     st.session_state[input_widget_key] = ""
 
-            def proses_scan_preload():
-                scan_input = st.session_state[input_widget_key].strip()
-                if not scan_input:
-                    return
-                
-                try:
-                    # Gunakan df_database yang sudah ada di memori (tanpa read API tambahan)
-                    if df_database.empty:
-                        st.session_state[f"last_msg_{wilayah}"] = ("error", "❌ Database kosong atau belum dimuat.")
-                        st.session_state[f"sound_effect_{wilayah}"] = "error"
+                def proses_scan_preload():
+                    scan_input = st.session_state[input_widget_key].strip()
+                    if not scan_input:
                         return
-
-                    # Cari baris yang ID-nya cocok di dalam DataFrame
-                    id_col = 'ID' if 'ID' in df_database.columns else 'id request'
                     
-                    matched_rows = df_database[df_database[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input]
-                    
-                    if matched_rows.empty:
-                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak terdaftar di database.")
-                        st.session_state[f"sound_effect_{wilayah}"] = "error"
-                    else:
-                        # Ambil baris pertama yang cocok
-                        df_idx = matched_rows.index[0]
-                        found_row_index = int(df_idx) + 2  # Baris sheet = Indeks DataFrame + 2 (Header)
-                        
-                        row_data = matched_rows.iloc[0]
-                        row_tujuan = str(row_data.get("Tujuan Pengiriman", "")).strip()
-                        status_db_val = str(row_data.get("Status", "")).strip().lower()
-                        
-                        try:
-                            max_box_db = int(float(str(row_data.get("Jumlah Box", 0))))
-                        except ValueError:
-                            max_box_db = 0
-                        
-                        current_progress_val = row_data.get("Progress")
-
-                        # Validasi Cabang & Status
-                        if row_tujuan.lower() != wilayah.lower():
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai cabang ({wilayah}).")
+                    try:
+                        if df_database.empty:
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", "❌ Database kosong atau belum dimuat.")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
-                        elif status_db_val == "on delivery":
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 **Status ID {scan_input} : On Delivery**. Input ditolak.")
+                            return
+
+                        id_col = 'ID' if 'ID' in df_database.columns else 'id request'
+                        matched_rows = df_database[df_database[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input]
+                        
+                        if matched_rows.empty:
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak terdaftar di database.")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         else:
+                            df_idx = matched_rows.index[0]
+                            found_row_index = int(df_idx) + 2 
+                            
+                            row_data = matched_rows.iloc[0]
+                            row_tujuan = str(row_data.get("Tujuan Pengiriman", "")).strip()
+                            status_db_val = str(row_data.get("Status", "")).strip().lower()
+                            
                             try:
-                                prog_int = int(float(current_progress_val)) if current_progress_val not in [None, "", "None", "nan"] else 0
-                            except (ValueError, TypeError):
-                                prog_int = 0
+                                max_box_db = int(float(str(row_data.get("Jumlah Box", 0))))
+                            except ValueError:
+                                max_box_db = 0
+                            
+                            current_progress_val = row_data.get("Progress")
 
-                            if prog_int >= max_box_db:
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah mencapai batas maksimal Jumlah Box ({max_box_db}).")
+                            if row_tujuan.lower() != wilayah.lower():
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai cabang ({wilayah}).")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
+                            elif status_db_val == "on delivery":
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 **Status ID {scan_input} : On Delivery**. Input ditolak.")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             else:
-                                progress_baru = prog_int + 1
-                                current_status = "Not Completed" if progress_baru < max_box_db else "Completed"
+                                try:
+                                    prog_int = int(float(current_progress_val)) if current_progress_val not in [None, "", "None", "nan"] else 0
+                                except (ValueError, TypeError):
+                                    prog_int = 0
 
-                                now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-                                current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                                current_loader = str(st.session_state.user_nama)
-                                
-                                # Hubungkan ke Google Sheets HANYA untuk MENULIS (Write) menggunakan Batch Update
-                                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                gc = gspread.service_account_from_dict(creds_dict)
-                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                ws = sh.worksheet("Database log")
-                                
-                                # 1 kali tembak write API (Sangat Cepat & Hemat Kuota)
-                                range_update = f"F{found_row_index}:J{found_row_index}"
-                                values_to_update = [[int(progress_baru), current_loader, current_datetime_str, "", current_status]]
-                                ws.update(range_update, values_to_update)
-                                
-                                # Bersihkan cache agar data di memori sinkron dengan sheet terbaru
-                                st.cache_data.clear()
-                                
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil (+1 Box). Total: **{progress_baru}/{max_box_db}**!")
-                                st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                
-                except Exception as e:
-                    st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
-                    st.session_state[f"sound_effect_{wilayah}"] = "error"
-                
+                                if prog_int >= max_box_db:
+                                    st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah mencapai batas maksimal Jumlah Box ({max_box_db}).")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                else:
+                                    progress_baru = prog_int + 1
+                                    current_status = "Not Completed" if progress_baru < max_box_db else "Completed"
+
+                                    now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+                                    current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                                    current_loader = str(st.session_state.user_nama)
+                                    
+                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                    gc = gspread.service_account_from_dict(creds_dict)
+                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                    ws = sh.worksheet("Database log")
+                                    
+                                    range_update = f"F{found_row_index}:J{found_row_index}"
+                                    values_to_update = [[int(progress_baru), current_loader, current_datetime_str, "", current_status]]
+                                    ws.update(range_update, values_to_update)
+                                    
+                                    st.cache_data.clear()
+                                    
+                                    st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil (+1 Box). Total: **{progress_baru}/{max_box_db}**!")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                    
+                    except Exception as e:
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
+                        st.session_state[f"sound_effect_{wilayah}"] = "error"
+                    
                 st.session_state[input_widget_key] = ""
 
                 st.text_input(
@@ -401,7 +375,6 @@ else:
                                     max_box_db = 0
                                 current_progress_val = row_data.get("Progress")
 
-                                # Validasi Form
                                 if row_tujuan.lower() != wilayah.lower():
                                     st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai cabang ({wilayah}).")
                                     st.session_state[f"sound_effect_{wilayah}"] = "error"
@@ -430,7 +403,6 @@ else:
                                             current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
                                             current_loader = str(st.session_state.user_nama)
                                             
-                                            # Hubungkan ke Google Sheets HANYA untuk menulis (Write)
                                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                                             gc = gspread.service_account_from_dict(creds_dict)
                                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -450,7 +422,6 @@ else:
                                             st.error(f"❌ Terjadi kesalahan sistem: {e}")
                                             st.session_state[f"sound_effect_{wilayah}"] = "error"
 
-            # Notifikasi & suara
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -467,11 +438,7 @@ else:
 
             st.markdown("---")
 
-            # ==========================================
-            # MENU UPDATE ZONA MEZZANINE (COLLAPSED / EXPANDER)
-            # ==========================================
             with st.expander("Update Zona Mezzanine", expanded=False):
-                
                 daftar_zona_mezzanine = [
                     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
                     "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
@@ -551,7 +518,6 @@ else:
             if not df_filtered.empty:
                 df_preload_display = df_filtered.copy()
                 
-                # Format Kolom Status dengan Ikon Warna secara dinamis berdasarkan Progress & Jumlah Box
                 status_formatted_list = []
                 for idx, row in df_preload_display.iterrows():
                     try:
@@ -569,7 +535,6 @@ else:
                     if col in df_preload_display.columns:
                         df_preload_display = df_preload_display.drop(columns=[col])
                 
-                # Mengatur posisi kolom "Zona Mezzanine" agar berada tepat di sebelah "Waktu Preload" pada tabel
                 if "Zona Mezzanine" in df_preload_display.columns and "Waktu Preload" in df_preload_display.columns:
                     cols = list(df_preload_display.columns)
                     cols.remove("Zona Mezzanine")
@@ -584,7 +549,6 @@ else:
         with tab_manifest:
             st.subheader(f" Manifest Pengiriman - {wilayah}")
 
-            # Kumpulkan data mapping manifest dan progress terpakai untuk setiap ID
             id_current_progress = {}
             id_max_box = {}
             
@@ -594,7 +558,6 @@ else:
             except Exception:
                 pass
 
-            # Ambil data max box dan progress aktual dari Database log / preload
             try:
                 if not df_filtered.empty:
                     for _, r_f in df_filtered.iterrows():
@@ -613,7 +576,6 @@ else:
             except Exception:
                 pass
 
-            # Tombol untuk memunculkan form Buat Manifest Baru Berdasarkan Zona Mezzanine
             with st.expander("➕ New Manifest", expanded=False):
                 with st.form(key=f"form_buat_manifest_zona_{wilayah}", clear_on_submit=True):
                     
@@ -652,7 +614,6 @@ else:
                                     r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                     
                                     if r_id and r_id not in matched_ids:
-                                        # Ambil jumlah box sesuai progress aktual yang diinput di preload
                                         curr_p = id_current_progress.get(r_id, 0)
                                         box_to_manifest = curr_p if curr_p > 0 else 1 
                                         
@@ -697,7 +658,6 @@ else:
                                 st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)})!")
                                 st.session_state[f"sound_effect_{wilayah}"] = "success"
                                 st.rerun()
-
                         except Exception as e:
                             st.error(f"❌ Gagal membuat manifest: {e}")
 
@@ -746,7 +706,6 @@ else:
                                     spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                     sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                     
-                                    # 1. Update Status di Manifest log
                                     ws_m = sh.worksheet("Manifest log")
                                     header_m = ws_m.row_values(1)
                                     mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
@@ -763,26 +722,25 @@ else:
                                             if len(row_vals_m) >= idlist_m_idx:
                                                 ids_to_update = [i.strip().split('.')[0] for i in row_vals_m[idlist_m_idx - 1].split(",") if i.strip()]
                                             break
-                                            
+                                        
                                     if row_idx_m:
                                         ws_m.update_cell(row_idx_m, status_m_idx, "On Delivery")
                                         
-                                    # 2. Update Status di Database log (preload) untuk seluruh ID dalam manifest ini menjadi "On Delivery"
-                                    ws_main = sh.worksheet("Database log")
-                                    records_main = ws_main.get_all_records()
-                                    header_main = ws_main.row_values(1)
-                                    
-                                    id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
-                                    status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
-                                    
-                                    if id_col_i and status_col_i and ids_to_update:
-                                        for r_i, r_v in enumerate(records_main, start=2):
-                                            r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
-                                            if r_id_str in ids_to_update:
-                                                ws_main.update_cell(r_i, status_col_i, "On Delivery")
-                                                
-                                    st.success(f"✅ Manifest `{m_no}` dan seluruh ID di dalamnya berhasil diubah menjadi **On Delivery**!")
-                                    st.rerun()
+                                        ws_main = sh.worksheet("Database log")
+                                        records_main = ws_main.get_all_records()
+                                        header_main = ws_main.row_values(1)
+                                        
+                                        id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                        status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
+                                        
+                                        if id_col_i and status_col_i and ids_to_update:
+                                            for r_i, r_v in enumerate(records_main, start=2):
+                                                r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
+                                                if r_id_str in ids_to_update:
+                                                    ws_main.update_cell(r_i, status_col_i, "On Delivery")
+                                        
+                                        st.success(f"✅ Manifest `{m_no}` dan seluruh ID di dalamnya berhasil diubah menjadi **On Delivery**!")
+                                        st.rerun()
                                 except Exception as e:
                                     st.error(f"❌ Gagal merubah status On Delivery: {e}")
                         else:
@@ -790,7 +748,6 @@ else:
 
                     st.markdown("---")
 
-                # Detail Manifest Aktif
                 active_mnf = st.session_state.get(f"active_detail_manifest_{wilayah}")
                 if active_mnf:
                     selected_row_data = df_manifest_wilayah[df_manifest_wilayah["Nomor Manifest"].astype(str) == str(active_mnf)]
@@ -830,7 +787,6 @@ else:
                                                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                                 sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                                 
-                                                # 1. Update Progress di Database log
                                                 ws_main = sh.worksheet("Database log")
                                                 records_main = ws_main.get_all_records()
                                                 header_main = ws_main.row_values(1)
@@ -847,7 +803,6 @@ else:
                                                             ws_main.update_cell(r_idx, prog_col_i, int(new_p))
                                                             break
 
-                                                # 2. Update Manifest log
                                                 ws_m = sh.worksheet("Manifest log")
                                                 header_m = ws_m.row_values(1)
                                                 
@@ -902,7 +857,6 @@ else:
                                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                             
-                                            # 1. Kurangi progress di Database log
                                             ws_main = sh.worksheet("Database log")
                                             records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
@@ -920,7 +874,6 @@ else:
                                                         ws_main.update_cell(r_idx, prog_col_i, int(sisa_progress))
                                                         break
 
-                                            # 2. Update Manifest log
                                             ws_m = sh.worksheet("Manifest log")
                                             header_m = ws_m.row_values(1)
                                             
@@ -961,8 +914,7 @@ else:
                                             st.error(f"❌ Gagal mengeluarkan ID: {e}")
 
                         st.markdown("---")
-
-                        # FITUR: Gabungkan Beberapa ID Menjadi 1 Box Tertentu (Tanpa Mengubah Progress Database Log)
+                        
                         with st.expander("🔗 Gabungkan Beberapa ID Menjadi 1 Box", expanded=False):
                             with st.form(key=f"form_gabung_box_{active_mnf}", clear_on_submit=True):
                                 st.markdown("Pilih beberapa ID yang ingin digabungkan box-nya dalam manifest ini:")
@@ -993,8 +945,6 @@ else:
                                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                             
-                                            # HANYA update pada Manifest log (kolom Jumlah Box) 
-                                            # Tanpa menyentuh/mengubah data progress di Database log
                                             ws_m = sh.worksheet("Manifest log")
                                             header_m = ws_m.row_values(1)
                                             
@@ -1015,11 +965,9 @@ else:
                                                 except:
                                                     current_total_box = int(box_tampilkan) if box_tampilkan.isdigit() else 1
                                                 
-                                                # Anda juga bisa membuat logika pengurangan otomatis dari total box manifest jika diperlukan, 
-                                                # atau langsung menetapkan nilai target_combined_box sesuai input form.
                                                 ws_m.update_cell(row_idx, tbox_idx, int(target_combined_box))
                                                 
-                                                st.success(f"✅ Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini (Progress database utama aman tidak berubah)!")
+                                                st.success(f"✅ Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini!")
                                                 st.rerun()
                                             else:
                                                 st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
@@ -1028,7 +976,6 @@ else:
 
                         st.markdown("---")
                         
-                        # Tampilkan rincian item dalam manifest tanpa desimal
                         if not df_filtered.empty:
                             col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
                             if col_id_name:
