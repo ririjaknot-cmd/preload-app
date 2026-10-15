@@ -415,29 +415,23 @@ else:
                                 st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan cabang dipilih ({wilayah}).")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                                 
-                            # Validasi Status On Delivery
+                            # Validasi 3: Cek status On Delivery
                             elif status_db_val == "on delivery":
                                 st.error(f"🚚 **Status ID {target_id} : On Delivery**. Input ditolak karena barang sudah dalam status pengiriman.")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
-                            
-                            else:
-                                # Konversi progress saat ini ke integer (jika kosong/None dianggap 0)
-                                try:
-                                    prog_lama = int(float(current_progress_val)) if current_progress_val not in [None, "", "None", "nan"] else 0
-                                except (ValueError, TypeError):
-                                    prog_lama = 0
-
-                                # Validasi 3: Cek apakah ID sudah Completed (progress lama sudah mencapai / melewati max_box_db)
-                                if prog_lama >= max_box_db and max_box_db > 0:
-                                    st.error(f"⚠️ ID **{target_id}** sudah berstatus **Completed** (Progress: {prog_lama}/{max_box_db}). Input ditolak karena sudah selesai.")
-                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
                                 
-                                # Validasi 4: Cek apakah total progress (lama + input baru) melebihi batas database
+                            # Validasi 4: Cek apakah ID sudah Completed
+                            elif prog_lama >= max_box_db and max_box_db > 0:
+                                st.error(f"⚠️ ID **{target_id}** sudah berstatus **Completed** (Progress: {prog_lama}/{max_box_db}). Input ditolak karena sudah selesai.")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
+                            
+                            # Validasi 5: Cek apakah total progress melebihi batas database
                             elif (prog_lama + int(jumlah_box_val)) > max_box_db:
                                 sisa_box = max_box_db - prog_lama
                                 st.error(f"❌ Jumlah box yang dimasukkan (**{jumlah_box_val}**) melebihi sisa kuota. Progress saat ini: {prog_lama}/{max_box_db} (Sisa kuota: {sisa_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             
+                            # ELSE: Jika SEMUA validasi di atas lolos, jalankan proses update!
                             else:
                                 # Hitung akumulasi progress baru
                                 progress_baru = prog_lama + int(jumlah_box_val)
