@@ -36,12 +36,24 @@ if "user_email" not in st.session_state:
 if "user_nama" not in st.session_state:
     st.session_state.user_nama = ""
 
-# --- KONEKSI GOOGLE SHEETS ---
+# --- KONEKSI GOOGLE SHEETS & CACHE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def load_data():
+# Tombol Refresh di Sidebar untuk membersihkan cache & sync data
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 Refresh Data (Sync Sheets)", use_container_width=True):
+    st.cache_data.clear()
+    st.success("Cache dibersihkan, memuat data terbaru...")
+    st.rerun()
+
+# Fungsi pembacaan data menggunakan cache agar terhindar dari Rate Limit
+@st.cache_data(ttl=60, show_spinner="Memuat data dari Google Sheets...")
+def load_cached_database():
     df = conn.read(worksheet="Database log", ttl=0)
     return df
+
+# Ganti pemanggilan load_data() lama dengan fungsi baru ini:
+df_database = load_cached_database()
 
 # --- FUNGSI FORMAT STATUS DENGAN IKON WARNA ---
 def format_status_dengan_ikon(progress_val, jumlah_box_db):
@@ -143,7 +155,7 @@ else:
     st.divider()
 
     try:
-        df_database = load_data()
+        df_database = load_chaced_database()
     except Exception as e:
         st.error("❌ Gagal terhubung ke Google Sheets. Detail Error:")
         st.exception(e)
@@ -307,24 +319,18 @@ else:
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 **Status ID {scan_input} : On Delivery**. Input ditolak karena barang sudah dikirim.")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         else:
-                            # ... (lanjutan logika scan berikutnya)
                             scan_jumlah_box = 1
-
-                            # Ambil nilai progress saat ini untuk divalidasi/ditambahkan
                             try:
                                 prog_int = int(float(current_progress_val)) if current_progress_val not in [None, "", "None", "nan"] else 0
                             except (ValueError, TypeError):
                                 prog_int = 0
 
-                            # Validasi apakah jumlah progress sudah mencapai batas maksimum database
                             if prog_int >= max_box_db:
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah mencapai batas maksimal Jumlah Box ({max_box_db}) di database.")
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah mencapai batas maksimal Jumlah Box ({max_box_db}).")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             else:
-                                # Akumulasi progress (tambah 1 setiap kali scan satuan)
                                 progress_baru = prog_int + scan_jumlah_box
                                 
-                                # Tentukan Status otomatis berdasarkan progress baru vs max_box_db
                                 if progress_baru < max_box_db:
                                     current_status = "Not Completed"
                                 else:
@@ -334,14 +340,17 @@ else:
                                 current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
                                 current_loader = str(st.session_state.user_nama)
                                 
-                                # Update ke Google Sheets
-                                ws.update_cell(found_row_index, 6, progress_baru)       # Kolom F: Progress (Akumulasi +1)
-                                ws.update_cell(found_row_index, 7, current_loader)        # Kolom G: Loader
-                                ws.update_cell(found_row_index, 8, current_datetime_str)   # Kolom H: Waktu Preload
-                                ws.update_cell(found_row_index, 10, current_status)       # Kolom J: Status
+                                # --- BATCH UPDATE UNTUK SCAN SATUAN ---
+                                range_update = f"F{found_row_index}:J{found_row_index}"
+                                values_to_update = [[int(progress_baru), current_loader, current_datetime_str, "", current_status]]
                                 
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-scan satuan (+1 Box). Total Progress: **{progress_baru}/{max_box_db}**!")
-                                st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                ws.update(range_update, values_to_update)
+                                
+                                # Bersihkan cache
+                                st.cache_data.clear()
+                                
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil di-scan (+1 Box). Total: **{progress_baru}/{max_box_db}**!")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error" # (sesuaikan jika sukses)
                                 
                     except Exception as e:
                         st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Gagal memperbarui Google Sheets: {e}")
@@ -430,28 +439,32 @@ else:
                                     st.session_state[f"sound_effect_{wilayah}"] = "error"
                                 
                                 else:
-                                    # Hitung akumulasi progress baru
-                                    progress_baru = prog_lama + int(jumlah_box_val)
-                                    
-                                    # Tentukan status otomatis
-                                    if progress_baru < max_box_db:
-                                        current_status = "Not Completed"
-                                    else:
-                                        current_status = "Completed"
+                                # Hitung akumulasi progress baru
+                                progress_baru = prog_lama + int(jumlah_box_val)
+                                
+                                # Tentukan status otomatis
+                                if progress_baru < max_box_db:
+                                    current_status = "Not Completed"
+                                else:
+                                    current_status = "Completed"
 
-                                    now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-                                    current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                                    current_loader = str(st.session_state.user_nama)
-                                    
-                                    # Update ke Google Sheets
-                                    ws.update_cell(found_row_index, 6, progress_baru)       # Kolom F: Progress (Akumulasi)
-                                    ws.update_cell(found_row_index, 7, current_loader)        # Kolom G: Loader
-                                    ws.update_cell(found_row_index, 8, current_datetime_str)   # Kolom H: Waktu Preload
-                                    ws.update_cell(found_row_index, 10, current_status)       # Kolom J: Status
-                                    
-                                    st.success(f"✅ ID **{target_id}** berhasil diperbarui! Progress baru: **{progress_baru}/{max_box_db}** (Status: {current_status})")
-                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                    st.rerun()
+                                now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+                                current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                                current_loader = str(st.session_state.user_nama)
+                                
+                                # --- OPTIMALISASI: BATCH UPDATE (1 KALI TEMBAK API) ---
+                                # Range Kolom F (Progress) sampai J (Status) pada baris terkait
+                                range_update = f"F{found_row_index}:J{found_row_index}"
+                                values_to_update = [[int(progress_baru), current_loader, current_datetime_str, "", current_status]]
+                                
+                                ws.update(range_update, values_to_update)
+                                
+                                # Bersihkan cache agar data terbaru langsung terbaca
+                                st.cache_data.clear()
+                                
+                                st.success(f"✅ ID **{target_id}** berhasil diperbarui dengan cepat! Progress: **{progress_baru}/{max_box_db}**")
+                                st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                st.rerun()
                                     
                         except Exception as e:
                             st.error(f"❌ Terjadi kesalahan sistem: {e}")
