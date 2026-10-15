@@ -433,12 +433,12 @@ else:
                                     st.session_state[f"sound_effect_{wilayah}"] = "error"
                                 
                                 # Validasi 4: Cek apakah total progress (lama + input baru) melebihi batas database
-                                elif (prog_lama + int(jumlah_box_val)) > max_box_db:
-                                    sisa_box = max_box_db - prog_lama
-                                    st.error(f"❌ Jumlah box yang dimasukkan (**{jumlah_box_val}**) melebihi sisa kuota. Progress saat ini: {prog_lama}/{max_box_db} (Sisa kuota: {sisa_box} box).")
-                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
-                                
-                                else:
+                            elif (prog_lama + int(jumlah_box_val)) > max_box_db:
+                                sisa_box = max_box_db - prog_lama
+                                st.error(f"❌ Jumlah box yang dimasukkan (**{jumlah_box_val}**) melebihi sisa kuota. Progress saat ini: {prog_lama}/{max_box_db} (Sisa kuota: {sisa_box} box).")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
+                            
+                            else:
                                 # Hitung akumulasi progress baru
                                 progress_baru = prog_lama + int(jumlah_box_val)
                                 
@@ -453,7 +453,6 @@ else:
                                 current_loader = str(st.session_state.user_nama)
                                 
                                 # --- OPTIMALISASI: BATCH UPDATE (1 KALI TEMBAK API) ---
-                                # Range Kolom F (Progress) sampai J (Status) pada baris terkait
                                 range_update = f"F{found_row_index}:J{found_row_index}"
                                 values_to_update = [[int(progress_baru), current_loader, current_datetime_str, "", current_status]]
                                 
