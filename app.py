@@ -155,7 +155,7 @@ else:
     st.divider()
 
     try:
-        df_database = load_chaced_database()
+        df_database = load_cached_database()
     except Exception as e:
         st.error("❌ Gagal terhubung ke Google Sheets. Detail Error:")
         st.exception(e)
