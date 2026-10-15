@@ -379,91 +379,77 @@ else:
                     if not target_id:
                         st.warning("⚠️ Masukkan ID terlebih dahulu.")
                     else:
-                        try:
-                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                            gc = gspread.service_account_from_dict(creds_dict)
-                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                            ws = sh.worksheet("Database log")
+                        if df_database.empty:
+                            st.error("❌ Database kosong.")
+                        else:
+                            id_col = 'ID' if 'ID' in df_database.columns else 'id request'
+                            matched_rows = df_database[df_database[id_col].astype(str).str.split('.').str[0].str.strip() == target_id]
                             
-                            data_rows = ws.get_all_records()
-                            found_row_index = None
-                            row_tujuan = ""
-                            max_box_db = 0
-                            current_progress_val = None
-
-                            for idx, row in enumerate(data_rows):
-                                row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
-                                if row_id == target_id:
-                                    found_row_index = idx + 2
-                                    row_tujuan = str(row.get("Tujuan Pengiriman") or list(row.values())[1]).strip()
-                                    try:
-                                        max_box_db = int(float(str(row.get("Jumlah Box") or list(row.values())[4]).strip()))
-                                    except ValueError:
-                                        max_box_db = 0
-                                    current_progress_val = row.get("Progress")
-                                    break
-                            
-                            # Ambil status dari baris data
-                            status_db_val = str(row.get("Status", "")).strip().lower()
-
-                            # Validasi 1: Apakah ID terdaftar?
-                            if not found_row_index:
+                            if matched_rows.empty:
                                 st.error(f"❌ ID **{target_id}** tidak terdaftar di database.")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
-                            
-                            # Validasi 2: Apakah tujuan pengiriman sesuai wilayah aktif?
-                            elif row_tujuan.lower() != wilayah.lower():
-                                st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai dengan cabang dipilih ({wilayah}).")
-                                st.session_state[f"sound_effect_{wilayah}"] = "error"
-                                
-                            # Validasi 3: Cek status On Delivery
-                            elif status_db_val == "on delivery":
-                                st.error(f"🚚 **Status ID {target_id} : On Delivery**. Input ditolak karena barang sudah dalam status pengiriman.")
-                                st.session_state[f"sound_effect_{wilayah}"] = "error"
-                                
-                            # Validasi 4: Cek apakah ID sudah Completed
-                            elif prog_lama >= max_box_db and max_box_db > 0:
-                                st.error(f"⚠️ ID **{target_id}** sudah berstatus **Completed** (Progress: {prog_lama}/{max_box_db}). Input ditolak karena sudah selesai.")
-                                st.session_state[f"sound_effect_{wilayah}"] = "error"
-                            
-                            # Validasi 5: Cek apakah total progress melebihi batas database
-                            elif (prog_lama + int(jumlah_box_val)) > max_box_db:
-                                sisa_box = max_box_db - prog_lama
-                                st.error(f"❌ Jumlah box yang dimasukkan (**{jumlah_box_val}**) melebihi sisa kuota. Progress saat ini: {prog_lama}/{max_box_db} (Sisa kuota: {sisa_box} box).")
-                                st.session_state[f"sound_effect_{wilayah}"] = "error"
-                            
-                            # ELSE: Jika SEMUA validasi di atas lolos, jalankan proses update!
                             else:
-                                # Hitung akumulasi progress baru
-                                progress_baru = prog_lama + int(jumlah_box_val)
+                                df_idx = matched_rows.index[0]
+                                found_row_index = int(df_idx) + 2
                                 
-                                # Tentukan status otomatis
-                                if progress_baru < max_box_db:
-                                    current_status = "Not Completed"
-                                else:
-                                    current_status = "Completed"
+                                row_data = matched_rows.iloc[0]
+                                row_tujuan = str(row_data.get("Tujuan Pengiriman", "")).strip()
+                                status_db_val = str(row_data.get("Status", "")).strip().lower()
+                                
+                                try:
+                                    max_box_db = int(float(str(row_data.get("Jumlah Box", 0))))
+                                except ValueError:
+                                    max_box_db = 0
+                                current_progress_val = row_data.get("Progress")
 
-                                now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-                                current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                                current_loader = str(st.session_state.user_nama)
-                                
-                                # --- OPTIMALISASI: BATCH UPDATE (1 KALI TEMBAK API) ---
-                                range_update = f"F{found_row_index}:J{found_row_index}"
-                                values_to_update = [[int(progress_baru), current_loader, current_datetime_str, "", current_status]]
-                                
-                                ws.update(range_update, values_to_update)
-                                
-                                # Bersihkan cache agar data terbaru langsung terbaca
-                                st.cache_data.clear()
-                                
-                                st.success(f"✅ ID **{target_id}** berhasil diperbarui dengan cepat! Progress: **{progress_baru}/{max_box_db}**")
-                                st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                st.rerun()
-                                    
-                        except Exception as e:
-                            st.error(f"❌ Terjadi kesalahan sistem: {e}")
-                            st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                # Validasi Form
+                                if row_tujuan.lower() != wilayah.lower():
+                                    st.error(f"❌ ID **{target_id}** ditolak! Tujuan pengiriman ({row_tujuan}) tidak sesuai cabang ({wilayah}).")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                elif status_db_val == "on delivery":
+                                    st.error(f"🚚 **Status ID {target_id} : On Delivery**. Input ditolak.")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                else:
+                                    try:
+                                        prog_lama = int(float(current_progress_val)) if current_progress_val not in [None, "", "None", "nan"] else 0
+                                    except (ValueError, TypeError):
+                                        prog_lama = 0
+
+                                    if prog_lama >= max_box_db and max_box_db > 0:
+                                        st.error(f"⚠️ ID **{target_id}** sudah berstatus **Completed**.")
+                                        st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                    elif (prog_lama + int(jumlah_box_val)) > max_box_db:
+                                        sisa_box = max_box_db - prog_lama
+                                        st.error(f"❌ Jumlah box melebihi sisa kuota (Sisa: {sisa_box} box).")
+                                        st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                    else:
+                                        try:
+                                            progress_baru = prog_lama + int(jumlah_box_val)
+                                            current_status = "Not Completed" if progress_baru < max_box_db else "Completed"
+
+                                            now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+                                            current_datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                                            current_loader = str(st.session_state.user_nama)
+                                            
+                                            # Hubungkan ke Google Sheets HANYA untuk menulis (Write)
+                                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                            gc = gspread.service_account_from_dict(creds_dict)
+                                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                            ws = sh.worksheet("Database log")
+                                            
+                                            range_update = f"F{found_row_index}:J{found_row_index}"
+                                            values_to_update = [[int(progress_baru), current_loader, current_datetime_str, "", current_status]]
+                                            ws.update(range_update, values_to_update)
+                                            
+                                            st.cache_data.clear()
+                                            
+                                            st.success(f"✅ ID **{target_id}** berhasil diperbarui! Progress: **{progress_baru}/{max_box_db}**")
+                                            st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ Terjadi kesalahan sistem: {e}")
+                                            st.session_state[f"sound_effect_{wilayah}"] = "error"
 
             # Notifikasi & suara
             if f"last_msg_{wilayah}" in st.session_state:
