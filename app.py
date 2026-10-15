@@ -366,7 +366,7 @@ else:
                     on_change=proses_scan_preload
                 )
 
-        else:
+            else:
                 form_single_key = f"form_single_box_preload_{wilayah}"
                 with st.form(key=form_single_key, clear_on_submit=True):
                     input_id_val = st.text_input("Masukkan ID", placeholder="Ketik atau scan ID di sini...")
