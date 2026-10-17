@@ -753,9 +753,9 @@ else:
                                         # Alih-alih clear cache global, cukup update state lokal atau jeda sejenak
                                         st.rerun()
                                 except Exception as e:
-                                st.error(f"❌ Gagal merubah status On Delivery: {e}")
+                                    st.error(f"❌ Gagal merubah status On Delivery: {e}")
                         else:
-                        st.markdown("*On Delivery*")
+                            st.markdown("*On Delivery*")
 
                     st.markdown("---")
 
