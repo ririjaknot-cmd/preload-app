@@ -843,7 +843,7 @@ else:
                                                 row_values = ws_m.row_values(row_idx)
                                                 if sisa_progress == 0:
                                                     if clean_out_id in ids_in_manifest:
-                                                        ids_in_manifest.remove(clean_out_id)
+                                                       ids_in_manifest.remove(clean_out_id)
                                                 
                                                 new_id_list_str = ", ".join(ids_in_manifest)
                                                 
