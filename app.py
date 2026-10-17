@@ -284,22 +284,28 @@ else:
 
             if submit_input:
                 target_id = input_id_val.strip().split('.')[0]
+                # Menggunakan microsecond agar stempel waktu selalu unik di setiap klik enter/submit
+                current_ts = str(datetime.datetime.now().timestamp()) + "_" + str(datetime.datetime.now().microsecond)
+                
                 if not target_id:
-                    st.warning("⚠️ Masukkan atau scan ID terlebih dahulu.")
+                    st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Masukkan atau scan ID terlebih dahulu.")
+                    st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                    st.rerun()
                 else:
                     matched = df_lokal[df_lokal[id_col_name].astype(str).str.split('.').str[0].str.strip() == target_id]
                     
                     if matched.empty:
-                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** tidak terdaftar di database cabang ini.")
-                        st.session_state[f"sound_effect_{wilayah}"] = ("error", str(datetime.datetime.now().timestamp()))
+                        # Pesan error dibuat sedikit dinamis atau unik agar state selalu dianggap baru oleh Streamlit
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** tidak terdaftar di database cabang ini. (Waktu: {datetime.datetime.now().strftime('%H:%M:%S')})")
+                        st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                         st.rerun()
                     else:
                         idx = matched.index[0]
                         row = df_lokal.loc[idx]
                         
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 ID **{target_id}** berstatus On Delivery. Input ditolak.")
-                            st.session_state[f"sound_effect_{wilayah}"] = ("error", str(datetime.datetime.now().timestamp()))
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 ID **{target_id}** berstatus On Delivery. Input ditolak. ({datetime.datetime.now().strftime('%H:%M:%S')})")
+                            st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
                         else:
                             try:
@@ -309,13 +315,13 @@ else:
                                 max_box, current_prog = 0, 0
 
                             if current_prog >= max_box and max_box > 0:
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah berstatus **Completed** (Maksimal: {max_box} box).")
-                                st.session_state[f"sound_effect_{wilayah}"] = ("error", str(datetime.datetime.now().timestamp()))
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah berstatus **Completed** ({datetime.datetime.now().strftime('%H:%M:%S')}).")
+                                st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             elif (current_prog + int(jumlah_box_val)) > max_box:
                                 sisa_box = max_box - current_prog
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi sisa kuota (Sisa kuota: {sisa_box} box).")
-                                st.session_state[f"sound_effect_{wilayah}"] = ("error", str(datetime.datetime.now().timestamp()))
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi sisa kuota (Sisa: {sisa_box}). ({datetime.datetime.now().strftime('%H:%M:%S')})")
+                                st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             else:
                                 new_prog = current_prog + int(jumlah_box_val)
@@ -327,12 +333,12 @@ else:
                                 df_lokal.at[idx, "Loader"] = str(st.session_state.user_nama)
                                 df_lokal.at[idx, "Waktu Preload"] = now_str
                                 
-                                st.session_state[changes_key] = True  # <--- INI YANG MENGAKTIFKAN KEMUNCULAN TOMBOL SAVE
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
-                                st.session_state[f"sound_effect_{wilayah}"] = ("success", str(datetime.datetime.now().timestamp()))
+                                st.session_state[changes_key] = True
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}** ({datetime.datetime.now().strftime('%H:%M:%S')})")
+                                st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
 
-            # --- TAMPILKAN NOTIFIKASI & AUDIO LOKAL TERSEMBUNYI (TANPA POP-UP) ---
+            # --- RENDER NOTIFIKASI & PEMUTAR AUDIO LOKAL TERSEMBUNYI ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -343,9 +349,7 @@ else:
 
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
-                
-                # Jalur file lokal di dalam repositori GitHub Anda
-                local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
+                local_audio_path = "assets/sukses.mp3" if sound_type == "success" else "assets/error.mp3"
                 
                 import base64
                 try:
@@ -353,7 +357,8 @@ else:
                         audio_bytes = f.read()
                     audio_base64 = base64.b64encode(audio_bytes).decode()
                     
-                    unique_audio_id = f"audio_{timestamp_id}_{int(datetime.datetime.now().microsecond)}"
+                    # ID elemen HTML dijamin selalu unik berdasarkan timestamp mikrodetik
+                    unique_audio_id = f"audio_{timestamp_id}"
                     
                     audio_html = f'''
                         <audio id="{unique_audio_id}" autoplay style="display:none;">
