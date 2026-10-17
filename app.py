@@ -249,119 +249,131 @@ else:
 
         with tab_preload:
             st.subheader(f"Proses Preload & Scan - {wilayah}")
+            
+            # --- 1. INISIALISASI DATA LOKAL DI SESSION STATE ---
+            local_df_key = f"local_df_preload_{wilayah}"
+            changes_key = f"has_unsaved_changes_{wilayah}"
+            
+            # Jika belum ada atau pindah cabang, muat data dari filtered
+            if local_df_key not in st.session_state:
+                st.session_state[local_df_key] = df_filtered.copy()
+                st.session_state[changes_key] = False
 
-            # 1. Inisialisasi Antrean Lokal di Session State
-            queue_key = f"preload_queue_{wilayah}"
-            if queue_key not in st.session_state:
-                st.session_state[queue_key] = []  # Menyimpan antrean scan sebelum disimpan ke Sheets
-        
-            # 2. Form Input Scan (Ke Memori Lokal)
-            with st.form(key=f"form_scan_input_{wilayah}", clear_on_submit=True):
-                col_in1, col_in2 = st.columns([3, 1])
-                with col_in1:
-                    input_scan_id = st.text_input("📷 Scan / Masukkan ID Request:", placeholder="Ketik/Scan ID di sini...")
-                with col_in2:
-                    input_box_qty = st.number_input("Jumlah Box:", min_value=1, value=1, step=1)
-                
-                btn_tambah_antrean = st.form_submit_button("➕ Tambahkan ke Daftar Antrean", type="secondary", use_container_width=True)
-        
-            if btn_tambah_antrean and input_scan_id.strip():
-                scan_clean = input_scan_id.strip().split('.')[0]
-                
-                # Validasi dengan database lokal (tanpa hit API)
-                id_col = 'ID' if 'ID' in df_database.columns else 'id request'
-                matched_rows = df_database[df_database[id_col].astype(str).str.split('.').str[0].str.strip() == scan_clean]
-                
-                if matched_rows.empty:
-                    st.error(f"❌ ID **{scan_clean}** tidak terdaftar di database.")
-                else:
-                    row_data = matched_rows.iloc[0]
-                    row_tujuan = str(row_data.get("Tujuan Pengiriman", "")).strip()
+            # --- 2. FORM / INPUT SCAN LIVE ---
+            metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Input ID & Jumlah Box"], horizontal=True, key=f"metode_{wilayah}")
+
+            if metode_input == "Scan Satuan":
+                input_widget_key = f"input_preload_scan_live_{wilayah}"
+                if input_widget_key not in st.session_state:
+                    st.session_state[input_widget_key] = ""
+
+                def proses_scan_live():
+                    scan_input = st.session_state[input_widget_key].strip().split('.')[0]
+                    if not scan_input:
+                        return
                     
-                    if row_tujuan.lower() != wilayah.lower():
-                        st.error(f"❌ ID **{scan_clean}** ditolak! Tujuan ({row_tujuan}) tidak sesuai cabang ({wilayah}).")
+                    df_lokal = st.session_state[local_df_key]
+                    id_col = 'ID' if 'ID' in df_lokal.columns else 'id request'
+                    
+                    matched_idx = df_lokal[df_lokal[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input].index
+                    
+                    if len(matched_idx) == 0:
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak terdaftar di cabang ini.")
+                        st.session_state[f"sound_effect_{wilayah}"] = "error"
                     else:
-                        # Masukkan ke dalam antrean memori lokal Streamlit
-                        st.session_state[queue_key].append({
-                            "ID": scan_clean,
-                            "Jumlah Box": int(input_box_qty),
-                            "Waktu Scan": (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
-                        })
-                        st.toast(f"✅ ID {scan_clean} ({input_box_qty} box) masuk ke daftar antrean!")
-        
-            # 3. Tampilkan Antrean Sementara
-            if st.session_state[queue_key]:
-                st.markdown("---")
-                st.markdown(f"##### 📋 Antrean Data Belum Disimpan ({len(st.session_state[queue_key])} item)")
-                
-                df_queue = pd.DataFrame(st.session_state[queue_key])
-                st.dataframe(df_queue, use_container_width=True, hide_index=True)
-        
-                col_b1, col_b2 = st.columns([2, 1])
-                with col_b1:
-                    # --- TOMBOL UTAMA UNTUK UPDATE KE GOOGLE SHEETS (1X HIT API) ---
-                    if st.button("💾 SIMPAN SEMUA DAFTAR PRELOAD KE GOOGLE SHEETS", type="primary", use_container_width=True):
-                        try:
-                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                            gc = gspread.service_account_from_dict(creds_dict)
-                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                            ws = sh.worksheet("Database log")
-        
-                            records_main = ws.get_all_records()
-                            header_main = ws.row_values(1)
-        
-                            id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else 1)
-                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
-                            loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
-                            waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
-                            status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
-        
-                            cell_updates = []
-                            user_loader = str(st.session_state.user_nama)
-        
-                            # Kumpulkan seluruh update dalam batch
-                            for q_item in st.session_state[queue_key]:
-                                q_id = q_item["ID"]
-                                q_box = q_item["Jumlah Box"]
-                                q_time = q_item["Waktu Scan"]
-        
-                                for r_idx, r_val in enumerate(records_main, start=2):
-                                    r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
-                                    if r_id_str == q_id:
-                                        try:
-                                            max_b = int(float(r_val.get("Jumlah Box", 0)))
-                                            old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
-                                        except:
-                                            max_b, old_p = 0, 0
-                                        
-                                        new_p = old_p + q_box
-                                        new_status = "Not Completed" if new_p < max_b else "Completed"
-        
-                                        # Tambahkan sel ke daftar batch
-                                        cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(new_p)))
-                                        cell_updates.append(gspread.Cell(r_idx, loader_col_i, user_loader))
-                                        cell_updates.append(gspread.Cell(r_idx, waktu_col_i, q_time))
-                                        cell_updates.append(gspread.Cell(r_idx, status_col_i, new_status))
-                                        break
-        
-                            if cell_updates:
-                                # 1 kali tembak API untuk SEMUA baris antrean!
-                                ws.update_cells(cell_updates)
-                                st.session_state[queue_key] = []  # Kosongkan antrean setelah simpan
-                                st.cache_data.clear()  # Refresh cache sekali di akhir
-                                st.success("✅ Semua data preload dalam antrean berhasil disimpan ke Google Sheets!")
-                                st.rerun()
-        
-                        except Exception as e:
-                            st.error(f"❌ Gagal menyimpan ke Google Sheets: {e}")
+                        idx = matched_idx[0]
+                        row = df_lokal.loc[idx]
+                        
+                        if str(row.get("Status", "")).strip().lower() == "on delivery":
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 ID **{scan_input}** berstatus On Delivery.")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
-        
-                with col_b2:
-                    if st.button("🗑️ Batal / Bersihkan Antrean", use_container_width=True):
-                        st.session_state[queue_key] = []
-                        st.rerun()
+                            return
 
+                        try:
+                            max_box = int(float(str(row.get("Jumlah Box", 0))))
+                            current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
+                        except:
+                            max_box, current_prog = 0, 0
+
+                        if current_prog >= max_box:
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah mencapai batas maksimal ({max_box} box).")
+                            st.session_state[f"sound_effect_{wilayah}"] = "error"
+                        else:
+                            # Update instan di DataFrame lokal (tabel utama)
+                            new_prog = current_prog + 1
+                            new_status = "Not Completed" if new_prog < max_box else "Completed"
+                            now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            df_lokal.at[idx, "Progress"] = new_prog
+                            df_lokal.at[idx, "Status"] = new_status
+                            df_lokal.at[idx, "Loader"] = str(st.session_state.user_nama)
+                            df_lokal.at[idx, "Waktu Preload"] = now_str
+                            
+                            st.session_state[changes_key] = True
+                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil (+1 Box). Total: {new_prog}/{max_box}")
+                            st.session_state[f"sound_effect_{wilayah}"] = "success"
+
+                    st.session_state[input_widget_key] = ""
+
+                st.text_input(
+                    "📷 Scan / Masukkan ID Request:", 
+                    placeholder="Arahkan scanner atau ketik ID lalu tekan Enter...", 
+                    key=input_widget_key,
+                    on_change=proses_scan_live
+                )
+
+            else:
+                form_single_key = f"form_single_box_preload_live_{wilayah}"
+                with st.form(key=form_single_key, clear_on_submit=True):
+                    input_id_val = st.text_input("Masukkan ID", placeholder="Ketik atau scan ID di sini...")
+                    jumlah_box_val = st.number_input("Jumlah Box (Progress)", min_value=1, value=1, step=1)
+                    submit_single = st.form_submit_button("Tambahkan ke Draft Preload", type="primary")
+
+                if submit_single:
+                    target_id = input_id_val.strip().split('.')[0]
+                    if not target_id:
+                        st.warning("⚠️ Masukkan ID terlebih dahulu.")
+                    else:
+                        df_lokal = st.session_state[local_df_key]
+                        id_col = 'ID' if 'ID' in df_lokal.columns else 'id request'
+                        matched_idx = df_lokal[df_lokal[id_col].astype(str).str.split('.').str[0].str.strip() == target_id].index
+                        
+                        if len(matched_idx) == 0:
+                            st.error(f"❌ ID **{target_id}** tidak terdaftar di database.")
+                            st.session_state[f"sound_effect_{wilayah}"] = "error"
+                        else:
+                            idx = matched_idx[0]
+                            row = df_lokal.loc[idx]
+                            
+                            if str(row.get("Status", "")).strip().lower() == "on delivery":
+                                st.error(f"🚚 ID **{target_id}** berstatus On Delivery.")
+                                st.session_state[f"sound_effect_{wilayah}"] = "error"
+                            else:
+                                try:
+                                    max_box = int(float(str(row.get("Jumlah Box", 0))))
+                                    current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
+                                except:
+                                    max_box, current_prog = 0, 0
+
+                                if (current_prog + int(jumlah_box_val)) > max_box:
+                                    st.error(f"❌ Jumlah box melebihi sisa kuota (Maksimal: {max_box} box).")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
+                                else:
+                                    new_prog = current_prog + int(jumlah_box_val)
+                                    new_status = "Not Completed" if new_prog < max_box else "Completed"
+                                    now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                                    
+                                    df_lokal.at[idx, "Progress"] = new_prog
+                                    df_lokal.at[idx, "Status"] = new_status
+                                    df_lokal.at[idx, "Loader"] = str(st.session_state.user_nama)
+                                    df_lokal.at[idx, "Waktu Preload"] = now_str
+                                    
+                                    st.session_state[changes_key] = True
+                                    st.success(f"✅ ID **{target_id}** diperbarui ke draf! Progress: **{new_prog}/{max_box}**")
+                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                    st.rerun()
+
+            # Notifikasi & Suara
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -378,6 +390,66 @@ else:
 
             st.markdown("---")
 
+            # --- 3. TOMBOL SAVE UTAMA (MUNCUL JIKA ADA PERUBAHAN) ---
+            if st.session_state.get(changes_key, False):
+                st.warning("⚠️ Ada perubahan progress yang **belum disimpan** ke database pusat!")
+                col_btn1, col_btn2 = st.columns(2)
+                
+                with col_btn1:
+                    if st.button("💾 SIMPAN PERUBAHAN KE GOOGLE SHEETS", type="primary", use_container_width=True):
+                        try:
+                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                            gc = gspread.service_account_from_dict(creds_dict)
+                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                            ws = sh.worksheet("Database log")
+
+                            records_main = ws.get_all_records()
+                            header_main = ws.row_values(1)
+
+                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
+                            loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
+                            waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
+                            status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
+
+                            cell_updates = []
+                            df_lokal = st.session_state[local_df_key]
+
+                            for _, row in df_lokal.iterrows():
+                                r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
+                                p_val = row.get("Progress")
+                                l_val = row.get("Loader")
+                                w_val = row.get("Waktu Preload")
+                                s_val = row.get("Status")
+
+                                for r_idx, r_val in enumerate(records_main, start=2):
+                                    sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                    if sheet_id_str == r_id:
+                                        cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
+                                        cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val) if pd.notna(l_val) else ""))
+                                        cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val) if pd.notna(w_val) else ""))
+                                        cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val) if pd.notna(s_val) else ""))
+                                        break
+
+                            if cell_updates:
+                                ws.update_cells(cell_updates) # 1x hit API untuk batch update
+                                st.session_state[changes_key] = False
+                                st.cache_data.clear()
+                                st.success("✅ Perubahan berhasil disimpan ke Google Sheets!")
+                                st.rerun()
+
+                        except Exception as e:
+                            st.error(f"❌ Gagal menyimpan ke database: {e}")
+
+                with col_btn2:
+                    if st.button("🔄 Batalkan / Reset", use_container_width=True):
+                        del st.session_state[local_df_key]
+                        st.session_state[changes_key] = False
+                        st.rerun()
+
+                st.markdown("---")
+
+            # --- 4. ZONA MEZZANINE & TABEL UTAMA YANG SAMA ---
             with st.expander("Update Zona Mezzanine", expanded=False):
                 daftar_zona_mezzanine = [
                     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
@@ -389,68 +461,63 @@ else:
                     "SC 1", "SC 2"
                 ]
 
-                if not df_filtered.empty:
+                df_current = st.session_state[local_df_key]
+                if not df_current.empty:
                     list_id_tersedia = []
-                    for idx, row in df_filtered.iterrows():
+                    for idx, row in df_current.iterrows():
                         r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                         if r_id and r_id not in list_id_tersedia:
                             list_id_tersedia.append(r_id)
 
                     with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
-                        selected_ids_mz = st.multiselect(
-                            "Pilih ID Request (Single/Multiple):",
-                            options=list_id_tersedia,
-                            placeholder="Cari atau pilih beberapa ID..."
-                        )
-                        
-                        selected_zones = st.multiselect(
-                            "Pilih Zona Mezzanine (Single/Multiple):",
-                            options=daftar_zona_mezzanine,
-                            placeholder="Ketik atau pilih zona..."
-                        )
-                        
-                        submit_mz = st.form_submit_button("Simpan Zona Mezzanine untuk Semua ID Terpilih", type="primary")
+                        selected_ids_mz = st.multiselect("Pilih ID Request (Single/Multiple):", options=list_id_tersedia)
+                        selected_zones = st.multiselect("Pilih Zona Mezzanine:", options=daftar_zona_mezzanine)
+                        submit_mz = st.form_submit_button("Simpan Zona Mezzanine", type="primary")
 
                     if submit_mz:
-                        if not selected_ids_mz:
-                            st.warning("⚠️ Pilih minimal satu ID Request terlebih dahulu.")
-                        elif not selected_zones:
-                            st.warning("⚠️ Pilih minimal satu Zona Mezzanine.")
-                        else:
-                            try:
-                                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                gc = gspread.service_account_from_dict(creds_dict)
-                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                ws = sh.worksheet("Database log")
-                                
-                                data_rows = ws.get_all_records()
-                                string_zona_hasil = ", ".join(selected_zones)
-                                
-                                berhasilan_count = 0
-                                for target_id in selected_ids_mz:
-                                    found_row_index = None
-                                    for idx, row in enumerate(data_rows):
-                                        row_id = str(row.get("ID") or row.get("id request") or list(row.values())[0]).split('.')[0].strip()
-                                        if row_id == str(target_id).strip():
-                                            found_row_index = idx + 2
-                                            break
-                                    
-                                    if found_row_index:
-                                        ws.update_cell(found_row_index, 9, string_zona_hasil)
-                                        berhasilan_count += 1
-                                
-                                if berhasilan_count > 0:
-                                    st.success(f"✅ Berhasil memperbarui Zona Mezzanine (**{string_zona_hasil}**) untuk **{berhasilan_count} ID Request** ")
-                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                    st.rerun()
-                                else:
-                                    st.error("❌ ID yang dipilih tidak ditemukan di database Google Sheets.")
-                                    
-                            except Exception as e:
-                                st.error(f"❌ Gagal memperbarui zona ke Google Sheets: {e}")
-                else:
-                    st.info("Belum ada data ID untuk wilayah ini.")
+                        if selected_ids_mz and selected_zones:
+                            string_zona_hasil = ", ".join(selected_zones)
+                            for target_id in selected_ids_mz:
+                                m_idx = df_current[df_current['ID'].astype(str).str.contains(target_id)].index
+                                if len(m_idx) > 0:
+                                    df_current.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
+                            st.session_state[changes_key] = True
+                            st.success(f"✅ Zona Mezzanine diperbarui ke draf!")
+                            st.rerun()
+
+            st.markdown("---")
+            st.markdown(f"##### Data Preload Cabang: {wilayah}")
+            
+            # --- 5. TAMPILKAN TABEL UTAMA (LIVE DARI STATE LOKAL) ---
+            if not df_current.empty:
+                df_preload_display = df_current.copy()
+                
+                status_formatted_list = []
+                for idx, row in df_preload_display.iterrows():
+                    try:
+                        jb = row.get("Jumlah Box") or 0
+                        pr = row.get("Progress")
+                        st_formatted = format_status_dengan_ikon(pr, jb)
+                        status_formatted_list.append(st_formatted)
+                    except Exception:
+                        status_formatted_list.append("🔴 Pending")
+                
+                df_preload_display["Status"] = status_formatted_list
+
+                for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
+                    if col in df_preload_display.columns:
+                        df_preload_display = df_preload_display.drop(columns=[col])
+                
+                if "Zona Mezzanine" in df_preload_display.columns and "Waktu Preload" in df_preload_display.columns:
+                    cols = list(df_preload_display.columns)
+                    cols.remove("Zona Mezzanine")
+                    idx_waktu = cols.index("Waktu Preload")
+                    cols.insert(idx_waktu + 1, "Zona Mezzanine")
+                    df_preload_display = df_preload_display[cols]
+                
+                st.dataframe(df_preload_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
             st.markdown("---")
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
