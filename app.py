@@ -332,7 +332,7 @@ else:
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", str(datetime.datetime.now().timestamp()))
                                 st.rerun()
 
-            # --- TAMPILKAN NOTIFIKASI & AUDIO MENGGUNAKAN FUNGSI RESMI STREAMLIT ---
+            # --- TAMPILKAN NOTIFIKASI & AUDIO LOKAL TERSEMBUNYI (TANPA POP-UP) ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -343,10 +343,36 @@ else:
 
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
-                chosen_url = SUKSES_AUDIO_URL if sound_type == "success" else ERROR_AUDIO_URL
                 
-                # Menggunakan st.audio bawaan Streamlit agar lebih stabil dan langsung diproses oleh browser
-                st.audio(chosen_url, format="audio/mpeg", autoplay=True)
+                # Jalur file lokal di dalam repositori GitHub Anda
+                local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
+                
+                import base64
+                try:
+                    with open(local_audio_path, "rb") as f:
+                        audio_bytes = f.read()
+                    audio_base64 = base64.b64encode(audio_bytes).decode()
+                    
+                    unique_audio_id = f"audio_{timestamp_id}_{int(datetime.datetime.now().microsecond)}"
+                    
+                    audio_html = f'''
+                        <audio id="{unique_audio_id}" autoplay style="display:none;">
+                            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
+                        </audio>
+                        <script>
+                            var audio = document.getElementById("{unique_audio_id}");
+                            if (audio) {{
+                                audio.volume = 1.0;
+                                audio.play().catch(function(error) {{
+                                    console.log("Autoplay dicegah oleh browser: ", error);
+                                }});
+                            }}
+                        </script>
+                    '''
+                    st.markdown(audio_html, unsafe_allow_html=True)
+                except Exception as e:
+                    st.warning(f"File audio lokal tidak ditemukan: {local_audio_path}")
+                    
                 del st.session_state[f"sound_effect_{wilayah}"]
 
             st.markdown("---")
