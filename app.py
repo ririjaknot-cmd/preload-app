@@ -254,12 +254,14 @@ else:
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
             
-            # Jika belum ada atau pindah cabang, muat data dari filtered
-            if local_df_key not in st.session_state:
+            if local_df_key not in st.session_state or st.sidebar.button("🔄 Reset Draf Lokal", key=f"reset_{wilayah}"):
                 st.session_state[local_df_key] = df_filtered.copy()
                 st.session_state[changes_key] = False
 
-            # --- 2. FORM / INPUT SCAN LIVE ---
+            df_lokal = st.session_state[local_df_key]
+            id_col_name = 'ID' if 'ID' in df_lokal.columns else 'id request'
+
+            # --- 2. METODE INPUT (SCAN / SINGLE) ---
             metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Input ID & Jumlah Box"], horizontal=True, key=f"metode_{wilayah}")
 
             if metode_input == "Scan Satuan":
@@ -272,16 +274,14 @@ else:
                     if not scan_input:
                         return
                     
-                    df_lokal = st.session_state[local_df_key]
-                    id_col = 'ID' if 'ID' in df_lokal.columns else 'id request'
+                    # Cari baris berdasarkan ID secara aman
+                    matched = df_lokal[df_lokal[id_col_name].astype(str).str.split('.').str[0].str.strip() == scan_input]
                     
-                    matched_idx = df_lokal[df_lokal[id_col].astype(str).str.split('.').str[0].str.strip() == scan_input].index
-                    
-                    if len(matched_idx) == 0:
+                    if matched.empty:
                         st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{scan_input}** tidak terdaftar di cabang ini.")
                         st.session_state[f"sound_effect_{wilayah}"] = "error"
                     else:
-                        idx = matched_idx[0]
+                        idx = matched.index[0]
                         row = df_lokal.loc[idx]
                         
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
@@ -299,7 +299,6 @@ else:
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{scan_input}** sudah mencapai batas maksimal ({max_box} box).")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         else:
-                            # Update instan di DataFrame lokal (tabel utama)
                             new_prog = current_prog + 1
                             new_status = "Not Completed" if new_prog < max_box else "Completed"
                             now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
@@ -310,7 +309,7 @@ else:
                             df_lokal.at[idx, "Waktu Preload"] = now_str
                             
                             st.session_state[changes_key] = True
-                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** berhasil (+1 Box). Total: {new_prog}/{max_box}")
+                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{scan_input}** (+1 Box). Total: {new_prog}/{max_box}")
                             st.session_state[f"sound_effect_{wilayah}"] = "success"
 
                     st.session_state[input_widget_key] = ""
@@ -334,44 +333,37 @@ else:
                     if not target_id:
                         st.warning("⚠️ Masukkan ID terlebih dahulu.")
                     else:
-                        df_lokal = st.session_state[local_df_key]
-                        id_col = 'ID' if 'ID' in df_lokal.columns else 'id request'
-                        matched_idx = df_lokal[df_lokal[id_col].astype(str).str.split('.').str[0].str.strip() == target_id].index
-                        
-                        if len(matched_idx) == 0:
+                        matched = df_lokal[df_lokal[id_col_name].astype(str).str.split('.').str[0].str.strip() == target_id]
+                        if matched.empty:
                             st.error(f"❌ ID **{target_id}** tidak terdaftar di database.")
                             st.session_state[f"sound_effect_{wilayah}"] = "error"
                         else:
-                            idx = matched_idx[0]
+                            idx = matched.index[0]
                             row = df_lokal.loc[idx]
                             
-                            if str(row.get("Status", "")).strip().lower() == "on delivery":
-                                st.error(f"🚚 ID **{target_id}** berstatus On Delivery.")
+                            try:
+                                max_box = int(float(str(row.get("Jumlah Box", 0))))
+                                current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
+                            except:
+                                max_box, current_prog = 0, 0
+
+                            if (current_prog + int(jumlah_box_val)) > max_box:
+                                st.error(f"❌ Jumlah box melebihi sisa kuota (Maksimal: {max_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = "error"
                             else:
-                                try:
-                                    max_box = int(float(str(row.get("Jumlah Box", 0))))
-                                    current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
-                                except:
-                                    max_box, current_prog = 0, 0
-
-                                if (current_prog + int(jumlah_box_val)) > max_box:
-                                    st.error(f"❌ Jumlah box melebihi sisa kuota (Maksimal: {max_box} box).")
-                                    st.session_state[f"sound_effect_{wilayah}"] = "error"
-                                else:
-                                    new_prog = current_prog + int(jumlah_box_val)
-                                    new_status = "Not Completed" if new_prog < max_box else "Completed"
-                                    now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
-                                    
-                                    df_lokal.at[idx, "Progress"] = new_prog
-                                    df_lokal.at[idx, "Status"] = new_status
-                                    df_lokal.at[idx, "Loader"] = str(st.session_state.user_nama)
-                                    df_lokal.at[idx, "Waktu Preload"] = now_str
-                                    
-                                    st.session_state[changes_key] = True
-                                    st.success(f"✅ ID **{target_id}** diperbarui ke draf! Progress: **{new_prog}/{max_box}**")
-                                    st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                    st.rerun()
+                                new_prog = current_prog + int(jumlah_box_val)
+                                new_status = "Not Completed" if new_prog < max_box else "Completed"
+                                now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                                
+                                df_lokal.at[idx, "Progress"] = new_prog
+                                df_lokal.at[idx, "Status"] = new_status
+                                df_lokal.at[idx, "Loader"] = str(st.session_state.user_nama)
+                                df_lokal.at[idx, "Waktu Preload"] = now_str
+                                
+                                st.session_state[changes_key] = True
+                                st.success(f"✅ ID **{target_id}** diperbarui ke draf! Progress: **{new_prog}/{max_box}**")
+                                st.session_state[f"sound_effect_{wilayah}"] = "success"
+                                st.rerun()
 
             # Notifikasi & Suara
             if f"last_msg_{wilayah}" in st.session_state:
@@ -396,7 +388,7 @@ else:
                 col_btn1, col_btn2 = st.columns(2)
                 
                 with col_btn1:
-                    if st.button("💾 SIMPAN PERUBAHAN KE GOOGLE SHEETS", type="primary", use_container_width=True):
+                    if st.button("💾 SIMPAN PERUBAHAN KE GOOGLE SHEETS", type="primary", use_container_width=True, key=f"save_{wilayah}"):
                         try:
                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                             gc = gspread.service_account_from_dict(creds_dict)
@@ -413,8 +405,6 @@ else:
                             status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
 
                             cell_updates = []
-                            df_lokal = st.session_state[local_df_key]
-
                             for _, row in df_lokal.iterrows():
                                 r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                 p_val = row.get("Progress")
@@ -432,7 +422,7 @@ else:
                                         break
 
                             if cell_updates:
-                                ws.update_cells(cell_updates) # 1x hit API untuk batch update
+                                ws.update_cells(cell_updates)
                                 st.session_state[changes_key] = False
                                 st.cache_data.clear()
                                 st.success("✅ Perubahan berhasil disimpan ke Google Sheets!")
@@ -442,14 +432,14 @@ else:
                             st.error(f"❌ Gagal menyimpan ke database: {e}")
 
                 with col_btn2:
-                    if st.button("🔄 Batalkan / Reset", use_container_width=True):
+                    if st.button("🔄 Batalkan / Reset", use_container_width=True, key=f"cancel_{wilayah}"):
                         del st.session_state[local_df_key]
                         st.session_state[changes_key] = False
                         st.rerun()
 
                 st.markdown("---")
 
-            # --- 4. ZONA MEZZANINE & TABEL UTAMA YANG SAMA ---
+            # --- 4. EXPANDER UPDATE ZONA MEZZANINE ---
             with st.expander("Update Zona Mezzanine", expanded=False):
                 daftar_zona_mezzanine = [
                     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
@@ -461,16 +451,11 @@ else:
                     "SC 1", "SC 2"
                 ]
 
-                df_current = st.session_state[local_df_key]
-                if not df_current.empty:
-                    list_id_tersedia = []
-                    for idx, row in df_current.iterrows():
-                        r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
-                        if r_id and r_id not in list_id_tersedia:
-                            list_id_tersedia.append(r_id)
+                if not df_lokal.empty:
+                    list_id_tersedia = [str(r).split('.')[0].strip() for r in df_lokal[id_col_name].dropna().unique()]
 
                     with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
-                        selected_ids_mz = st.multiselect("Pilih ID Request (Single/Multiple):", options=list_id_tersedia)
+                        selected_ids_mz = st.multiselect("Pilih ID Request:", options=list_id_tersedia)
                         selected_zones = st.multiselect("Pilih Zona Mezzanine:", options=daftar_zona_mezzanine)
                         submit_mz = st.form_submit_button("Simpan Zona Mezzanine", type="primary")
 
@@ -478,19 +463,20 @@ else:
                         if selected_ids_mz and selected_zones:
                             string_zona_hasil = ", ".join(selected_zones)
                             for target_id in selected_ids_mz:
-                                m_idx = df_current[df_current['ID'].astype(str).str.contains(target_id)].index
+                                m_idx = df_lokal[df_lokal[id_col_name].astype(str).str.contains(target_id)].index
                                 if len(m_idx) > 0:
-                                    df_current.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
+                                    df_lokal.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
                             st.session_state[changes_key] = True
                             st.success(f"✅ Zona Mezzanine diperbarui ke draf!")
                             st.rerun()
 
             st.markdown("---")
+            
+            # --- 5. HANYA ADA 1 TAMPILAN TABEL UTAMA (TIDAK DUPLIKAT) ---
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             
-            # --- 5. TAMPILKAN TABEL UTAMA (LIVE DARI STATE LOKAL) ---
-            if not df_current.empty:
-                df_preload_display = df_current.copy()
+            if not df_lokal.empty:
+                df_preload_display = df_lokal.copy()
                 
                 status_formatted_list = []
                 for idx, row in df_preload_display.iterrows():
@@ -505,40 +491,6 @@ else:
                 df_preload_display["Status"] = status_formatted_list
 
                 for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
-                    if col in df_preload_display.columns:
-                        df_preload_display = df_preload_display.drop(columns=[col])
-                
-                if "Zona Mezzanine" in df_preload_display.columns and "Waktu Preload" in df_preload_display.columns:
-                    cols = list(df_preload_display.columns)
-                    cols.remove("Zona Mezzanine")
-                    idx_waktu = cols.index("Waktu Preload")
-                    cols.insert(idx_waktu + 1, "Zona Mezzanine")
-                    df_preload_display = df_preload_display[cols]
-                
-                st.dataframe(df_preload_display, use_container_width=True, hide_index=True)
-            else:
-                st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
-
-            st.markdown("---")
-            st.markdown(f"##### Data Preload Cabang: {wilayah}")
-            
-            if not df_filtered.empty:
-                df_preload_display = df_filtered.copy()
-                
-                status_formatted_list = []
-                for idx, row in df_preload_display.iterrows():
-                    try:
-                        jb = row.get("Jumlah Box") or 0
-                        pr = row.get("Progress")
-                        st_formatted = format_status_dengan_ikon(pr, jb)
-                        status_formatted_list.append(st_formatted)
-                    except Exception:
-                        status_formatted_list.append("🔴 Pending")
-                
-                df_preload_display["Status"] = status_formatted_list
-
-                kolom_dihapus = ["Jam Proses Scan", "Tanggal Proses Scan"]
-                for col in kolom_dihapus:
                     if col in df_preload_display.columns:
                         df_preload_display = df_preload_display.drop(columns=[col])
                 
