@@ -247,7 +247,7 @@ else:
             else:
                 st.info("Tidak ada data preload yang cocok atau tersedia untuk cabang ini.")
 
-        with tab_preload:
+       with tab_preload:
             st.subheader(f"Proses Preload & Scan - {wilayah}")
             
             # --- 1. INISIALISASI DATA LOKAL DI SESSION STATE ---
@@ -260,6 +260,13 @@ else:
 
             df_lokal = st.session_state[local_df_key]
             id_col_name = 'ID' if 'ID' in df_lokal.columns else 'id request'
+
+            # PASTIKAN KOLOM TEKS BERSIH DARI TIPE DATA KAKU (Mencegah LossySetitemError)
+            for col_teks in ["Status", "Loader", "Waktu Preload", "Zona Mezzanine"]:
+                if col_teks in df_lokal.columns:
+                    df_lokal[col_teks] = df_lokal[col_teks].astype(str).replace({"nan": "", "None": ""})
+            if "Progress" in df_lokal.columns:
+                df_lokal["Progress"] = pd.to_numeric(df_lokal["Progress"], errors="coerce").fillna(0)
 
             # --- 2. METODE INPUT (SCAN / SINGLE) ---
             metode_input = st.radio("Pilih Metode Input:", ["Scan Satuan", "Input ID & Jumlah Box"], horizontal=True, key=f"metode_{wilayah}")
