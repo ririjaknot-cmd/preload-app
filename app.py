@@ -332,7 +332,7 @@ else:
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", str(datetime.datetime.now().timestamp()))
                                 st.rerun()
 
-            # --- TAMPILKAN NOTIFIKASI & AUDIO KONSISTEN SETIAP INPUT (CONTINUOUS / REPLAY) ---
+            # --- TAMPILKAN NOTIFIKASI & AUDIO MENGGUNAKAN FUNGSI RESMI STREAMLIT ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -345,24 +345,8 @@ else:
                 sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
                 chosen_url = SUKSES_AUDIO_URL if sound_type == "success" else ERROR_AUDIO_URL
                 
-                # Menggunakan kombinasi timestamp dan angka acak agar browser selalu mendeteksi sebagai audio baru yang harus diputar
-                unique_audio_id = f"audio_{timestamp_id}_{int(datetime.datetime.now().microsecond)}"
-                
-                audio_html = f'''
-                    <audio id="{unique_audio_id}" autoplay>
-                        <source src="{chosen_url}?t={timestamp_id}" type="audio/mpeg">
-                    </audio>
-                    <script>
-                        var audio = document.getElementById("{unique_audio_id}");
-                        if (audio) {{
-                            audio.volume = 1.0;
-                            audio.play().catch(function(error) {{
-                                console.log("Autoplay dicegah oleh browser: ", error);
-                            }});
-                        }}
-                    </script>
-                '''
-                st.markdown(audio_html, unsafe_allow_html=True)
+                # Menggunakan st.audio bawaan Streamlit agar lebih stabil dan langsung diproses oleh browser
+                st.audio(chosen_url, format="audio/mpeg", autoplay=True)
                 del st.session_state[f"sound_effect_{wilayah}"]
 
             st.markdown("---")
