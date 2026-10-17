@@ -752,10 +752,10 @@ else:
                                         st.success(f"✅ Manifest `{m_no}` berhasil diubah menjadi **On Delivery**!")
                                         # Alih-alih clear cache global, cukup update state lokal atau jeda sejenak
                                         st.rerun()
-                            except Exception as e:
+                                except Exception as e:
                                 st.error(f"❌ Gagal merubah status On Delivery: {e}")
-                                                else:
-                                                    st.markdown("*On Delivery*")
+                        else:
+                        st.markdown("*On Delivery*")
 
                     st.markdown("---")
 
