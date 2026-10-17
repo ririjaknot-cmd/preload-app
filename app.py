@@ -251,8 +251,8 @@ else:
             st.subheader(f"Proses Preload & Scan - {wilayah}")
             
             # --- KONFIGURASI LINK EFEK SUARA (Silakan ganti URL-nya sesuka Anda) ---
-            SUKSES_AUDIO_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-            ERROR_AUDIO_URL = "https://assets.mixkit.co/active_storage/sfx/2957/2957-preview.mp3"
+            SUKSES_AUDIO_URL = "https://cdn.pixabay.com/audio/2026/03/02/audio_0ff77f8b5d.mp3"
+            ERROR_AUDIO_URL = "https://cdn.pixabay.com/audio/2026/02/25/audio_78f4e24acf.mp3"
 
             # --- 1. INISIALISASI DATA LOKAL DI SESSION STATE ---
             local_df_key = f"local_df_preload_{wilayah}"
