@@ -282,101 +282,46 @@ else:
                 
                 submit_input = st.form_submit_button("Proses Preload", type="primary", use_container_width=True)
 
-            if submit_input:
-                target_id = input_id_val.strip().split('.')[0]
-                current_ts = str(datetime.datetime.now().timestamp()) + "_" + str(datetime.datetime.now().microsecond)
-                
-                if not target_id:
-                    st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Masukkan atau scan ID terlebih dahulu.")
-                    st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
-                    st.rerun()
-                else:
-                    matched = df_lokal[df_lokal[id_col_name].astype(str).str.split('.').str[0].str.strip() == target_id]
-                    
-                    if matched.empty:
-                        # Pesan error bersih tanpa waktu
-                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** tidak terdaftar di database cabang ini.")
-                        st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
-                        st.rerun()
-                    else:
-                        idx = matched.index[0]
-                        row = df_lokal.loc[idx]
-                        
-                        if str(row.get("Status", "")).strip().lower() == "on delivery":
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 ID **{target_id}** berstatus On Delivery. Input ditolak.")
-                            st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
-                            st.rerun()
-                        else:
-                            try:
-                                max_box = int(float(str(row.get("Jumlah Box", 0))))
-                                current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
-                            except:
-                                max_box, current_prog = 0, 0
-
-                            if current_prog >= max_box and max_box > 0:
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah berstatus **Completed** (Maksimal: {max_box} box).")
-                                st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
-                                st.rerun()
-                            elif (current_prog + int(jumlah_box_val)) > max_box:
-                                sisa_box = max_box - current_prog
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi sisa kuota (Sisa kuota: {sisa_box} box).")
-                                st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
-                                st.rerun()
-                            else:
-                                new_prog = current_prog + int(jumlah_box_val)
-                                new_status = "Not Completed" if new_prog < max_box else "Completed"
-                                now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
-                                
-                                df_lokal.at[idx, "Progress"] = new_prog
-                                df_lokal.at[idx, "Status"] = new_status
-                                df_lokal.at[idx, "Loader"] = str(st.session_state.user_nama)
-                                df_lokal.at[idx, "Waktu Preload"] = now_str
-                                
-                                st.session_state[changes_key] = True
-                                # Pesan sukses bersih tanpa waktu
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
-                                st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
-                                st.rerun()
-
-            # --- RENDER NOTIFIKASI DENGAN EFEK FADE-OUT OTOMATIS & PEMUTAR AUDIO ---
+            # --- RENDER NOTIFIKASI BAWAAN STREAMLIT (RAPI) & AUDIO ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
-                
-                # Desain banner notifikasi kustom dengan animasi transisi menghilang (fade-out)
-                bg_color = "rgba(40, 167, 69, 0.15)" if m_type == "success" else "rgba(220, 53, 69, 0.15)"
-                border_color = "#28a745" if m_type == "success" else "#dc3545"
-                text_color = "#d4edda" if m_type == "success" else "#f8d7da"
-                notif_div_id = f"notif_box_{int(datetime.datetime.now().microsecond)}"
-                
-                notif_html = f'''
-                    <div id="{notif_div_id}" style="
-                        padding: 12px 18px;
-                        background-color: {bg_color};
-                        border-left: 6px solid {border_color};
-                        color: {text_color};
-                        border-radius: 6px;
-                        margin-bottom: 15px;
-                        font-family: sans-serif;
-                        font-size: 15px;
-                        font-weight: 500;
-                        transition: opacity 1s ease-out;
-                        opacity: 1;
-                    ">
-                        {m_text}
-                    </div>
-                    <script>
-                        // Notifikasi akan mulai memudar setelah 2.5 detik dan hilang sepenuhnya dalam 1 detik berikutnya
-                        setTimeout(function() {{
-                            var el = document.getElementById("{notif_div_id}");
-                            if (el) {{
-                                el.style.opacity = "0";
-                                setTimeout(function() {{ el.style.display = "none"; }}, 1000);
-                            }}
-                        }}, 2500);
-                    </script>
-                '''
-                st.markdown(notif_html, unsafe_allow_html=True)
+                if m_type == "success":
+                    st.success(m_text)
+                else:
+                    st.error(m_text)
                 del st.session_state[f"last_msg_{wilayah}"]
+
+            if f"sound_effect_{wilayah}" in st.session_state:
+                sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
+                local_audio_path = "assets/sukses.mp3" if sound_type == "success" else "assets/error.mp3"
+                
+                import base64
+                try:
+                    with open(local_audio_path, "rb") as f:
+                        audio_bytes = f.read()
+                    audio_base64 = base64.b64encode(audio_bytes).decode()
+                    
+                    unique_audio_id = f"audio_{timestamp_id}"
+                    
+                    audio_html = f'''
+                        <audio id="{unique_audio_id}" autoplay style="display:none;">
+                            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
+                        </audio>
+                        <script>
+                            var audio = document.getElementById("{unique_audio_id}");
+                            if (audio) {{
+                                audio.volume = 1.0;
+                                audio.play().catch(function(error) {{
+                                    console.log("Autoplay dicegah oleh browser: ", error);
+                                }});
+                            }}
+                        </script>
+                    '''
+                    st.markdown(audio_html, unsafe_allow_html=True)
+                except Exception as e:
+                    st.warning(f"File audio lokal tidak ditemukan: {local_audio_path}")
+                    
+                del st.session_state[f"sound_effect_{wilayah}"]
 
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
