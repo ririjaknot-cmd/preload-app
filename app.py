@@ -349,7 +349,7 @@ else:
 
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
-                local_audio_path = "assets/sukses.mp3" if sound_type == "success" else "assets/error.mp3"
+                local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
                 
                 import base64
                 try:
