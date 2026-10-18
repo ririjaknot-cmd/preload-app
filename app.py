@@ -249,10 +249,6 @@ else:
         
         with tab_preload:
             st.subheader(f"Proses Preload & Scan - {wilayah}")
-            
-            # --- KONFIGURASI EFEK SUARA (Menggunakan Direct Link Pixabay Anda) ---
-            SUKSES_AUDIO_URL = "https://cdn.pixabay.com/audio/2026/03/02/audio_0ff77f8b5d.mp3"
-            ERROR_AUDIO_URL = "https://cdn.pixabay.com/audio/2026/02/25/audio_78f4e24acf.mp3"  # Bisa diganti jika ada link error khusus
 
             # --- 1. INISIALISASI DATA LOKAL DI SESSION STATE ---
             local_df_key = f"local_df_preload_{wilayah}"
@@ -349,7 +345,7 @@ else:
 
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
-                local_audio_path = "assets/sukses.mp3" if sound_type == "success" else "assets/error.mp3"
+                local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
                 
                 import base64
                 try:
