@@ -281,8 +281,64 @@ else:
                     jumlah_box_val = st.number_input("Jumlah Box:", min_value=1, value=1, step=1)
                 
                 submit_input = st.form_submit_button("Proses Preload", type="primary", use_container_width=True)
+            
+            if submit_input:
+                target_id = input_id_val.strip().split('.')[0]
+                # Menggunakan microsecond agar stempel waktu selalu unik di setiap klik enter/submit
+                current_ts = str(datetime.datetime.now().timestamp()) + "_" + str(datetime.datetime.now().microsecond)
+                
+                if not target_id:
+                    st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Masukkan atau scan ID terlebih dahulu.")
+                    st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                    st.rerun()
+                else:
+                    matched = df_lokal[df_lokal[id_col_name].astype(str).str.split('.').str[0].str.strip() == target_id]
+                    
+                    if matched.empty:
+                        # Pesan error dibuat sedikit dinamis atau unik agar state selalu dianggap baru oleh Streamlit
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** tidak terdaftar di database cabang ini. (Waktu: {datetime.datetime.now().strftime('%H:%M:%S')})")
+                        st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                        st.rerun()
+                    else:
+                        idx = matched.index[0]
+                        row = df_lokal.loc[idx]
+                        
+                        if str(row.get("Status", "")).strip().lower() == "on delivery":
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 ID **{target_id}** berstatus On Delivery. Input ditolak. ({datetime.datetime.now().strftime('%H:%M:%S')})")
+                            st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                            st.rerun()
+                        else:
+                            try:
+                                max_box = int(float(str(row.get("Jumlah Box", 0))))
+                                current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
+                            except:
+                                max_box, current_prog = 0, 0
 
-            # --- RENDER NOTIFIKASI BAWAAN STREAMLIT (RAPI) & AUDIO ---
+                            if current_prog >= max_box and max_box > 0:
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah berstatus **Completed** ({datetime.datetime.now().strftime('%H:%M:%S')}).")
+                                st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                                st.rerun()
+                            elif (current_prog + int(jumlah_box_val)) > max_box:
+                                sisa_box = max_box - current_prog
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi sisa kuota (Sisa: {sisa_box}). ({datetime.datetime.now().strftime('%H:%M:%S')})")
+                                st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                                st.rerun()
+                            else:
+                                new_prog = current_prog + int(jumlah_box_val)
+                                new_status = "Not Completed" if new_prog < max_box else "Completed"
+                                now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                                
+                                df_lokal.at[idx, "Progress"] = new_prog
+                                df_lokal.at[idx, "Status"] = new_status
+                                df_lokal.at[idx, "Loader"] = str(st.session_state.user_nama)
+                                df_lokal.at[idx, "Waktu Preload"] = now_str
+                                
+                                st.session_state[changes_key] = True
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}** ({datetime.datetime.now().strftime('%H:%M:%S')})")
+                                st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
+                                st.rerun()
+
+            # --- RENDER NOTIFIKASI & PEMUTAR AUDIO LOKAL TERSEMBUNYI ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
