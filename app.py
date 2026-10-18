@@ -334,7 +334,7 @@ else:
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
 
-            # --- RENDER NOTIFIKASI & PEMUTAR AUDIO LOKAL TERSEMBUNYI ---
+            # --- RENDER NOTIFIKASI BAWAAN STREAMLIT (RAPI) & AUDIO ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -345,7 +345,7 @@ else:
 
             if f"sound_effect_{wilayah}" in st.session_state:
                 sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
-                local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
+                local_audio_path = "assets/sukses.mp3" if sound_type == "success" else "assets/error.mp3"
                 
                 import base64
                 try:
