@@ -5,10 +5,8 @@ import streamlit.components.v1 as components
 import datetime
 import gspread
 
-# Konfigurasi halaman agar menggunakan mode 'wide' (lebar) ala dashboard
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
-# --- KAMUS DATA PENGGUNA (User Dictionary) ---
 USER_DATABASE = {
     "riri.jaknot@gmail.com": {"nama": "Riri Ridwan Genta Yudha", "pin": "1234"},
     "adamrayhan.jaknot@gmail.com": {"nama": "Adam Rayhan", "pin": "1234"},
@@ -28,7 +26,7 @@ USER_DATABASE = {
     "mahesaagusta28@gmail.com": {"nama": "Mahesa Agusta", "pin": "1234"}
 }
 
-# --- INISIALISASI SESSION STATE ---
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user_email" not in st.session_state:
@@ -36,17 +34,15 @@ if "user_email" not in st.session_state:
 if "user_nama" not in st.session_state:
     st.session_state.user_nama = ""
 
-# --- KONEKSI GOOGLE SHEETS & CACHE ---
+
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Tombol Refresh di Sidebar untuk membersihkan cache & sync data
 st.sidebar.markdown("---")
-if st.sidebar.button("🔄 Refresh Data (Sync Sheets)", use_container_width=True):
+if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
     st.cache_data.clear()
     st.success("Cache dibersihkan, memuat data terbaru...")
     st.rerun()
 
-# Fungsi pembacaan data menggunakan cache agar terhindar dari Rate Limit
 @st.cache_data(ttl=300, show_spinner="Memuat data dari Google Sheets...")
 def load_cached_database():
     df = conn.read(worksheet="Database log", ttl=0)
@@ -54,7 +50,6 @@ def load_cached_database():
 
 df_database = load_cached_database()
 
-# --- FUNGSI FORMAT STATUS DENGAN IKON WARNA ---
 def format_status_dengan_ikon(progress_val, jumlah_box_db):
     if progress_val is None:
         return "🔴 Pending"
@@ -76,7 +71,6 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
     else:
         return "🟢 Completed"
 
-# --- FUNGSI HALAMAN LOGIN ---
 def tampilkan_halaman_login():
     st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan email terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
@@ -98,11 +92,9 @@ def tampilkan_halaman_login():
                 else:
                     st.error("Email atau PIN salah. Silakan periksa kembali.")
 
-# --- KONTROL UTAMA: CEK STATUS LOGIN ---
 if not st.session_state.logged_in:
     tampilkan_halaman_login()
 else:
-    # --- HEADER ---
     col_head1, col_head2 = st.columns([4, 1])
     with col_head1:
         st.markdown("### V2 Pre Load Shipment Cabang ")
@@ -151,7 +143,6 @@ else:
         st.exception(e)
         df_database = pd.DataFrame()
 
-    # --- SIDEBAR: NAVIGASI UTAMA ---
     st.sidebar.markdown("### Internal Menu")
     menu_pilihan = st.sidebar.radio(
         "Pilih Halaman Utama:",
@@ -186,7 +177,7 @@ else:
 
             st.dataframe(df_summary, use_container_width=True, hide_index=True)
         else:
-            st.warning("⚠️ Data dari Google Sheets kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
+            st.warning("⚠️ Database kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
 
     else:
         st.title(f"Cabang - {wilayah}")
@@ -250,11 +241,10 @@ else:
         with tab_preload:
             st.subheader(f"Proses Preload & Scan - {wilayah}")
 
-            # --- 1. INISIALISASI DATA LOKAL DI SESSION STATE ---
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
             
-            if local_df_key not in st.session_state or st.sidebar.button("🔄 Reset Draf Lokal", key=f"reset_{wilayah}"):
+            if local_df_key not in st.session_state or st.sidebar.button("🔄 Reset Draft", key=f"reset_{wilayah}"):
                 st.session_state[local_df_key] = df_filtered.copy()
                 st.session_state[changes_key] = False
 
@@ -267,7 +257,6 @@ else:
             if "Progress" in df_lokal.columns:
                 df_lokal["Progress"] = pd.to_numeric(df_lokal["Progress"], errors="coerce").fillna(0)
 
-            # --- 2. FORM INPUT SATUAN TERPADU ---
             form_input_key = f"form_input_preload_{wilayah}"
             with st.form(key=form_input_key, clear_on_submit=True):
                 col_f1, col_f2 = st.columns([3, 1])
@@ -298,7 +287,7 @@ else:
                         row = df_lokal.loc[idx]
                         
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 ID **{target_id}** berstatus On Delivery. Input ditolak.")
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f" ID **{target_id}** berstatus On Delivery. Input ditolak.")
                             st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
                         else:
@@ -332,7 +321,6 @@ else:
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
 
-            # --- RENDER NOTIFIKASI BAWAAN STREAMLIT (RAPI) & AUDIO ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -375,13 +363,12 @@ else:
 
             st.markdown("---")
 
-            # --- 3. TOMBOL SAVE UTAMA (MUNCUL OTOMATIS JIKA ADA PERUBAHAN DRAF) ---
             if st.session_state.get(changes_key, False):
-                st.warning("⚠️ Ada perubahan progress yang **belum disimpan** ke database pusat!")
+                st.warning("⚠️ Ada perubahan data yang **belum disimpan** ke Database!")
                 col_btn1, col_btn2 = st.columns(2)
                 
                 with col_btn1:
-                    if st.button("💾 SIMPAN PERUBAHAN KE GOOGLE SHEETS", type="primary", use_container_width=True, key=f"save_{wilayah}"):
+                    if st.button("💾 Save", type="primary", use_container_width=True, key=f"save_{wilayah}"):
                         try:
                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                             gc = gspread.service_account_from_dict(creds_dict)
@@ -418,21 +405,20 @@ else:
                                 ws.update_cells(cell_updates)
                                 st.session_state[changes_key] = False
                                 st.cache_data.clear()
-                                st.success("✅ Perubahan berhasil disimpan ke Google Sheets!")
+                                st.success("✅ Perubahan berhasil disimpan ke Database!")
                                 st.rerun()
 
                         except Exception as e:
                             st.error(f"❌ Gagal menyimpan ke database: {e}")
 
                 with col_btn2:
-                    if st.button("🔄 Batalkan / Reset", use_container_width=True, key=f"cancel_{wilayah}"):
+                    if st.button("🔄 Reset", use_container_width=True, key=f"cancel_{wilayah}"):
                         del st.session_state[local_df_key]
                         st.session_state[changes_key] = False
                         st.rerun()
 
                 st.markdown("---")
 
-            # --- 4. EXPANDER UPDATE ZONA MEZZANINE ---
             with st.expander("Update Zona Mezzanine", expanded=False):
                 daftar_zona_mezzanine = [
                     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
@@ -460,12 +446,11 @@ else:
                                 if len(m_idx) > 0:
                                     df_lokal.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
                             st.session_state[changes_key] = True
-                            st.success(f"✅ Zona Mezzanine diperbarui ke draf!")
+                            st.success(f"✅ Zona Mezzanine berhasil diperbarui!")
                             st.rerun()
 
             st.markdown("---")
             
-            # --- 5. TAMPILKAN TABEL UTAMA (TIDAK DUPLIKAT) ---
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             
             if not df_lokal.empty:
@@ -651,7 +636,7 @@ else:
                     with c_btn2:
                         btn_od_key = f"od_mnf_{wilayah}_{m_no}_{index}"
                         if m_status.lower() != "on delivery":
-                            # CONTOH OPTIMASI PADA TOMBOL ON DELIVERY MANIFEST
+                            
                             if st.button("On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
                                 try:
                                     creds_dict = dict(st.secrets["connections"]["gsheets"])
@@ -662,7 +647,6 @@ else:
                                     ws_m = sh.worksheet("Manifest log")
                                     ws_main = sh.worksheet("Database log")
         
-                                    # Ambil data sekaligus (1 kali read) alih-alih per sel
                                     header_m = ws_m.row_values(1)
                                     status_m_idx = header_m.index("Status Manifest") + 1 if "Status Manifest" in header_m else 8
                                     idlist_m_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
@@ -681,10 +665,9 @@ else:
                                             break
                 
                                     if row_idx_m:
-                                        # 1. Update status manifest
+                                        
                                         ws_m.update_cell(row_idx_m, status_m_idx, "On Delivery")
                                         
-                                        # 2. Update database utama menggunakan batch_update agar hemat kuota
                                         records_main = ws_main.get_all_records()
                                         header_main = ws_main.row_values(1)
                                         id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
@@ -695,14 +678,14 @@ else:
                                             for r_i, r_v in enumerate(records_main, start=2):
                                                 r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
                                                 if r_id_str in ids_to_update:
-                                                    # Kumpulkan dalam list batch
+                                                    
                                                     batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "On Delivery"))
                 
                                                 if batch_cell_updates:
-                                                    ws_main.update_cells(batch_cell_updates) # 1 kali request untuk banyak baris!
+                                                    ws_main.update_cells(batch_cell_updates) 
             
                                         st.success(f"✅ Manifest `{m_no}` berhasil diubah menjadi **On Delivery**!")
-                                        # Alih-alih clear cache global, cukup update state lokal atau jeda sejenak
+                                        
                                         st.rerun()
                                 except Exception as e:
                                     st.error(f"❌ Gagal merubah status On Delivery: {e}")
