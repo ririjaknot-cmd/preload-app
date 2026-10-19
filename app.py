@@ -8,7 +8,7 @@ import gspread
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
 USER_DATABASE = {
-    "riri.jaknot@gmail.com": {"nama": "Riri Ridwan Genta Yudha", "pin": "1234"},
+    "riri.jaknot@gmail.com": {"nama": "Riri Ridwan Genta Yudha", "pin": "Kronus666"},
     "adamrayhan.jaknot@gmail.com": {"nama": "Adam Rayhan", "pin": "1234"},
     "satriopjn@gmail.com": {"nama": "Satrio Sudiyanto", "pin": "1234"},
     "ahmadallfiansc@gmail.com": {"nama": "Ahmad Alfian", "pin": "1234"},
