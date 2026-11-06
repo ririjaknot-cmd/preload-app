@@ -366,17 +366,12 @@ else:
     st.markdown("---")
 
     if st.session_state.get(changes_key, False):
-        with st.container():
-            st.warning("⚠️ Ada perubahan data yang belum disimpan ke Database!")
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                # Jika tombol Save ditekan, jalankan proses tanpa merender ulang elemen di bawahnya
-                if st.button("💾 Save", type="primary", use_container_width=True, key=f"save_{wilayah}"):
-                    try:
-                        st.session_state[changes_key] = False
-                        
-                        with st.spinner("💾 Menyimpan perubahan ke Google Sheets..."):
+                st.warning("⚠️ Ada perubahan data yang **belum disimpan** ke Database!")
+                col_btn1, col_btn2 = st.columns(2)
+                
+                with col_btn1:
+                    if st.button("💾 Save", type="primary", use_container_width=True, key=f"save_{wilayah}"):
+                        try:
                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                             gc = gspread.service_account_from_dict(creds_dict)
                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -399,33 +394,32 @@ else:
                                 w_val = row.get("Waktu Preload")
                                 s_val = row.get("Status")
 
-                                if pd.notna(l_val) and str(l_val).strip() != "" and str(l_val).strip() != "nan":
-                                    for r_idx, r_val in enumerate(records_main, start=2):
-                                        sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
-                                        if sheet_id_str == r_id:
-                                            cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
-                                            cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
-                                            cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
-                                            cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
-                                            break
+                                for r_idx, r_val in enumerate(records_main, start=2):
+                                    sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                    if sheet_id_str == r_id:
+                                        cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
+                                        cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val) if pd.notna(l_val) else ""))
+                                        cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val) if pd.notna(w_val) else ""))
+                                        cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val) if pd.notna(s_val) else ""))
+                                        break
 
                             if cell_updates:
                                 ws.update_cells(cell_updates)
+                                st.session_state[changes_key] = False
                                 st.cache_data.clear()
-                                st.success("✅ Perubahan berhasil disimpan ke Google Sheets!")
+                                st.success("✅ Perubahan berhasil disimpan ke Database!")
                                 st.rerun()
 
-                    except Exception as e:
-                        st.session_state[changes_key] = True 
-                        st.error(f"❌ Gagal menyimpan ke database: {e}")
+                        except Exception as e:
+                            st.error(f"❌ Gagal menyimpan ke database: {e}")
 
-            with col_btn2:
-                if st.button("🔄 Reset", use_container_width=True, key=f"cancel_{wilayah}"):
-                    del st.session_state[local_df_key]
-                    st.session_state[changes_key] = False
-                    st.rerun()
+                with col_btn2:
+                    if st.button("🔄 Reset", use_container_width=True, key=f"cancel_{wilayah}"):
+                        del st.session_state[local_df_key]
+                        st.session_state[changes_key] = False
+                        st.rerun()
 
-    st.markdown("---")
+                st.markdown("---")
 
     # --- EXPANDER UPDATE ZONA MEZZANINE ---
     with st.expander("Update Zona Mezzanine", expanded=False):
