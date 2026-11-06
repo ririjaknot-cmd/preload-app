@@ -673,11 +673,12 @@ else:
                 st.warning(f"⚠️ Gagal memuat data manifest: {e}")
 
             if not df_manifest_wilayah.empty:
-                                # --- CONTOH PENEMPATAN DI DALAM PERULANGAN RENDER MANIFEST ---
                 for idx, m_row in df_manifest_wilayah.iterrows():
-                    mnf_num = m_row.get("Nomor Manifest")
+                    # Extrak data dari m_row secara aman
+                    mnf_num = str(m_row.get("Nomor Manifest", ""))
                     zona_raw = str(m_row.get("Zona Mezzanine", ""))
                     box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
+                    m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", ""))
                     
                     # --- 1. SIAPKAN HTML TOOLTIP ON-HOVER ---
                     list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
@@ -685,17 +686,20 @@ else:
                         tooltip_items_html = "<br>".join([f"• <b>({z})</b> 1 Box" for z in list_zona_split])
                     else:
                         tooltip_items_html = "Tidak ada zona"
-                
+                    
+                    # Gunakan idx / mnf_num agar class CSS unik per baris
+                    clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
+                    
                     tooltip_html = f"""
                     <style>
-                    .tooltip-container-{mnf_num} {{
+                    .tooltip-container-{clean_css_id} {{
                       position: relative;
                       display: inline-block;
                       cursor: pointer;
                       color: #ff4b4b;
                       font-weight: 500;
                     }}
-                    .tooltip-container-{mnf_num} .tooltip-text {{
+                    .tooltip-container-{clean_css_id} .tooltip-text {{
                       visibility: hidden;
                       width: 140px;
                       background-color: #262730;
@@ -714,90 +718,98 @@ else:
                       box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
                       border: 1px solid #46485f;
                     }}
-                    .tooltip-container-{mnf_num}:hover .tooltip-text {{
+                    .tooltip-container-{clean_css_id}:hover .tooltip-text {{
                       visibility: visible;
                       opacity: 1;
                     }}
                     </style>
-                
-                    <div class="tooltip-container-{mnf_num}">
+                    
+                    <div class="tooltip-container-{clean_css_id}">
                       Zona
                       <div class="tooltip-text">
                         {tooltip_items_html}
                       </div>
                     </div>
                     """
-                
-                    # --- 2. TAMPILKAN KE LAYAR MENGGUNAKAN ST.MARKDOWN ---
-                    st.markdown(f"""
-                        **No. Manifest:** `{mnf_num}` | {tooltip_html} | **Jumlah Box:** {box_total}
-                    """, unsafe_allow_html=True)
                     
-                    # Tombol detail atau aksi manifest lainnya...
-                    with c_btn1:
-                        btn_key = f"detail_mnf_{wilayah}_{m_no}_{index}"
-                        if st.button("🔍 Detail", key=btn_key, use_container_width=True):
-                            st.session_state[f"active_detail_manifest_{wilayah}"] = m_no
-                            
-                    with c_btn2:
-                        btn_od_key = f"od_mnf_{wilayah}_{m_no}_{index}"
-                        if m_status.lower() != "on delivery":
-                            
-                            if st.button("On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
-                                try:
-                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                    gc = gspread.service_account_from_dict(creds_dict)
-                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-        
-                                    ws_m = sh.worksheet("Manifest log")
-                                    ws_main = sh.worksheet("Database log")
-        
-                                    header_m = ws_m.row_values(1)
-                                    status_m_idx = header_m.index("Status Manifest") + 1 if "Status Manifest" in header_m else 8
-                                    idlist_m_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
-                                    mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
-                                    
-                                    manifest_col_values = ws_m.col_values(mnf_col_idx)
-                                    row_idx_m = None
-                                    ids_to_update = []
-        
-                                    for idx_m, val_m in enumerate(manifest_col_values, start=1):
-                                        if str(val_m).strip() == str(m_no):
-                                            row_idx_m = idx_m
-                                            row_vals_m = ws_m.row_values(idx_m)
-                                            if len(row_vals_m) >= idlist_m_idx:
-                                                ids_to_update = [i.strip().split('.')[0] for i in row_vals_m[idlist_m_idx - 1].split(",") if i.strip()]
-                                            break
-                
-                                    if row_idx_m:
+                    # --- 2. TAMPILKAN BARIS MANIFEST DAN KOLOM TOMBOL ---
+                    # Membuat layout 2 kolom: Kolom teks info & Kolom tombol aksi
+                    col_info, col_action = st.columns([3, 1])
+                    
+                    with col_info:
+                        st.markdown(f"**No. Manifest:** `{mnf_num}` | {tooltip_html} | **Jumlah Box:** {box_total}", unsafe_allow_html=True)
+                    
+                    with col_action:
+                        # DEF INISIASI c_btn1 DENGAN ST.COLUMNS AGAR TIDAK NAMEERROR
+                        c_btn1, c_btn2 = st.columns(2)
+                        
+                        with c_btn1:
+                            btn_key = f"detail_mnf_{wilayah}_{mnf_num}_{idx}"
+                            if st.button("🔍 Detail", key=btn_key, use_container_width=True):
+                                st.session_state[f"active_detail_manifest_{wilayah}"] = mnf_num
+                                st.rerun()
+                                
+                        with c_btn2:
+                            btn_od_key = f"od_mnf_{wilayah}_{mnf_num}_{idx}"
+                            if m_status.lower() != "on delivery":
+                                if st.button("On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
+                                    try:
+                                        creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                        gc = gspread.service_account_from_dict(creds_dict)
+                                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                         
-                                        ws_m.update_cell(row_idx_m, status_m_idx, "On Delivery")
+                                        ws_m = sh.worksheet("Manifest log")
+                                        ws_main = sh.worksheet("Database log")
                                         
-                                        records_main = ws_main.get_all_records()
-                                        header_main = ws_main.row_values(1)
-                                        id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
-                                        status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
-            
-                                        if id_col_i and status_col_i and ids_to_update:
-                                            batch_cell_updates = []
-                                            for r_i, r_v in enumerate(records_main, start=2):
-                                                r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
-                                                if r_id_str in ids_to_update:
-                                                    
-                                                    batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "On Delivery"))
-                
+                                        header_m = ws_m.row_values(1)
+                                        status_m_idx = header_m.index("Status Manifest") + 1 if "Status Manifest" in header_m else 8
+                                        idlist_m_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
+                                        mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                        
+                                        manifest_col_values = ws_m.col_values(mnf_col_idx)
+                                        row_idx_m = None
+                                        ids_to_update = []
+                                        
+                                        for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                            if str(val_m).strip() == str(mnf_num):
+                                                row_idx_m = idx_m
+                                                row_vals_m = ws_m.row_values(idx_m)
+                                                if len(row_vals_m) >= idlist_m_idx:
+                                                    ids_to_update = [i.strip().split('.')[0] for i in row_vals_m[idlist_m_idx - 1].split(",") if i.strip()]
+                                                break
+                                        
+                                        if row_idx_m:
+                                            ws_m.update_cell(row_idx_m, status_m_idx, "On Delivery")
+                                            
+                                            records_main = ws_main.get_all_records()
+                                            header_main = ws_main.row_values(1)
+                                            id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                            status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
+                                            
+                                            if id_col_i and status_col_i and ids_to_update:
+                                                batch_cell_updates = []
+                                                for r_i, r_v in enumerate(records_main, start=2):
+                                                    r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
+                                                    if r_id_str in ids_to_update:
+                                                        batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "On Delivery"))
+                                                
                                                 if batch_cell_updates:
-                                                    ws_main.update_cells(batch_cell_updates) 
-            
-                                        st.success(f"✅ Manifest `{m_no}` berhasil diubah menjadi **On Delivery**!")
-                                        
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"❌ Gagal merubah status On Delivery: {e}")
-                        else:
-                            st.markdown("*On Delivery*")
-
+                                                    ws_main.update_cells(batch_cell_updates)
+                                            
+                                            # BERSIHKAN CACHE & RESET STATE AGAR REALTIME
+                                            st.cache_data.clear()
+                                            for k in list(st.session_state.keys()):
+                                                if "local_df_preload" in k:
+                                                    del st.session_state[k]
+                                                    
+                                            st.success(f"✅ Manifest `{mnf_num}` berhasil diubah menjadi **On Delivery**!")
+                                            st.rerun()
+                                    except Exception as e:
+                                        st.error(f"❌ Gagal merubah status On Delivery: {e}")
+                            else:
+                                st.markdown("*On Delivery*")
+                    
                     st.markdown("---")
 
                 active_mnf = st.session_state.get(f"active_detail_manifest_{wilayah}")
