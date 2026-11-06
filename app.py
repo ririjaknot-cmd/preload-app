@@ -365,66 +365,69 @@ else:
 
     st.markdown("---")
 
-    # --- TOMBOL SAVE UTAMA DENGAN SPINNER (MENCEGAH DUPLIKASI VISUAL SAAT LOADING) ---
+    # --- PASTIKAN HANYA ADA SATU BLOK INI DI DALAM TAB PRELOAD ---
     if st.session_state.get(changes_key, False):
-        st.warning("⚠️ Ada perubahan data yang belum disimpan ke Database!")
-        col_btn1, col_btn2 = st.columns(2)
-        
-        with col_btn1:
-            if st.button("💾 Save", type="primary", use_container_width=True, key=f"save_{wilayah}"):
-                with st.spinner("💾 Menyimpan perubahan ke Google Sheets..."):
+        # Gunakan st.container agar elemen warning dan tombol terbungkus rapi sebagai satu kesatuan
+        with st.container():
+            st.warning("⚠️ Ada perubahan data yang belum disimpan ke Database!")
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                # Jika tombol Save ditekan, jalankan proses tanpa merender ulang elemen di bawahnya
+                if st.button("💾 Save", type="primary", use_container_width=True, key=f"save_{wilayah}"):
                     try:
                         st.session_state[changes_key] = False
                         
-                        creds_dict = dict(st.secrets["connections"]["gsheets"])
-                        gc = gspread.service_account_from_dict(creds_dict)
-                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                        ws = sh.worksheet("Database log")
+                        with st.spinner("💾 Menyimpan perubahan ke Google Sheets..."):
+                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                            gc = gspread.service_account_from_dict(creds_dict)
+                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                            ws = sh.worksheet("Database log")
 
-                        records_main = ws.get_all_records()
-                        header_main = ws.row_values(1)
+                            records_main = ws.get_all_records()
+                            header_main = ws.row_values(1)
 
-                        prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
-                        loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
-                        waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
-                        status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
+                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
+                            loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
+                            waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
+                            status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
 
-                        cell_updates = []
-                        for _, row in df_lokal.iterrows():
-                            r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
-                            p_val = row.get("Progress")
-                            l_val = row.get("Loader")
-                            w_val = row.get("Waktu Preload")
-                            s_val = row.get("Status")
+                            cell_updates = []
+                            for _, row in df_lokal.iterrows():
+                                r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
+                                p_val = row.get("Progress")
+                                l_val = row.get("Loader")
+                                w_val = row.get("Waktu Preload")
+                                s_val = row.get("Status")
 
-                            if pd.notna(l_val) and str(l_val).strip() != "" and str(l_val).strip() != "nan":
-                                for r_idx, r_val in enumerate(records_main, start=2):
-                                    sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
-                                    if sheet_id_str == r_id:
-                                        cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
-                                        cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
-                                        cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
-                                        cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
-                                        break
+                                if pd.notna(l_val) and str(l_val).strip() != "" and str(l_val).strip() != "nan":
+                                    for r_idx, r_val in enumerate(records_main, start=2):
+                                        sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                        if sheet_id_str == r_id:
+                                            cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
+                                            cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
+                                            cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
+                                            cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
+                                            break
 
-                        if cell_updates:
-                            ws.update_cells(cell_updates)
-                            st.cache_data.clear()
-                            st.success("✅ Perubahan berhasil disimpan ke Google Sheets!")
-                            st.rerun()
+                            if cell_updates:
+                                ws.update_cells(cell_updates)
+                                st.cache_data.clear()
+                                st.success("✅ Perubahan berhasil disimpan ke Google Sheets!")
+                                st.rerun()
 
                     except Exception as e:
                         st.session_state[changes_key] = True 
                         st.error(f"❌ Gagal menyimpan ke database: {e}")
 
-        with col_btn2:
-            if st.button("🔄 Reset", use_container_width=True, key=f"cancel_{wilayah}"):
-                del st.session_state[local_df_key]
-                st.session_state[changes_key] = False
-                st.rerun()
+            with col_btn2:
+                if st.button("🔄 Reset", use_container_width=True, key=f"cancel_{wilayah}"):
+                    del st.session_state[local_df_key]
+                    st.session_state[changes_key] = False
+                    st.rerun()
 
-        st.markdown("---")
+    st.markdown("---")
 
     # --- EXPANDER UPDATE ZONA MEZZANINE ---
     with st.expander("Update Zona Mezzanine", expanded=False):
