@@ -432,14 +432,20 @@ else:
                 ]
         
                 if not df_lokal.empty:
-                    # KONVERSI NILAI PROGRESS KE ANGKA SECARA AMAN TERLEBIH DAHULU
-                    temp_prog = pd.to_numeric(df_lokal["Progress"], errors="coerce").fillna(0)
-                    temp_loader = df_lokal["Loader"].astype(str).str.strip().str.lower()
+                    # HANYA AMBIL BARIS YANG PROGRESS-NYA > 0 (MENGABAIKAN ANGKA 0) 
+                    # ATAU LOADER-NYA BUKAN KATA 'NONE' / KOSONG
+                    df_aktif = df_lokal.copy()
                     
-                    # FILTER: Hanya ambil baris yang progress-nya > 0 ATAU loader-nya sudah terisi nama valid
-                    df_aktif = df_lokal[
-                        (temp_prog > 0) | 
-                        ((temp_loader != "") & (temp_loader != "nan") & (temp_loader != "none"))
+                    # Ubah progress jadi float secara paksa
+                    df_aktif["_prog_numeric"] = pd.to_numeric(df_aktif["Progress"], errors="coerce").fillna(0)
+                    df_aktif["_loader_clean"] = df_aktif["Loader"].astype(str).str.strip().str.lower()
+                    
+                    # Filter ketat: Progress > 0 DAN Loader tidak kosong/none/nan
+                    df_aktif = df_aktif[
+                        (df_aktif["_prog_numeric"] > 0) & 
+                        (df_aktif["_loader_clean"] != "") & 
+                        (df_aktif["_loader_clean"] != "none") & 
+                        (df_aktif["_loader_clean"] != "nan")
                     ]
                     
                     list_id_tersedia = [str(r).split('.')[0].strip() for r in df_aktif[id_col_name].dropna().unique()]
