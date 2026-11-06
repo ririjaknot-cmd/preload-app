@@ -684,7 +684,7 @@ else:
                 
                 # 1. Ambil data pendukung dari m_row (sesuaikan nama kolom di DataFrame Anda jika berbeda)
                 m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
-                m_creator = str(m_row.get("Oleh", "") or m_row.get("Creator", "-"))
+                m_creator = str(m_row.get("Oleh", "") or m_row.get("Dibuat Oleh", "-"))
                 m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
         
                 # 2. Siapkan daftar zona untuk tooltip on-hover
