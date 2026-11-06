@@ -364,13 +364,17 @@ else:
 
             st.markdown("---")
 
+            # --- 3. TOMBOL SAVE UTAMA (HANYA MUNCUL SATU KALI DI SINI) ---
             if st.session_state.get(changes_key, False):
-                st.warning("⚠️ Ada perubahan data yang **belum disimpan** ke Database!")
+                st.warning("⚠️ Ada perubahan data yang belum disimpan ke Database!")
                 col_btn1, col_btn2 = st.columns(2)
                 
                 with col_btn1:
                     if st.button("💾 Save", type="primary", use_container_width=True, key=f"save_{wilayah}"):
                         try:
+                            # Langsung set ke False agar tombol tidak merender ulang atau muncul ganda saat proses berjalan
+                            st.session_state[changes_key] = False
+                            
                             creds_dict = dict(st.secrets["connections"]["gsheets"])
                             gc = gspread.service_account_from_dict(creds_dict)
                             spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -393,6 +397,7 @@ else:
                                 w_val = row.get("Waktu Preload")
                                 s_val = row.get("Status")
 
+                                # HANYA SIMPAN KE SHEET JIKA BARIS TERSEBUT SUDAH DI-PRELOAD OLEH LOADER
                                 if pd.notna(l_val) and str(l_val).strip() != "" and str(l_val).strip() != "nan":
                                     for r_idx, r_val in enumerate(records_main, start=2):
                                         sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
@@ -405,12 +410,12 @@ else:
 
                             if cell_updates:
                                 ws.update_cells(cell_updates)
-                                st.session_state[changes_key] = False
                                 st.cache_data.clear()
-                                st.success("✅ Perubahan berhasil disimpan ke Database!")
+                                st.success("✅ Perubahan berhasil disimpan ke Google Sheets!")
                                 st.rerun()
 
                         except Exception as e:
+                            st.session_state[changes_key] = True # Kembalikan status jika gagal
                             st.error(f"❌ Gagal menyimpan ke database: {e}")
 
                 with col_btn2:
