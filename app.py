@@ -432,15 +432,10 @@ else:
                 ]
         
                 if not df_lokal.empty:
-                    # HANYA AMBIL BARIS YANG PROGRESS-NYA > 0 (MENGABAIKAN ANGKA 0) 
-                    # ATAU LOADER-NYA BUKAN KATA 'NONE' / KOSONG
                     df_aktif = df_lokal.copy()
-                    
-                    # Ubah progress jadi float secara paksa
                     df_aktif["_prog_numeric"] = pd.to_numeric(df_aktif["Progress"], errors="coerce").fillna(0)
                     df_aktif["_loader_clean"] = df_aktif["Loader"].astype(str).str.strip().str.lower()
                     
-                    # Filter ketat: Progress > 0 DAN Loader tidak kosong/none/nan
                     df_aktif = df_aktif[
                         (df_aktif["_prog_numeric"] > 0) & 
                         (df_aktif["_loader_clean"] != "") & 
@@ -463,13 +458,47 @@ else:
                     if submit_mz:
                         if selected_ids_mz and selected_zones:
                             string_zona_hasil = ", ".join(selected_zones)
+                            
+                            # 1. Update data di DataFrame lokal terlebih dahulu
                             for target_id in selected_ids_mz:
                                 m_idx = df_lokal[df_lokal[id_col_name].astype(str).str.contains(target_id)].index
                                 if len(m_idx) > 0:
                                     df_lokal.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
-                            st.session_state[changes_key] = True
-                            st.success(f"✅ Zona Mezzanine berhasil diperbarui!")
-                            st.rerun()
+        
+                            # 2. LANGSUNG SIMPAN OTOMATIS KE GOOGLE SHEETS
+                            with st.spinner("💾 Menyimpan Zona Mezzanine ke Google Sheets..."):
+                                try:
+                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                    gc = gspread.service_account_from_dict(creds_dict)
+                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                    ws = sh.worksheet("Database log")
+        
+                                    records_main = ws.get_all_records()
+                                    header_main = ws.row_values(1)
+        
+                                    zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
+        
+                                    cell_updates = []
+                                    for _, row in df_lokal.iterrows():
+                                        r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
+                                        z_val = row.get("Zona Mezzanine")
+        
+                                        if r_id in selected_ids_mz and pd.notna(z_val):
+                                            for r_idx, r_val in enumerate(records_main, start=2):
+                                                sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                                if sheet_id_str == r_id:
+                                                    cell_updates.append(gspread.Cell(r_idx, zona_col_i, str(z_val)))
+                                                    break
+        
+                                    if cell_updates:
+                                        ws.update_cells(cell_updates)
+                                        st.cache_data.clear()
+                                        st.success(f"✅ Zona Mezzanine untuk ID {', '.join(selected_ids_mz)} berhasil disimpan ke database!")
+                                        st.rerun()
+        
+                                except Exception as e:
+                                    st.error(f"❌ Gagal menyimpan Zona Mezzanine ke database: {e}")
                         else:
                             st.warning("⚠️ Pilih minimal 1 ID dan 1 Zona Mezzanine.")
 
