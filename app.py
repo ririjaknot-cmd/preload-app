@@ -673,20 +673,67 @@ else:
                 st.warning(f"⚠️ Gagal memuat data manifest: {e}")
 
             if not df_manifest_wilayah.empty:
-                for index, row_mnf in df_manifest_wilayah.iterrows():
-                    m_no = str(row_mnf.get("Nomor Manifest", ""))
-                    m_zona = str(row_mnf.get("Zona Mezzanine", ""))
-                    m_tbox = str(row_mnf.get("Jumlah Box", "0")).split('.')[0]
-                    m_oleh = str(row_mnf.get("Dibuat Oleh", ""))
-                    m_waktu = str(row_mnf.get("Waktu Buat", ""))
-                    m_status = str(row_mnf.get("Status Manifest", "Manifested"))
-
-                    c_info, c_btn1, c_btn2 = st.columns([4, 1, 1])
-                    with c_info:
-                        st.markdown(
-                            f"**No. Manifest:** `{m_no}` | **Zona:** {m_zona} | **Jumlah Box:** `{m_tbox}` | "
-                            f"**Status:** `{m_status}` | **Oleh:** {m_oleh} ({m_waktu})"
-                        )
+                                # --- CONTOH PENEMPATAN DI DALAM PERULANGAN RENDER MANIFEST ---
+                for idx, m_row in df_manifest_wilayah.iterrows():
+                    mnf_num = m_row.get("Nomor Manifest")
+                    zona_raw = str(m_row.get("Zona Mezzanine", ""))
+                    box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
+                    
+                    # --- 1. SIAPKAN HTML TOOLTIP ON-HOVER ---
+                    list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
+                    if list_zona_split:
+                        tooltip_items_html = "<br>".join([f"• <b>({z})</b> 1 Box" for z in list_zona_split])
+                    else:
+                        tooltip_items_html = "Tidak ada zona"
+                
+                    tooltip_html = f"""
+                    <style>
+                    .tooltip-container-{mnf_num} {{
+                      position: relative;
+                      display: inline-block;
+                      cursor: pointer;
+                      color: #ff4b4b;
+                      font-weight: 500;
+                    }}
+                    .tooltip-container-{mnf_num} .tooltip-text {{
+                      visibility: hidden;
+                      width: 140px;
+                      background-color: #262730;
+                      color: #fff;
+                      text-align: left;
+                      border-radius: 6px;
+                      padding: 8px;
+                      position: absolute;
+                      z-index: 1000;
+                      bottom: 125%;
+                      left: 50%;
+                      transform: translateX(-50%);
+                      opacity: 0;
+                      transition: opacity 0.3s;
+                      font-size: 13px;
+                      box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+                      border: 1px solid #46485f;
+                    }}
+                    .tooltip-container-{mnf_num}:hover .tooltip-text {{
+                      visibility: visible;
+                      opacity: 1;
+                    }}
+                    </style>
+                
+                    <div class="tooltip-container-{mnf_num}">
+                      Zona
+                      <div class="tooltip-text">
+                        {tooltip_items_html}
+                      </div>
+                    </div>
+                    """
+                
+                    # --- 2. TAMPILKAN KE LAYAR MENGGUNAKAN ST.MARKDOWN ---
+                    st.markdown(f"""
+                        **No. Manifest:** `{mnf_num}` | {tooltip_html} | **Jumlah Box:** {box_total}
+                    """, unsafe_allow_html=True)
+                    
+                    # Tombol detail atau aksi manifest lainnya...
                     with c_btn1:
                         btn_key = f"detail_mnf_{wilayah}_{m_no}_{index}"
                         if st.button("🔍 Detail", key=btn_key, use_container_width=True):
