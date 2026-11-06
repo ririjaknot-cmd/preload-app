@@ -430,15 +430,28 @@ else:
                     "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
                     "SC 1", "SC 2"
                 ]
-
+        
                 if not df_lokal.empty:
-                    list_id_tersedia = [str(r).split('.')[0].strip() for r in df_lokal[id_col_name].dropna().unique()]
-
+                    # HANYA AMBIL ID YANG PROGRESS-NYA > 0 ATAU SUDAH ADA LOADER-NYA (STATUS NOT COMPLETED / COMPLETED)
+                    df_aktif = df_lokal[
+                        (pd.to_numeric(df_lokal["Progress"], errors="coerce").fillna(0) > 0) | 
+                        (df_lokal["Loader"].astype(str).str.strip() != "") & 
+                        (df_lokal["Loader"].astype(str).str.lower() != "nan")
+                    ]
+                    
+                    list_id_tersedia = [str(r).split('.')[0].strip() for r in df_aktif[id_col_name].dropna().unique()]
+        
                     with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
-                        selected_ids_mz = st.multiselect("Pilih ID Request:", options=list_id_tersedia)
+                        # Jika belum ada yang di-scan, berikan informasi agar operator tidak bingung
+                        if not list_id_tersedia:
+                            st.info("ℹ️ Belum ada ID yang diproses (Status Pending). Lakukan scan preload terlebih dahulu.")
+                            selected_ids_mz = []
+                        else:
+                            selected_ids_mz = st.multiselect("Pilih ID Request:", options=list_id_tersedia)
+                        
                         selected_zones = st.multiselect("Pilih Zona Mezzanine:", options=daftar_zona_mezzanine)
                         submit_mz = st.form_submit_button("Simpan Zona Mezzanine", type="primary")
-
+        
                     if submit_mz:
                         if selected_ids_mz and selected_zones:
                             string_zona_hasil = ", ".join(selected_zones)
@@ -449,6 +462,8 @@ else:
                             st.session_state[changes_key] = True
                             st.success(f"✅ Zona Mezzanine berhasil diperbarui!")
                             st.rerun()
+                        else:
+                            st.warning("⚠️ Pilih minimal 1 ID dan 1 Zona Mezzanine.")
 
             st.markdown("---")
             
