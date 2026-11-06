@@ -432,17 +432,19 @@ else:
                 ]
         
                 if not df_lokal.empty:
-                    # HANYA AMBIL ID YANG PROGRESS-NYA > 0 ATAU SUDAH ADA LOADER-NYA (STATUS NOT COMPLETED / COMPLETED)
+                    # KONVERSI NILAI PROGRESS KE ANGKA SECARA AMAN TERLEBIH DAHULU
+                    temp_prog = pd.to_numeric(df_lokal["Progress"], errors="coerce").fillna(0)
+                    temp_loader = df_lokal["Loader"].astype(str).str.strip().str.lower()
+                    
+                    # FILTER: Hanya ambil baris yang progress-nya > 0 ATAU loader-nya sudah terisi nama valid
                     df_aktif = df_lokal[
-                        (pd.to_numeric(df_lokal["Progress"], errors="coerce").fillna(0) > 0) | 
-                        (df_lokal["Loader"].astype(str).str.strip() != "") & 
-                        (df_lokal["Loader"].astype(str).str.lower() != "nan")
+                        (temp_prog > 0) | 
+                        ((temp_loader != "") & (temp_loader != "nan") & (temp_loader != "none"))
                     ]
                     
                     list_id_tersedia = [str(r).split('.')[0].strip() for r in df_aktif[id_col_name].dropna().unique()]
         
                     with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
-                        # Jika belum ada yang di-scan, berikan informasi agar operator tidak bingung
                         if not list_id_tersedia:
                             st.info("ℹ️ Belum ada ID yang diproses (Status Pending). Lakukan scan preload terlebih dahulu.")
                             selected_ids_mz = []
