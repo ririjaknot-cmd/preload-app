@@ -329,8 +329,9 @@ else:
                     st.error(m_text)
                 del st.session_state[f"last_msg_{wilayah}"]
 
-            if f"sound_effect_{wilayah}" in st.session_state:
-                sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
+            sound_effect_key = f"sound_effect_{wilayah}"
+            if sound_effect_key in st.session_state and st.session_state[sound_effect_key] is not None:
+                sound_type, timestamp_id = st.session_state[sound_effect_key]
                 local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
                 
                 import base64
@@ -359,7 +360,7 @@ else:
                 except Exception as e:
                     st.warning(f"File audio lokal tidak ditemukan: {local_audio_path}")
                     
-                del st.session_state[f"sound_effect_{wilayah}"]
+                del st.session_state[sound_effect_key]
 
             st.markdown("---")
 
