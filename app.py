@@ -393,14 +393,15 @@ else:
                                 w_val = row.get("Waktu Preload")
                                 s_val = row.get("Status")
 
-                                for r_idx, r_val in enumerate(records_main, start=2):
-                                    sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
-                                    if sheet_id_str == r_id:
-                                        cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
-                                        cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val) if pd.notna(l_val) else ""))
-                                        cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val) if pd.notna(w_val) else ""))
-                                        cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val) if pd.notna(s_val) else ""))
-                                        break
+                                if pd.notna(l_val) and str(l_val).strip() != "" and str(l_val).strip() != "nan":
+                                    for r_idx, r_val in enumerate(records_main, start=2):
+                                        sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                        if sheet_id_str == r_id:
+                                            cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
+                                            cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
+                                            cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
+                                            cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
+                                            break
 
                             if cell_updates:
                                 ws.update_cells(cell_updates)
