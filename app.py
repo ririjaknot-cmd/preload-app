@@ -8,23 +8,22 @@ import gspread
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
 USER_DATABASE = {
-    "riri.jaknot@gmail.com": {"nama": "Riri Ridwan Genta Yudha", "pin": "66666"},
+    "riri.jaknot@gmail.com": {"nama": "Riri Ridwan Genta Yudha", "pin": "Kronus666"},
     "adamrayhan.jaknot@gmail.com": {"nama": "Adam Rayhan", "pin": "1234"},
     "satriopjn@gmail.com": {"nama": "Satrio Sudiyanto", "pin": "1234"},
     "ahmadallfiansc@gmail.com": {"nama": "Ahmad Alfian", "pin": "1234"},
     "ajikurnianto93@gmail.com": {"nama": "Aji Kurnianto", "pin": "1234"},
     "alekhandoko98@gmail.com": {"nama": "Alek Handoko", "pin": "1234"},
-    "alghifariathian@gmail.com": {"nama": "Athian Alghifari", "pin": "messigoat"},
+    "alghifariathian@gmail.com": {"nama": "Athian Alghifari", "pin": "1234"},
     "amelyaadm@gmail.com": {"nama": "Amelya Putri", "pin": "1234"},
     "ardi03027@gmail.com": {"nama": "Eka Febri Setiardi", "pin": "1234"},
     "arifsa2703@gmail.com": {"nama": "Arif Saputra", "pin": "1234"},
     "bedhel089f@gmail.com": {"nama": "Fadhilah Al Azani", "pin": "1234"},
     "olifiaekmanda7@gmail.com": {"nama": "Olifia Ekmanda", "pin": "1234"},
-    "rayadiagung22@gmail.com": {"nama": "Rayadi Agung", "pin": "emyu13"},
+    "rayadiagung22@gmail.com": {"nama": "Rayadi Agung", "pin": "1234"},
     "siwhayy170@gmail.com": {"nama": "Wahyu Adi Sucipto", "pin": "1234"},
     "tasyaameliaa05@gmail.com": {"nama": "Tasya Amelia", "pin": "1234"},
-    "mahesaagusta28@gmail.com": {"nama": "Mahesa Agusta", "pin": "1234"},
-    "juju230988@gmail.com": {"nama": "Yuniarti", "pin": "1234"},
+    "mahesaagusta28@gmail.com": {"nama": "Mahesa Agusta", "pin": "1234"}
 }
 
 
@@ -104,7 +103,7 @@ else:
         
         components.html("""
         <div style="font-family: sans-serif; font-size: 13px; color: #FFFFFF; margin-top: -10px;">
-        🕒 <span id="live-clock">Loading...</span>
+            🕒 <span id="live-clock">Loading...</span>
         </div>
         <script>
         function updateClock() {
@@ -420,70 +419,69 @@ else:
 
                 st.markdown("---")
 
-    # --- EXPANDER UPDATE ZONA MEZZANINE ---
-    with st.expander("Update Zona Mezzanine", expanded=False):
-        daftar_zona_mezzanine = [
-            "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
-            "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
-            "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11",
-            "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11",
-            "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9",
-            "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
-            "SC 1", "SC 2"
-        ]
+            with st.expander("Update Zona Mezzanine", expanded=False):
+                daftar_zona_mezzanine = [
+                    "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11",
+                    "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
+                    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11",
+                    "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11",
+                    "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9",
+                    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
+                    "SC 1", "SC 2"
+                ]
 
-        if not df_lokal.empty:
-            list_id_tersedia = [str(r).split('.')[0].strip() for r in df_lokal[id_col_name].dropna().unique()]
+                if not df_lokal.empty:
+                    list_id_tersedia = [str(r).split('.')[0].strip() for r in df_lokal[id_col_name].dropna().unique()]
 
-            with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
-                selected_ids_mz = st.multiselect("Pilih ID Request:", options=list_id_tersedia)
-                selected_zones = st.multiselect("Pilih Zona Mezzanine:", options=daftar_zona_mezzanine)
-                submit_mz = st.form_submit_button("Simpan Zona Mezzanine", type="primary")
+                    with st.form(key=f"form_update_mezzanine_multi_{wilayah}", clear_on_submit=True):
+                        selected_ids_mz = st.multiselect("Pilih ID Request:", options=list_id_tersedia)
+                        selected_zones = st.multiselect("Pilih Zona Mezzanine:", options=daftar_zona_mezzanine)
+                        submit_mz = st.form_submit_button("Simpan Zona Mezzanine", type="primary")
 
-            if submit_mz:
-                if selected_ids_mz and selected_zones:
-                    string_zona_hasil = ", ".join(selected_zones)
-                    for target_id in selected_ids_mz:
-                        m_idx = df_lokal[df_lokal[id_col_name].astype(str).str.contains(target_id)].index
-                        if len(m_idx) > 0:
-                            df_lokal.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
-                    st.session_state[changes_key] = True
-                    st.success(f"✅ Zona Mezzanine berhasil diperbarui!")
-                    st.rerun()
+                    if submit_mz:
+                        if selected_ids_mz and selected_zones:
+                            string_zona_hasil = ", ".join(selected_zones)
+                            for target_id in selected_ids_mz:
+                                m_idx = df_lokal[df_lokal[id_col_name].astype(str).str.contains(target_id)].index
+                                if len(m_idx) > 0:
+                                    df_lokal.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
+                            st.session_state[changes_key] = True
+                            st.success(f"✅ Zona Mezzanine berhasil diperbarui!")
+                            st.rerun()
 
-    st.markdown("---")
-    
-    st.markdown(f"##### Data Preload Cabang: {wilayah}")
-    
-    if not df_lokal.empty:
-        df_preload_display = df_lokal.copy()
-        
-        status_formatted_list = []
-        for idx, row in df_preload_display.iterrows():
-            try:
-                jb = row.get("Jumlah Box") or 0
-                pr = row.get("Progress")
-                st_formatted = format_status_dengan_ikon(pr, jb)
-                status_formatted_list.append(st_formatted)
-            except Exception:
-                status_formatted_list.append("🔴 Pending")
-        
-        df_preload_display["Status"] = status_formatted_list
+            st.markdown("---")
+            
+            st.markdown(f"##### Data Preload Cabang: {wilayah}")
+            
+            if not df_lokal.empty:
+                df_preload_display = df_lokal.copy()
+                
+                status_formatted_list = []
+                for idx, row in df_preload_display.iterrows():
+                    try:
+                        jb = row.get("Jumlah Box") or 0
+                        pr = row.get("Progress")
+                        st_formatted = format_status_dengan_ikon(pr, jb)
+                        status_formatted_list.append(st_formatted)
+                    except Exception:
+                        status_formatted_list.append("🔴 Pending")
+                
+                df_preload_display["Status"] = status_formatted_list
 
-        for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
-            if col in df_preload_display.columns:
-                df_preload_display = df_preload_display.drop(columns=[col])
-        
-        if "Zona Mezzanine" in df_preload_display.columns and "Waktu Preload" in df_preload_display.columns:
-            cols = list(df_preload_display.columns)
-            cols.remove("Zona Mezzanine")
-            idx_waktu = cols.index("Waktu Preload")
-            cols.insert(idx_waktu + 1, "Zona Mezzanine")
-            df_preload_display = df_preload_display[cols]
-        
-        st.dataframe(df_preload_display, use_container_width=True, hide_index=True)
-    else:
-        st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
+                for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
+                    if col in df_preload_display.columns:
+                        df_preload_display = df_preload_display.drop(columns=[col])
+                
+                if "Zona Mezzanine" in df_preload_display.columns and "Waktu Preload" in df_preload_display.columns:
+                    cols = list(df_preload_display.columns)
+                    cols.remove("Zona Mezzanine")
+                    idx_waktu = cols.index("Waktu Preload")
+                    cols.insert(idx_waktu + 1, "Zona Mezzanine")
+                    df_preload_display = df_preload_display[cols]
+                
+                st.dataframe(df_preload_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
         with tab_manifest:
             st.subheader(f" Manifest Pengiriman - {wilayah}")
