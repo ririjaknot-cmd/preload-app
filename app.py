@@ -241,23 +241,23 @@ else:
         
         with tab_preload:
             st.subheader(f"Proses Preload & Scan - {wilayah}")
-        
+
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
             
             if local_df_key not in st.session_state or st.sidebar.button("🔄 Reset Draft", key=f"reset_{wilayah}"):
                 st.session_state[local_df_key] = df_filtered.copy()
                 st.session_state[changes_key] = False
-        
+
             df_lokal = st.session_state[local_df_key]
             id_col_name = 'ID' if 'ID' in df_lokal.columns else 'id request'
-        
+
             for col_teks in ["Status", "Loader", "Waktu Preload", "Zona Mezzanine"]:
                 if col_teks in df_lokal.columns:
                     df_lokal[col_teks] = df_lokal[col_teks].astype(str).replace({"nan": "", "None": ""})
             if "Progress" in df_lokal.columns:
                 df_lokal["Progress"] = pd.to_numeric(df_lokal["Progress"], errors="coerce").fillna(0)
-        
+
             form_input_key = f"form_input_preload_{wilayah}"
             with st.form(key=form_input_key, clear_on_submit=True):
                 col_f1, col_f2 = st.columns([3, 1])
@@ -288,7 +288,7 @@ else:
                         row = df_lokal.loc[idx]
                         
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"🚚 ID **{target_id}** berstatus On Delivery. Input ditolak.")
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f" ID **{target_id}** berstatus On Delivery. Input ditolak.")
                             st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
                         else:
@@ -297,7 +297,7 @@ else:
                                 current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
                             except:
                                 max_box, current_prog = 0, 0
-        
+
                             if current_prog >= max_box and max_box > 0:
                                 st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah berstatus **Completed** (Maksimal: {max_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
@@ -322,50 +322,49 @@ else:
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
 
-    # --- RENDER NOTIFIKASI & AUDIO ---
-    if f"last_msg_{wilayah}" in st.session_state:
-        m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
-        if m_type == "success":
-            st.success(m_text)
-        else:
-            st.error(m_text)
-        del st.session_state[f"last_msg_{wilayah}"]
+            if f"last_msg_{wilayah}" in st.session_state:
+                m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
+                if m_type == "success":
+                    st.success(m_text)
+                else:
+                    st.error(m_text)
+                del st.session_state[f"last_msg_{wilayah}"]
 
-    if f"sound_effect_{wilayah}" in st.session_state:
-        sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
-        local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
-        
-        import base64
-        try:
-            with open(local_audio_path, "rb") as f:
-                audio_bytes = f.read()
-            audio_base64 = base64.b64encode(audio_bytes).decode()
-            
-            unique_audio_id = f"audio_{timestamp_id}"
-            
-            audio_html = f'''
-                <audio id="{unique_audio_id}" autoplay style="display:none;">
-                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
-                </audio>
-                <script>
-                    var audio = document.getElementById("{unique_audio_id}");
-                    if (audio) {{
-                        audio.volume = 1.0;
-                        audio.play().catch(function(error) {{
-                            console.log("Autoplay dicegah oleh browser: ", error);
-                        }});
-                    }}
-                </script>
-            '''
-            st.markdown(audio_html, unsafe_allow_html=True)
-        except Exception as e:
-            st.warning(f"File audio lokal tidak ditemukan: {local_audio_path}")
-            
-        del st.session_state[f"sound_effect_{wilayah}"]
+            if f"sound_effect_{wilayah}" in st.session_state:
+                sound_type, timestamp_id = st.session_state[f"sound_effect_{wilayah}"]
+                local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
+                
+                import base64
+                try:
+                    with open(local_audio_path, "rb") as f:
+                        audio_bytes = f.read()
+                    audio_base64 = base64.b64encode(audio_bytes).decode()
+                    
+                    unique_audio_id = f"audio_{timestamp_id}"
+                    
+                    audio_html = f'''
+                        <audio id="{unique_audio_id}" autoplay style="display:none;">
+                            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
+                        </audio>
+                        <script>
+                            var audio = document.getElementById("{unique_audio_id}");
+                            if (audio) {{
+                                audio.volume = 1.0;
+                                audio.play().catch(function(error) {{
+                                    console.log("Autoplay dicegah oleh browser: ", error);
+                                }});
+                            }}
+                        </script>
+                    '''
+                    st.markdown(audio_html, unsafe_allow_html=True)
+                except Exception as e:
+                    st.warning(f"File audio lokal tidak ditemukan: {local_audio_path}")
+                    
+                del st.session_state[f"sound_effect_{wilayah}"]
 
-    st.markdown("---")
+            st.markdown("---")
 
-    if st.session_state.get(changes_key, False):
+            if st.session_state.get(changes_key, False):
                 st.warning("⚠️ Ada perubahan data yang **belum disimpan** ke Database!")
                 col_btn1, col_btn2 = st.columns(2)
                 
