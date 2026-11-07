@@ -8,7 +8,7 @@ import gspread
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
 USER_DATABASE = {
-    "King": {"nama": "Riri Ridwan Genta Yudha", "pin": "1234"},
+    "king.kdy": {"nama": "Riri Ridwan Genta Yudha", "pin": "1234"},
     "satrio.kdy": {"nama": "Satrio Sudiyanto", "pin": "1234"},
     "alfian.kdy": {"nama": "Ahmad Alfian", "pin": "1234"},
     "kurnianto.kdy": {"nama": "Aji Kurnianto", "pin": "1234"},
