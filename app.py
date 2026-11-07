@@ -1233,7 +1233,7 @@ else:
                     
                     st.markdown("---")
                         
-                        excel_data = generate_manifest_excel(
+                    excel_data = generate_manifest_excel(
                             mnf_num=active_mnf,
                             wilayah=wilayah,
                             creator_name=creator_val,
@@ -1241,17 +1241,17 @@ else:
                             df_items=df_detail_manifest
                         )
                         
-                        st.download_button(
-                            label="📥 Unduh Excel Manifest",
-                            data=excel_data,
-                            file_name=f"Manifest_{active_mnf}_{wilayah}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.chssheet",
-                            key=f"dl_excel_{active_mnf}",
-                            use_container_width=True
+                    st.download_button(
+                    label="📥 Unduh Excel Manifest",
+                    data=excel_data,
+                    file_name=f"Manifest_{active_mnf}_{wilayah}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.chssheet",
+                    key=f"dl_excel_{active_mnf}",
+                    use_container_width=True
                         )
                         
-                        st.markdown("##### List ID Request Manifest :")
-                        st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
+                    st.markdown("##### List ID Request Manifest :")
+                    st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
                         
                     if not df_filtered.empty:
                         col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
