@@ -1263,9 +1263,9 @@ else:
                             df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
                             df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
                                 
-                                for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
-                                    if col_num_check in df_detail_manifest.columns:
-                                        df_detail_manifest[col_num_check] = df_detail_manifest[col_num_check].astype(str).str.split('.').str[0]
+                            for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
+                                if col_num_check in df_detail_manifest.columns:
+                                    df_detail_manifest[col_num_check] = df_detail_manifest[col_num_check].astype(str).str.split('.').str[0]
                                         
                                 if "clean_id" in df_detail_manifest.columns:
                                     df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
