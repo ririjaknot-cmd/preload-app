@@ -4,6 +4,130 @@ from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
 import datetime
 import gspread
+import io
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
+
+def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Manifest {mnf_num}"
+    
+    # Pastikan gridlines terlihat
+    ws.views.sheetView[0].showGridLines = True
+    
+    # Styling dasar
+    font_bold = Font(name="Calibri", size=11, bold=True)
+    font_title = Font(name="Calibri", size=12, bold=True)
+    font_normal = Font(name="Calibri", size=11, bold=False)
+    
+    border_thin = Border(
+        left=Side(style='thin', color='000000'),
+        right=Side(style='thin', color='000000'),
+        top=Side(style='thin', color='000000'),
+        bottom=Side(style='thin', color='000000')
+    )
+    
+    # Header Atas (Informasi Manifest)
+    header_info = [
+        ("Pengirim", f"{creator_name}"),
+        ("Cabang", f"{wilayah}"),
+        ("Tanggal Kirim", f"{waktu_buat}"),
+        ("Penerima", "")
+    ]
+    
+    for idx, (label, val) in enumerate(header_info, start=2):
+        ws[f'A{idx}'] = label
+        ws[f'A{idx}'].font = font_bold
+        ws[f'A{idx}'].border = border_thin
+        
+        ws[f'B{idx}'] = val
+        ws[f'B{idx}'].font = font_normal
+        ws[f'B{idx}'].border = border_thin
+        ws.merge_cells(start_row=idx, start_column=2, end_row=idx, end_column=3)
+    
+    # Spasi kosong di baris 6
+    
+    # Header Tabel Utama (Baris 7)
+    headers = ["No", "ID REQUEST", "JUMLAH BOX TERKIRIM", "JUMLAH BOX DITERIMA"]
+    ws.row_dimensions[7].height = 25
+    
+    for col_idx, h_text in enumerate(headers, start=1):
+        cell = ws.cell(row=7, column=col_idx, value=h_text)
+        cell.font = font_title
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border_thin
+        
+    # Isi Data Tabel (Mulai Baris 8)
+    current_row = 8
+    total_box = 0
+    
+    for i, row_item in enumerate(df_items.iterrows(), start=1):
+        _, data = row_item
+        # Ambil ID dan Box
+        r_id = str(data.get("ID") or data.get("id request") or data.get("clean_id") or "").split('.')[0].strip()
+        try:
+            box_qty = int(float(data.get("Jumlah Box") or data.get("Progress") or 1))
+        except:
+            box_qty = 1
+            
+        total_box += box_qty
+        
+        ws.row_dimensions[current_row].height = 20
+        
+        # Kolom No
+        c_no = ws.cell(row=current_row, column=1, value=i)
+        c_no.alignment = Alignment(horizontal="center", vertical="center")
+        c_no.font = font_normal
+        c_no.border = border_thin
+        
+        # Kolom ID Request
+        c_id = ws.cell(row=current_row, column=2, value=r_id)
+        c_id.alignment = Alignment(horizontal="center", vertical="center")
+        c_id.font = font_normal
+        c_id.border = border_thin
+        
+        # Kolom Jumlah Box Terkirim
+        c_box = ws.cell(row=current_row, column=3, value=box_qty)
+        c_box.alignment = Alignment(horizontal="center", vertical="center")
+        c_box.font = font_normal
+        c_box.border = border_thin
+        
+        # Kolom Jumlah Box Diterima (Kosong untuk diisi manual)
+        c_terima = ws.cell(row=current_row, column=4, value="")
+        c_terima.alignment = Alignment(horizontal="center", vertical="center")
+        c_terima.border = border_thin
+        
+        current_row += 1
+        
+    # Baris TOTAL
+    ws.row_dimensions[current_row].height = 22
+    ws.cell(row=current_row, column=1, value="").border = border_thin
+    
+    c_tot_label = ws.cell(row=current_row, column=2, value="TOTAL")
+    c_tot_label.font = font_title
+    c_tot_label.alignment = Alignment(horizontal="center", vertical="center")
+    c_tot_label.border = border_thin
+    
+    c_tot_val = ws.cell(row=current_row, column=3, value=total_box)
+    c_tot_val.font = font_title
+    c_tot_val.alignment = Alignment(horizontal="center", vertical="center")
+    c_tot_val.border = border_thin
+    
+    ws.cell(row=current_row, column=4, value="").border = border_thin
+    
+    # Auto-fit Column Widths
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 25
+    ws.column_dimensions['C'].width = 28
+    ws.column_dimensions['D'].width = 28
+    
+    # Save ke BytesIO
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
 
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
@@ -1109,15 +1233,35 @@ else:
                     
                     st.markdown("---")
                     
-                    # --- TABEL DETAIL MANIFEST ---
+                    if not df_detail_manifest.empty:
+                        creator_val = row_info.get("Dibuat Oleh") or row_info.get("Oleh") or str(st.session_state.get("user_nama", "Admin"))
+                        time_val = row_info.get("Waktu Buat") or row_info.get("Timestamp") or "-"
+                        
+                        excel_data = generate_manifest_excel(
+                            mnf_num=active_mnf,
+                            wilayah=wilayah,
+                            creator_name=creator_val,
+                            waktu_buat=time_val,
+                            df_items=df_detail_manifest
+                        )
+                        
+                        st.download_button(
+                            label="📥 Unduh Excel Manifest",
+                            data=excel_data,
+                            file_name=f"Manifest_{active_mnf}_{wilayah}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.chssheet",
+                            key=f"dl_excel_{active_mnf}",
+                            use_container_width=True
+                        )
+                        
+                        st.markdown("##### List ID Request Manifest :")
+                        st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
+                        
                     if not df_filtered.empty:
                         col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
                         if col_id_name:
                             df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
                             df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
-                            
-                            if not df_detail_manifest.empty:
-                                st.markdown("##### List ID Request Manifest :")
                                 
                                 for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
                                     if col_num_check in df_detail_manifest.columns:
