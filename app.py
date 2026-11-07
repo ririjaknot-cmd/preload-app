@@ -1266,7 +1266,7 @@ else:
                         st.download_button(
                             label="📥 Unduh Excel Manifest",
                             data=excel_data,
-                            file_name=f"Manifest_{active_mnf}_{wilayah}.xlsx",
+                            file_name=f"{active_mnf}_{wilayah}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Diperbaiki dari chssheet
                             key=f"dl_excel_{active_mnf}",
                             use_container_width=True
