@@ -1122,13 +1122,10 @@ else:
                             else:
                                 st.info("ℹ️ ID Terdaftar:")
                                 st.write(ids_in_manifest)
-                    else:
-                        st.info("ℹ️ ID Terdaftar:")
-                        st.write(ids_in_manifest)
         
                     # --- TOMBOL TUTUP DETAIL ---
                     if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                         st.session_state[f"active_detail_manifest_{wilayah}"] = None
                         st.rerun()
-                else:
-                    st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
+            else:
+                st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
