@@ -545,7 +545,7 @@ else:
 
         with tab_manifest:
             st.subheader(f" Manifest Pengiriman - {wilayah}")
-
+        
             id_current_progress = {}
             id_max_box = {}
             
@@ -554,7 +554,7 @@ else:
                 df_manifest_all_cache = conn.read(worksheet="Manifest log", ttl=0)
             except Exception:
                 pass
-
+        
             try:
                 if not df_filtered.empty:
                     for _, r_f in df_filtered.iterrows():
@@ -572,7 +572,7 @@ else:
                             id_current_progress[r_id] = p_box
             except Exception:
                 pass
-
+        
             with st.expander("➕ New Manifest", expanded=False):
                 with st.form(key=f"form_buat_manifest_zona_{wilayah}", clear_on_submit=True):
                     
@@ -587,7 +587,7 @@ else:
                                         list_zona_tersedia.append(clean_z)
                     
                     list_zona_tersedia.sort()
-
+        
                     selected_zones_manifest = st.multiselect(
                         "Zona Mezzanine:",
                         options=list_zona_tersedia,
@@ -595,7 +595,7 @@ else:
                     )
                     
                     submit_manifest = st.form_submit_button("Buat Manifest", type="primary")
-
+        
                 if submit_manifest:
                     if not selected_zones_manifest:
                         st.warning("⚠️ Pilih minimal satu Zona Mezzanine terlebih dahulu.")
@@ -604,7 +604,7 @@ else:
                             matched_ids = []
                             total_box_manifest = 0
                             id_box_added_map = {}
-
+        
                             for idx, row in df_filtered.iterrows():
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
                                 if any(z.lower() in row_zona.lower() for z in selected_zones_manifest):
@@ -618,7 +618,7 @@ else:
                                             matched_ids.append(r_id)
                                             id_box_added_map[r_id] = box_to_manifest
                                             total_box_manifest += box_to_manifest
-
+        
                             if not matched_ids:
                                 st.warning("⚠️ Tidak ada ID Request atau progress box pada zona mezzanine yang dipilih.")
                             else:
@@ -635,12 +635,12 @@ else:
                                 except gspread.exceptions.WorksheetNotFound:
                                     ws_manifest = sh.add_worksheet(title="Manifest log", rows=100, cols=10)
                                     ws_manifest.append_row(["Nomor Manifest", "Tujuan Pengiriman", "Zona Mezzanine", "ID List", "Jumlah Box", "Dibuat Oleh", "Waktu Buat", "Status Manifest"])
-
+        
                                 dibuat_oleh = str(st.session_state.user_nama)
                                 waktu_buat = now.strftime("%Y-%m-%d %H:%M:%S")
                                 status_manifest = "Manifested"
                                 zona_str = ", ".join(selected_zones_manifest)
-
+        
                                 ws_manifest.append_row([
                                     nomor_manifest,
                                     wilayah,
@@ -651,16 +651,16 @@ else:
                                     waktu_buat,
                                     status_manifest
                                 ])
-
+        
                                 st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)})!")
                                 st.session_state[f"sound_effect_{wilayah}"] = "success"
                                 st.rerun()
                         except Exception as e:
                             st.error(f"❌ Gagal membuat manifest: {e}")
-
+        
             st.markdown("---")
             st.markdown(f"##### Daftar Manifest Cabang: {wilayah}")
-
+        
             df_manifest_wilayah = pd.DataFrame()
             try:
                 df_manifest_all = conn.read(worksheet="Manifest log", ttl=0)
@@ -672,194 +672,266 @@ else:
                         ].copy()
             except Exception as e:
                 st.warning(f"⚠️ Gagal memuat data manifest: {e}")
-
-            if not df_manifest_wilayah.empty:
+        
+            # --- PERBAIKAN LOGIKA IF / ELSE DATAFRAME KOSONG ---
+            if df_manifest_wilayah.empty:
+                st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
+            else:
                 for idx, m_row in df_manifest_wilayah.iterrows():
-                    # Extrak data dari m_row secara aman
+                    # Ekstrak data dari m_row secara aman
                     mnf_num = str(m_row.get("Nomor Manifest", ""))
                     zona_raw = str(m_row.get("Zona Mezzanine", ""))
                     box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
-                    m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", ""))
+                    m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
                     
-        # --- RENDER INFORMASI MANIFEST & TOOLTIP HTML ---
-                
-                # 1. Ambil data pendukung dari m_row (sesuaikan nama kolom di DataFrame Anda jika berbeda)
-                m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
-                m_creator = str(m_row.get("Oleh", "") or m_row.get("Dibuat Oleh", "-"))
-                m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
+                    # Mendahului kolom "Dibuat Oleh" dari database
+                    m_creator = str(
+                        m_row.get("Dibuat Oleh") or 
+                        m_row.get("Oleh") or 
+                        m_row.get("Creator") or 
+                        m_row.get("User") or 
+                        m_row.get("Username") or 
+                        m_row.get("Pembuat") or 
+                        m_row.get("Nama") or 
+                        "-"
+                    )
+                    if m_creator.lower() in ["nan", "none", ""]:
+                        m_creator = "-"
         
-                        # Ambil daftar zona dan ID list pada manifest ini
-                list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
-                manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
+                    m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
         
-                # Hitung jumlah box per zona secara dinamis dari database (df_filtered)
-                tooltip_lines = []
-                if list_zona_split and not df_filtered.empty:
-                    col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
-                    
-                    if col_id_name:
-                        df_temp = df_filtered.copy()
-                        df_temp["clean_id"] = df_temp[col_id_name].astype(str).str.split('.').str[0].str.strip()
-                        df_mnf_items = df_temp[df_temp["clean_id"].isin(manifest_id_list)]
+                    # Hitung jumlah box per zona secara dinamis
+                    list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
+                    manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
+        
+                    tooltip_lines = []
+                    if list_zona_split and not df_filtered.empty:
+                        col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
                         
-                        for z in list_zona_split:
-                            # Filter baris yang memiliki Zona Mezzanine sesuai z
-                            zone_matched = df_mnf_items[df_mnf_items["Zona Mezzanine"].astype(str).str.contains(z, case=False, na=False)]
+                        if col_id_name:
+                            df_temp = df_filtered.copy()
+                            df_temp["clean_id"] = df_temp[col_id_name].astype(str).str.split('.').str[0].str.strip()
+                            df_mnf_items = df_temp[df_temp["clean_id"].isin(manifest_id_list)]
                             
-                            box_count = 0
-                            if not zone_matched.empty:
-                                for _, row_item in zone_matched.iterrows():
-                                    # Ambil nilai progress atau jumlah box dari database
-                                    val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
-                                    try:
-                                        box_count += int(float(str(val_p).split('.')[0]))
-                                    except:
-                                        box_count += 1
-                            else:
-                                box_count = 1  # Fallback minimal 1 jika tidak ada match baris spesifik
+                            for z in list_zona_split:
+                                zone_matched = df_mnf_items[df_mnf_items["Zona Mezzanine"].astype(str).str.contains(z, case=False, na=False)]
                                 
-                            tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
-                        
-                        tooltip_items_html = "".join(tooltip_lines)
-                    else:
-                        tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split])
-                else:
-                    tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
-        
-                clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
-        
-                # 3. Gabungkan seluruh informasi ke dalam format 2 baris berbasis HTML
-                manifest_info_html = f"""
-                <style>
-                .tooltip-container-{clean_css_id} {{
-                  position: relative;
-                  display: inline-block;
-                  cursor: pointer;
-                  color: #ff4b4b;
-                  font-weight: bold;
-                }}
-                .tooltip-container-{clean_css_id} .tooltip-text {{
-                  visibility: hidden;
-                  width: 150px;
-                  background-color: #262730;
-                  color: #fff;
-                  text-align: left;
-                  border-radius: 6px;
-                  padding: 8px 10px;
-                  position: absolute;
-                  z-index: 1000;
-                  bottom: 135%;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  opacity: 0;
-                  transition: opacity 0.3s;
-                  font-size: 13px;
-                  box-shadow: 0px 4px 12px rgba(0,0,0,0.4);
-                  border: 1px solid #46485f;
-                }}
-                .tooltip-container-{clean_css_id}:hover .tooltip-text {{
-                  visibility: visible;
-                  opacity: 1;
-                }}
-                </style>
-        
-                <div style="font-size: 14px; color: #fafafa; line-height: 1.6;">
-                  <div>
-                    <b>No. Manifest:</b> <code>{mnf_num}</code> &nbsp;|&nbsp; 
-                    <div class="tooltip-container-{clean_css_id}">
-                      Zona
-                      <div class="tooltip-text">
-                        {tooltip_items_html}
-                      </div>
-                    </div> 
-                    &nbsp;|&nbsp; <b>Jumlah Box:</b> {box_total}
-                  </div>
-                  <div style="color: #b0b0b0; font-size: 13px;">
-                    <b>Status:</b> <span style="background-color: #262730; padding: 2px 6px; border-radius: 4px; border: 1px solid #46485f; color: #fff;">{m_status}</span> 
-                    &nbsp;|&nbsp; <b>Oleh:</b> {m_creator} ({m_time})
-                  </div>
-                </div>
-                """
-        
-                col_info, col_action = st.columns([3, 1])
-                
-                with col_info:
-                    st.markdown(manifest_info_html, unsafe_allow_html=True)
-                
-                with col_action:
-                    c_btn1, c_btn2 = st.columns(2)
-                    
-                    with c_btn1:
-                        btn_key = f"detail_mnf_{wilayah}_{mnf_num}_{idx}"
-                        if st.button("🔍 Detail", key=btn_key, use_container_width=True):
-                            st.session_state[f"active_detail_manifest_{wilayah}"] = mnf_num
-                            st.rerun()
+                                box_count = 0
+                                if not zone_matched.empty:
+                                    for _, row_item in zone_matched.iterrows():
+                                        val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
+                                        try:
+                                            box_count += int(float(str(val_p).split('.')[0]))
+                                        except:
+                                            box_count += 1
+                                else:
+                                    box_count = 1
+                                    
+                                tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
                             
-                    with c_btn2:
-                        btn_od_key = f"od_mnf_{wilayah}_{mnf_num}_{idx}"
-                        if m_status.lower() != "on delivery":
-                            if st.button("On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
-                                try:
-                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                    gc = gspread.service_account_from_dict(creds_dict)
-                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                    
-                                    ws_m = sh.worksheet("Manifest log")
-                                    ws_main = sh.worksheet("Database log")
-                                    
-                                    header_m = ws_m.row_values(1)
-                                    status_m_idx = header_m.index("Status Manifest") + 1 if "Status Manifest" in header_m else 8
-                                    idlist_m_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
-                                    mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
-                                    
-                                    manifest_col_values = ws_m.col_values(mnf_col_idx)
-                                    row_idx_m = None
-                                    ids_to_update = []
-                                    
-                                    for idx_m, val_m in enumerate(manifest_col_values, start=1):
-                                        if str(val_m).strip() == str(mnf_num):
-                                            row_idx_m = idx_m
-                                            row_vals_m = ws_m.row_values(idx_m)
-                                            if len(row_vals_m) >= idlist_m_idx:
-                                                ids_to_update = [i.strip().split('.')[0] for i in row_vals_m[idlist_m_idx - 1].split(",") if i.strip()]
-                                            break
-                                    
-                                    if row_idx_m:
-                                        ws_m.update_cell(row_idx_m, status_m_idx, "On Delivery")
-                                        
-                                        records_main = ws_main.get_all_records()
-                                        header_main = ws_main.row_values(1)
-                                        id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
-                                        status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
-                                        
-                                        if id_col_i and status_col_i and ids_to_update:
-                                            batch_cell_updates = []
-                                            for r_i, r_v in enumerate(records_main, start=2):
-                                                r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
-                                                if r_id_str in ids_to_update:
-                                                    batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "On Delivery"))
-                                            
-                                            if batch_cell_updates:
-                                                ws_main.update_cells(batch_cell_updates)
-                                        
-                                        st.cache_data.clear()
-                                        for k in list(st.session_state.keys()):
-                                            if "local_df_preload" in k or "has_unsaved_changes" in k:
-                                                del st.session_state[k]
-                                                
-                                        st.success(f"✅ Manifest `{mnf_num}` berhasil diubah menjadi **On Delivery**!")
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"❌ Gagal merubah status On Delivery: {e}")
+                            tooltip_items_html = "".join(tooltip_lines)
                         else:
-                            st.markdown("*On Delivery*")
-                
-                st.markdown("---")
+                            tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split])
+                    else:
+                        tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
         
+                    clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
+        
+# --- PECEKAN LOGIKA DATAFRAME MANIFEST KOSONG / ADA ---
+            if df_manifest_wilayah.empty:
+                st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
+            else:
+                for idx, m_row in df_manifest_wilayah.iterrows():
+                    # Ekstrak data dari m_row secara aman
+                    mnf_num = str(m_row.get("Nomor Manifest", ""))
+                    zona_raw = str(m_row.get("Zona Mezzanine", ""))
+                    box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
+                    m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
+                    
+                    # Prioritaskan kolom "Dibuat Oleh" sesuai database
+                    m_creator = str(
+                        m_row.get("Dibuat Oleh") or 
+                        m_row.get("Oleh") or 
+                        m_row.get("Creator") or 
+                        m_row.get("User") or 
+                        m_row.get("Username") or 
+                        m_row.get("Pembuat") or 
+                        m_row.get("Nama") or 
+                        "-"
+                    )
+                    if m_creator.lower() in ["nan", "none", ""]:
+                        m_creator = "-"
+
+                    m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
+
+                    # Hitung jumlah box per zona secara dinamis dari database (df_filtered)
+                    list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
+                    manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
+
+                    tooltip_lines = []
+                    if list_zona_split and not df_filtered.empty:
+                        col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
+                        
+                        if col_id_name:
+                            df_temp = df_filtered.copy()
+                            df_temp["clean_id"] = df_temp[col_id_name].astype(str).str.split('.').str[0].str.strip()
+                            df_mnf_items = df_temp[df_temp["clean_id"].isin(manifest_id_list)]
+                            
+                            for z in list_zona_split:
+                                zone_matched = df_mnf_items[df_mnf_items["Zona Mezzanine"].astype(str).str.contains(z, case=False, na=False)]
+                                
+                                box_count = 0
+                                if not zone_matched.empty:
+                                    for _, row_item in zone_matched.iterrows():
+                                        val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
+                                        try:
+                                            box_count += int(float(str(val_p).split('.')[0]))
+                                        except:
+                                            box_count += 1
+                                else:
+                                    box_count = 1
+                                    
+                                tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
+                            
+                            tooltip_items_html = "".join(tooltip_lines)
+                        else:
+                            tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split])
+                    else:
+                        tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
+
+                    clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
+
+                    manifest_info_html = f"""
+                    <style>
+                    .tooltip-container-{clean_css_id} {{
+                      position: relative;
+                      display: inline-block;
+                      cursor: pointer;
+                      color: #ff4b4b;
+                      font-weight: bold;
+                    }}
+                    .tooltip-container-{clean_css_id} .tooltip-text {{
+                      visibility: hidden;
+                      width: 150px;
+                      background-color: #262730;
+                      color: #fff;
+                      text-align: left;
+                      border-radius: 6px;
+                      padding: 8px 10px;
+                      position: absolute;
+                      z-index: 1000;
+                      bottom: 135%;
+                      left: 50%;
+                      transform: translateX(-50%);
+                      opacity: 0;
+                      transition: opacity 0.3s;
+                      font-size: 13px;
+                      box-shadow: 0px 4px 12px rgba(0,0,0,0.4);
+                      border: 1px solid #46485f;
+                    }}
+                    .tooltip-container-{clean_css_id}:hover .tooltip-text {{
+                      visibility: visible;
+                      opacity: 1;
+                    }}
+                    </style>
+
+                    <div style="font-size: 14px; color: #fafafa; line-height: 1.6;">
+                      <div>
+                        <b>No. Manifest:</b> <code>{mnf_num}</code> &nbsp;|&nbsp; 
+                        <div class="tooltip-container-{clean_css_id}">
+                          Zona
+                          <div class="tooltip-text">
+                            {tooltip_items_html}
+                          </div>
+                        </div> 
+                        &nbsp;|&nbsp; <b>Jumlah Box:</b> {box_total}
+                      </div>
+                      <div style="color: #b0b0b0; font-size: 13px;">
+                        <b>Status:</b> <span style="background-color: #262730; padding: 2px 6px; border-radius: 4px; border: 1px solid #46485f; color: #fff;">{m_status}</span> 
+                        &nbsp;|&nbsp; <b>Oleh:</b> {m_creator} ({m_time})
+                      </div>
+                    </div>
+                    """
+
+                    col_info, col_action = st.columns([3, 1])
+                    
+                    with col_info:
+                        st.markdown(manifest_info_html, unsafe_allow_html=True)
+                    
+                    with col_action:
+                        c_btn1, c_btn2 = st.columns(2)
+                        
+                        with c_btn1:
+                            btn_key = f"detail_mnf_{wilayah}_{mnf_num}_{idx}"
+                            if st.button("🔍 Detail", key=btn_key, use_container_width=True):
+                                st.session_state[f"active_detail_manifest_{wilayah}"] = mnf_num
+                                st.rerun()
+                                
+                        with c_btn2:
+                            btn_od_key = f"od_mnf_{wilayah}_{mnf_num}_{idx}"
+                            if m_status.lower() != "on delivery":
+                                if st.button("On Delivery", key=btn_od_key, use_container_width=True, type="primary"):
+                                    try:
+                                        creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                        gc = gspread.service_account_from_dict(creds_dict)
+                                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                        
+                                        ws_m = sh.worksheet("Manifest log")
+                                        ws_main = sh.worksheet("Database log")
+                                        
+                                        header_m = ws_m.row_values(1)
+                                        status_m_idx = header_m.index("Status Manifest") + 1 if "Status Manifest" in header_m else 8
+                                        idlist_m_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
+                                        mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                        
+                                        manifest_col_values = ws_m.col_values(mnf_col_idx)
+                                        row_idx_m = None
+                                        ids_to_update = []
+                                        
+                                        for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                            if str(val_m).strip() == str(mnf_num):
+                                                row_idx_m = idx_m
+                                                row_vals_m = ws_m.row_values(idx_m)
+                                                if len(row_vals_m) >= idlist_m_idx:
+                                                    ids_to_update = [i.strip().split('.')[0] for i in row_vals_m[idlist_m_idx - 1].split(",") if i.strip()]
+                                                break
+                                        
+                                        if row_idx_m:
+                                            ws_m.update_cell(row_idx_m, status_m_idx, "On Delivery")
+                                            
+                                            records_main = ws_main.get_all_records()
+                                            header_main = ws_main.row_values(1)
+                                            id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                            status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
+                                            
+                                            if id_col_i and status_col_i and ids_to_update:
+                                                batch_cell_updates = []
+                                                for r_i, r_v in enumerate(records_main, start=2):
+                                                    r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
+                                                    if r_id_str in ids_to_update:
+                                                        batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "On Delivery"))
+                                                
+                                                if batch_cell_updates:
+                                                    ws_main.update_cells(batch_cell_updates)
+                                            
+                                            st.cache_data.clear()
+                                            for k in list(st.session_state.keys()):
+                                                if "local_df_preload" in k or "has_unsaved_changes" in k:
+                                                    del st.session_state[k]
+                                                    
+                                            st.success(f"✅ Manifest `{mnf_num}` berhasil diubah menjadi **On Delivery**!")
+                                            st.rerun()
+                                    except Exception as e:
+                                        st.error(f"❌ Gagal merubah status On Delivery: {e}")
+                            else:
+                                st.markdown("*On Delivery*")
+                    
+                    st.markdown("---")
+
             # --- 2. JIKA ADA MANIFEST AKTIF YANG DITEKAN DETAILNYA ---
             active_mnf = st.session_state.get(f"active_detail_manifest_{wilayah}")
-            if active_mnf:
+            if active_mnf and not df_manifest_wilayah.empty:
                 selected_row_data = df_manifest_wilayah[df_manifest_wilayah["Nomor Manifest"].astype(str) == str(active_mnf)]
                 
                 if not selected_row_data.empty:
@@ -1122,10 +1194,11 @@ else:
                             else:
                                 st.info("ℹ️ ID Terdaftar:")
                                 st.write(ids_in_manifest)
-        
+                    else:
+                        st.info("ℹ️ ID Terdaftar:")
+                        st.write(ids_in_manifest)
+
                     # --- TOMBOL TUTUP DETAIL ---
                     if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                         st.session_state[f"active_detail_manifest_{wilayah}"] = None
                         st.rerun()
-            else:
-                st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
