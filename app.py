@@ -736,71 +736,7 @@ else:
                         tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
         
                     clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
-        
-# --- PECEKAN LOGIKA DATAFRAME MANIFEST KOSONG / ADA ---
-            if df_manifest_wilayah.empty:
-                st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
-            else:
-                for idx, m_row in df_manifest_wilayah.iterrows():
-                    # Ekstrak data dari m_row secara aman
-                    mnf_num = str(m_row.get("Nomor Manifest", ""))
-                    zona_raw = str(m_row.get("Zona Mezzanine", ""))
-                    box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
-                    m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
                     
-                    # Prioritaskan kolom "Dibuat Oleh" sesuai database
-                    m_creator = str(
-                        m_row.get("Dibuat Oleh") or 
-                        m_row.get("Oleh") or 
-                        m_row.get("Creator") or 
-                        m_row.get("User") or 
-                        m_row.get("Username") or 
-                        m_row.get("Pembuat") or 
-                        m_row.get("Nama") or 
-                        "-"
-                    )
-                    if m_creator.lower() in ["nan", "none", ""]:
-                        m_creator = "-"
-
-                    m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
-
-                    # Hitung jumlah box per zona secara dinamis dari database (df_filtered)
-                    list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
-                    manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
-
-                    tooltip_lines = []
-                    if list_zona_split and not df_filtered.empty:
-                        col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
-                        
-                        if col_id_name:
-                            df_temp = df_filtered.copy()
-                            df_temp["clean_id"] = df_temp[col_id_name].astype(str).str.split('.').str[0].str.strip()
-                            df_mnf_items = df_temp[df_temp["clean_id"].isin(manifest_id_list)]
-                            
-                            for z in list_zona_split:
-                                zone_matched = df_mnf_items[df_mnf_items["Zona Mezzanine"].astype(str).str.contains(z, case=False, na=False)]
-                                
-                                box_count = 0
-                                if not zone_matched.empty:
-                                    for _, row_item in zone_matched.iterrows():
-                                        val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
-                                        try:
-                                            box_count += int(float(str(val_p).split('.')[0]))
-                                        except:
-                                            box_count += 1
-                                else:
-                                    box_count = 1
-                                    
-                                tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
-                            
-                            tooltip_items_html = "".join(tooltip_lines)
-                        else:
-                            tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split])
-                    else:
-                        tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
-
-                    clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
-
                     manifest_info_html = f"""
                     <style>
                     .tooltip-container-{clean_css_id} {{
