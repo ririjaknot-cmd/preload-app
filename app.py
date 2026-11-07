@@ -1232,8 +1232,30 @@ else:
                                             st.error(f"❌ Gagal melakukan penggabungan box: {e}")
                     
                     st.markdown("---")
+                    
+                    if not df_filtered.empty:
+                        col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
+                        if col_id_name:
+                            df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
+                            df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
+                            
+                            for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
+                                if col_num_check in df_detail_manifest.columns:
+                                    df_detail_manifest[col_num_check] = df_detail_manifest[col_num_check].astype(str).str.split('.').str[0]
+                                    
+                            if "clean_id" in df_detail_manifest.columns:
+                                df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
+                        else:
+                            df_detail_manifest = pd.DataFrame()
+                    else:
+                        df_detail_manifest = pd.DataFrame()
+                
+                    # 2. Buat file excel berdasarkan data yang sudah siap
+                    if not df_detail_manifest.empty:
+                        creator_val = row_info.get("Dibuat Oleh") or row_info.get("Oleh") or str(st.session_state.get("user_nama", "Admin"))
+                        time_val = row_info.get("Waktu Buat") or row_info.get("Timestamp") or "-"
                         
-                    excel_data = generate_manifest_excel(
+                        excel_data = generate_manifest_excel(
                             mnf_num=active_mnf,
                             wilayah=wilayah,
                             creator_name=creator_val,
@@ -1241,39 +1263,23 @@ else:
                             df_items=df_detail_manifest
                         )
                         
-                    st.download_button(
-                    label="📥 Unduh Excel Manifest",
-                    data=excel_data,
-                    file_name=f"Manifest_{active_mnf}_{wilayah}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.chssheet",
-                    key=f"dl_excel_{active_mnf}",
-                    use_container_width=True
+                        st.download_button(
+                            label="📥 Unduh Excel Manifest",
+                            data=excel_data,
+                            file_name=f"Manifest_{active_mnf}_{wilayah}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Diperbaiki dari chssheet
+                            key=f"dl_excel_{active_mnf}",
+                            use_container_width=True
                         )
-                        
+                
+                    # 3. Tampilkan tabel dan informasi lainnya
                     st.markdown("##### List ID Request Manifest :")
-                    st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
-                        
-                    if not df_filtered.empty:
-                        col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
-                        if col_id_name:
-                            df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
-                            df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
-                                
-                            for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
-                                if col_num_check in df_detail_manifest.columns:
-                                    df_detail_manifest[col_num_check] = df_detail_manifest[col_num_check].astype(str).str.split('.').str[0]
-                                        
-                                if "clean_id" in df_detail_manifest.columns:
-                                    df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
-                                    
-                                st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
-                            else:
-                                st.info("ℹ️ ID Terdaftar:")
-                                st.write(ids_in_manifest)
+                    if not df_detail_manifest.empty:
+                        st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
                     else:
                         st.info("ℹ️ ID Terdaftar:")
                         st.write(ids_in_manifest)
-
+                
                     # --- TOMBOL TUTUP DETAIL ---
                     if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                         st.session_state[f"active_detail_manifest_{wilayah}"] = None
