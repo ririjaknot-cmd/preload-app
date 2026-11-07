@@ -1264,7 +1264,7 @@ else:
                         )
                         
                         st.download_button(
-                            label="Download Xls",
+                            label="📥Download Xls",
                             data=excel_data,
                             file_name=f"{active_mnf}_{wilayah}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Diperbaiki dari chssheet
