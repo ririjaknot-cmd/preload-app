@@ -1232,10 +1232,6 @@ else:
                                             st.error(f"❌ Gagal melakukan penggabungan box: {e}")
                     
                     st.markdown("---")
-                    
-                    if not df_detail_manifest.empty:
-                        creator_val = row_info.get("Dibuat Oleh") or row_info.get("Oleh") or str(st.session_state.get("user_nama", "Admin"))
-                        time_val = row_info.get("Waktu Buat") or row_info.get("Timestamp") or "-"
                         
                         excel_data = generate_manifest_excel(
                             mnf_num=active_mnf,
