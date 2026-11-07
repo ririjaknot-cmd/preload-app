@@ -8,22 +8,23 @@ import gspread
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
 USER_DATABASE = {
-    "riri.jaknot@gmail.com": {"nama": "Riri Ridwan Genta Yudha", "pin": "Kronus666"},
-    "adamrayhan.jaknot@gmail.com": {"nama": "Adam Rayhan", "pin": "1234"},
-    "satriopjn@gmail.com": {"nama": "Satrio Sudiyanto", "pin": "1234"},
-    "ahmadallfiansc@gmail.com": {"nama": "Ahmad Alfian", "pin": "1234"},
-    "ajikurnianto93@gmail.com": {"nama": "Aji Kurnianto", "pin": "1234"},
-    "alekhandoko98@gmail.com": {"nama": "Alek Handoko", "pin": "1234"},
-    "alghifariathian@gmail.com": {"nama": "Athian Alghifari", "pin": "1234"},
-    "amelyaadm@gmail.com": {"nama": "Amelya Putri", "pin": "1234"},
-    "ardi03027@gmail.com": {"nama": "Eka Febri Setiardi", "pin": "1234"},
-    "arifsa2703@gmail.com": {"nama": "Arif Saputra", "pin": "1234"},
-    "bedhel089f@gmail.com": {"nama": "Fadhilah Al Azani", "pin": "1234"},
-    "olifiaekmanda7@gmail.com": {"nama": "Olifia Ekmanda", "pin": "1234"},
-    "rayadiagung22@gmail.com": {"nama": "Rayadi Agung", "pin": "1234"},
-    "siwhayy170@gmail.com": {"nama": "Wahyu Adi Sucipto", "pin": "1234"},
-    "tasyaameliaa05@gmail.com": {"nama": "Tasya Amelia", "pin": "1234"},
-    "mahesaagusta28@gmail.com": {"nama": "Mahesa Agusta", "pin": "1234"}
+    "King": {"nama": "Riri Ridwan Genta Yudha", "pin": "66666"},
+    "satrio.kdy": {"nama": "Satrio Sudiyanto", "pin": "1234"},
+    "alfian.kdy": {"nama": "Ahmad Alfian", "pin": "1234"},
+    "kurnianto.kdy": {"nama": "Aji Kurnianto", "pin": "1234"},
+    "handoko.kdy": {"nama": "Alek Handoko", "pin": "1234"},
+    "athian.kdy": {"nama": "Athian Alghifari", "pin": "1234"},
+    "amelya.kdy": {"nama": "Amelya Putri", "pin": "1234"},
+    "ekafebri.kdy": {"nama": "Eka Febri Setiardi", "pin": "1234"},
+    "arif.kdy": {"nama": "Arif Saputra", "pin": "1234"},
+    "fadhil.kdy": {"nama": "Fadhilah Al Azani", "pin": "1234"},
+    "olifia.kdy": {"nama": "Olifia Ekmanda", "pin": "1234"},
+    "rayadi.kdy": {"nama": "Rayadi Agung", "pin": "1234"},
+    "wahyu.kdy": {"nama": "Wahyu Adi Sucipto", "pin": "1234"},
+    "tasya.kdy": {"nama": "Tasya Amelia", "pin": "1234"},
+    "mahesa.kdy": {"nama": "Mahesa Agusta", "pin": "1234"},
+    "surmaidi.kdy": {"nama": "Surmaidi", "pin": "1234"},
+    "yuni.kdy": {"nama": "Yuniarti", "pin": "1234"},
 }
 
 
@@ -73,12 +74,12 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
 
 def tampilkan_halaman_login():
     st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan email terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan Username terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("form_login"):
-            email_input = st.text_input("Email Pengguna").strip().lower()
+            email_input = st.text_input("Nama Pengguna").strip().lower()
             pin_input = st.text_input("PIN / Password", type="password")
             submit_btn = st.form_submit_button("Masuk (Login)", use_container_width=True)
             
@@ -90,7 +91,7 @@ def tampilkan_halaman_login():
                     st.success(f"Login berhasil! Selamat datang, {st.session_state.user_nama}")
                     st.rerun()
                 else:
-                    st.error("Email atau PIN salah. Silakan periksa kembali.")
+                    st.error("Username atau PIN salah. Silakan periksa kembali.")
 
 if not st.session_state.logged_in:
     tampilkan_halaman_login()
