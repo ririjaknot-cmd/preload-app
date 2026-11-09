@@ -116,33 +116,55 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
 
 st.set_page_config(page_title="V2 Pre Load", layout="wide")
 
-USER_DATABASE = {
-    "king.kdy": {"nama": "Riri Ridwan Genta Yudha", "pin": "1234"},
-    "satrio.kdy": {"nama": "Satrio Sudiyanto", "pin": "1234"},
-    "alfian.kdy": {"nama": "Ahmad Alfian", "pin": "1234"},
-    "kurnianto.kdy": {"nama": "Aji Kurnianto", "pin": "1234"},
-    "handoko.kdy": {"nama": "Alek Handoko", "pin": "1234"},
-    "athian.kdy": {"nama": "Athian Alghifari", "pin": "1234"},
-    "amelya.kdy": {"nama": "Amelya Putri", "pin": "1234"},
-    "ekafebri.kdy": {"nama": "Eka Febri Setiardi", "pin": "1234"},
-    "arif.kdy": {"nama": "Arif Saputra", "pin": "1234"},
-    "fadhil.kdy": {"nama": "Fadhilah Al Azani", "pin": "1234"},
-    "olifia.kdy": {"nama": "Olifia Ekmanda", "pin": "1234"},
-    "rayadi.kdy": {"nama": "Rayadi Agung", "pin": "1234"},
-    "wahyu.kdy": {"nama": "Wahyu Adi Sucipto", "pin": "1234"},
-    "tasya.kdy": {"nama": "Tasya Amelia", "pin": "1234"},
-    "mahesa.kdy": {"nama": "Mahesa Agusta", "pin": "1234"},
-    "surmaidi.kdy": {"nama": "Surmaidi", "pin": "1234"},
-    "yuni.jaknot": {"nama": "Yuniarti", "pin": "1234"},
-}
-
-
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user_email" not in st.session_state:
     st.session_state.user_email = ""
 if "user_nama" not in st.session_state:
     st.session_state.user_nama = ""
+
+def tampilkan_halaman_login():
+    st.subheader("🔑 Login Pre Load Shipment")
+    with st.form("form_login"):
+        username_input = st.text_input("Username").strip().lower()
+        pin_input = st.text_input("PIN / Password", type="password")
+        submit_login = st.form_submit_button("Masuk", type="primary")
+        
+        if submit_login:
+            try:
+                # Koneksi ke Google Sheets
+                creds_dict = dict(st.secrets["connections"]["gsheets"])
+                gc = gspread.service_account_from_dict(creds_dict)
+                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                
+                ws_users = sh.worksheet("Data User")
+                records = ws_users.get_all_records()
+                
+                login_berhasil = False
+                nama_user = ""
+                
+                # Cek pencocokan username dan pin dari Google Sheets
+                for row in records:
+                    db_user = str(row.get("Username", "")).strip().lower()
+                    db_pin = str(row.get("Pin", "")).strip() or str(row.get("Password", "")).strip()
+                    db_nama = str(row.get("Nama", "")).strip()
+                    
+                    if db_user == username_input and db_pin == pin_input.strip():
+                        login_berhasil = True
+                        nama_user = db_nama
+                        break
+                
+                if login_berhasil:
+                    st.session_state.logged_in = True
+                    st.session_state.user_email = username_input
+                    st.session_state.user_nama = nama_user
+                    st.success("✅ Login berhasil!")
+                    st.rerun()
+                else:
+                    st.error("❌ Username atau PIN salah.")
+            except Exception as e:
+                st.error(f"❌ Gagal memuat data login dari database: {e}")
 
 
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -180,27 +202,6 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
         return "🟡 Not Completed"
     else:
         return "🟢 Completed"
-
-def tampilkan_halaman_login():
-    st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan Username terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        with st.form("form_login"):
-            email_input = st.text_input("Nama Pengguna").strip().lower()
-            pin_input = st.text_input("PIN / Password", type="password")
-            submit_btn = st.form_submit_button("Masuk (Login)", use_container_width=True)
-            
-            if submit_btn:
-                if email_input in USER_DATABASE and USER_DATABASE[email_input]["pin"] == pin_input:
-                    st.session_state.logged_in = True
-                    st.session_state.user_email = email_input
-                    st.session_state.user_nama = USER_DATABASE[email_input]["nama"]
-                    st.success(f"Login berhasil! Selamat datang, {st.session_state.user_nama}")
-                    st.rerun()
-                else:
-                    st.error("Username atau PIN salah. Silakan periksa kembali.")
 
 if not st.session_state.logged_in:
     tampilkan_halaman_login()
