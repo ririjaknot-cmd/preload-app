@@ -221,13 +221,13 @@ else:
     with col_head2:
         # 1. Tampilkan Nama User & Jam menggunakan components.html yang aman
         st.markdown(f"""
-            <div style="text-align: right; font-family: sans-serif; line-height: 1.4; margin-bottom: 8px;">
+            <div style="text-align: left; font-family: sans-serif; line-height: 1.4; margin-bottom: 8px;">
                 <span style="font-size: 14px; font-weight: bold; color: #FFFFFF;">👨🏻‍💼 {st.session_state.user_nama}</span><br>
             </div>
         """, unsafe_allow_html=True)
 
         components.html("""
-        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: right; margin-top: -10px;">
+        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: left; margin-top: -10px;">
             🕑<span id="live-clock">Loading...</span>
         </div>
         <script>
@@ -258,7 +258,7 @@ else:
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
-            with st.popover("Sandi", use_container_width=True):
+            with st.popover("Password", use_container_width=True):
                 st.markdown("##### 🔐 Ubah Password")
                 with st.form(key=f"form_ubah_pin_{st.session_state.user_email}", clear_on_submit=True):
                     old_pin = st.text_input("Password Lama:", type="password")
@@ -308,7 +308,7 @@ else:
                                 st.error(f"❌ Gagal: {e}")
 
         with btn_col2:
-            if st.button("🚪 Keluar", use_container_width=True):
+            if st.button("Logout", use_container_width=True):
                 st.session_state.logged_in = False
                 st.session_state.user_email = ""
                 st.session_state.user_nama = ""
