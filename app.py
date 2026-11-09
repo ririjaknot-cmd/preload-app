@@ -219,40 +219,42 @@ else:
     with col_head1:
         st.markdown("### Pre Load Shipment Cabang ")
     with col_head2:
-        # Tampilkan Nama & Jam dalam satu blok kecil yang rapi
-        st.markdown(
-            f"""
+        # 1. Tampilkan Nama User & Jam menggunakan components.html yang aman
+        st.markdown(f"""
             <div style="text-align: right; font-family: sans-serif; line-height: 1.4; margin-bottom: 8px;">
                 <span style="font-size: 14px; font-weight: bold; color: #FFFFFF;">👨🏻‍💼 {st.session_state.user_nama}</span><br>
-                <span id="live-clock" style="font-size: 12px; color: #A0A0A0;">🕑 Memuat waktu...</span>
             </div>
-            <script>
-            function updateClock() {
-                const now = new Date();
-                const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                
-                const dayName = days[now.getDay()];
-                const dayNum = String(now.getDate()).padStart(2, '0');
-                const monthName = months[now.getMonth()];
-                const year = now.getFullYear();
-                
-                const hours = String(now.getHours()).padStart(2, '0');
-                const minutes = String(now.getMinutes()).padStart(2, '0');
-                const seconds = String(now.getSeconds()).padStart(2, '0');
-                
-                const timeString = `${dayName}, ${dayNum} ${monthName} ${year}, ${hours}:${minutes}:${seconds}`;
-                const elem = document.getElementById('live-clock');
-                if (elem) elem.innerText = timeString;
-            }
-            setInterval(updateClock, 1000);
-            updateClock();
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
+        """, unsafe_allow_html=True)
 
-        # Tombol Aksi Berdampingan yang Lebih Proporsional
+        components.html("""
+        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: right; margin-top: -15px;">
+            🕑<span id="live-clock">Loading...</span>
+        </div>
+        <script>
+        function updateClock() {
+            const now = new Date();
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            const dayName = days[now.getDay()];
+            const dayNum = String(now.getDate()).padStart(2, '0');
+            const monthName = months[now.getMonth()];
+            const year = now.getFullYear();
+            
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            const timeString = `${dayName}, ${dayNum} ${monthName} ${year}, ${hours}:${minutes}:${seconds}`;
+            const elem = document.getElementById('live-clock');
+            if (elem) elem.innerText = timeString;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+        </script>
+        """, height=25)
+
+        # 2. Tombol Aksi Berdampingan (Sandi & Keluar)
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
@@ -303,7 +305,7 @@ else:
                                         ws_users.update_cell(target_row, pin_col_i, new_pin.strip())
                                         st.success("✅ Berhasil! Gunakan password baru saat login.")
                             except Exception as e:
-                                st.error(f"❌ Gagal memperbarui password ke database: {e}")
+                                st.error(f"❌ Gagal: {e}")
 
         with btn_col2:
             if st.button("🚪 Keluar", use_container_width=True):
