@@ -148,7 +148,7 @@ USER_DATABASE = {
     "tasya.kdy": {"nama": "Tasya Amelia", "pin": "1234"},
     "mahesa.kdy": {"nama": "Mahesa Agusta", "pin": "1234"},
     "surmaidi.kdy": {"nama": "Surmaidi", "pin": "1234"},
-    "yuni.kdy": {"nama": "Yuniarti", "pin": "1234"},
+    "yuni.jaknot": {"nama": "Yuniarti", "pin": "1234"},
 }
 
 
