@@ -227,7 +227,7 @@ else:
         """, unsafe_allow_html=True)
 
         components.html("""
-        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: rigth; margin-top: -10px;">
+        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: right; margin-top: -10px;">
             🕑<span id="live-clock">Loading...</span>
         </div>
         <script>
