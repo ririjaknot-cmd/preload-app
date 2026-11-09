@@ -221,13 +221,13 @@ else:
     with col_head2:
         # 1. Tampilkan Nama User & Jam menggunakan components.html yang aman
         st.markdown(f"""
-            <div style="text-align: left; font-family: sans-serif; line-height: 1.4; margin-bottom: 8px;">
+            <div style="text-align: right; font-family: sans-serif; line-height: 1.4; margin-bottom: 8px;">
                 <span style="font-size: 14px; font-weight: bold; color: #FFFFFF;">👨🏻‍💼 {st.session_state.user_nama}</span><br>
             </div>
         """, unsafe_allow_html=True)
 
         components.html("""
-        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: left; margin-top: -10px;">
+        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: rigth; margin-top: -10px;">
             🕑<span id="live-clock">Loading...</span>
         </div>
         <script>
