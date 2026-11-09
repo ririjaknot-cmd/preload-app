@@ -14,10 +14,8 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
     ws = wb.active
     ws.title = f"Manifest {mnf_num}"
     
-    # Pastikan gridlines terlihat
     ws.views.sheetView[0].showGridLines = True
-    
-    # Styling dasar
+
     font_bold = Font(name="Calibri", size=11, bold=True)
     font_title = Font(name="Calibri", size=12, bold=True)
     font_normal = Font(name="Calibri", size=11, bold=False)
@@ -29,7 +27,6 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
         bottom=Side(style='thin', color='000000')
     )
     
-    # Header Atas (Informasi Manifest)
     header_info = [
         ("Pengirim", f"{creator_name}"),
         ("Cabang", f"{wilayah}"),
@@ -47,9 +44,6 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
         ws[f'B{idx}'].border = border_thin
         ws.merge_cells(start_row=idx, start_column=2, end_row=idx, end_column=3)
     
-    # Spasi kosong di baris 6
-    
-    # Header Tabel Utama (Baris 7)
     headers = ["No", "ID REQUEST", "JUMLAH BOX TERKIRIM", "JUMLAH BOX DITERIMA"]
     ws.row_dimensions[7].height = 25
     
@@ -59,13 +53,11 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = border_thin
         
-    # Isi Data Tabel (Mulai Baris 8)
     current_row = 8
     total_box = 0
     
     for i, row_item in enumerate(df_items.iterrows(), start=1):
         _, data = row_item
-        # Ambil ID dan Box
         r_id = str(data.get("ID") or data.get("id request") or data.get("clean_id") or "").split('.')[0].strip()
         try:
             box_qty = int(float(data.get("Jumlah Box") or data.get("Progress") or 1))
@@ -76,32 +68,27 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
         
         ws.row_dimensions[current_row].height = 20
         
-        # Kolom No
         c_no = ws.cell(row=current_row, column=1, value=i)
         c_no.alignment = Alignment(horizontal="center", vertical="center")
         c_no.font = font_normal
         c_no.border = border_thin
         
-        # Kolom ID Request
         c_id = ws.cell(row=current_row, column=2, value=r_id)
         c_id.alignment = Alignment(horizontal="center", vertical="center")
         c_id.font = font_normal
         c_id.border = border_thin
         
-        # Kolom Jumlah Box Terkirim
         c_box = ws.cell(row=current_row, column=3, value=box_qty)
         c_box.alignment = Alignment(horizontal="center", vertical="center")
         c_box.font = font_normal
         c_box.border = border_thin
         
-        # Kolom Jumlah Box Diterima (Kosong untuk diisi manual)
         c_terima = ws.cell(row=current_row, column=4, value="")
         c_terima.alignment = Alignment(horizontal="center", vertical="center")
         c_terima.border = border_thin
         
         current_row += 1
         
-    # Baris TOTAL
     ws.row_dimensions[current_row].height = 22
     ws.cell(row=current_row, column=1, value="").border = border_thin
     
@@ -117,13 +104,11 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
     
     ws.cell(row=current_row, column=4, value="").border = border_thin
     
-    # Auto-fit Column Widths
     ws.column_dimensions['A'].width = 8
     ws.column_dimensions['B'].width = 25
     ws.column_dimensions['C'].width = 28
     ws.column_dimensions['D'].width = 28
     
-    # Save ke BytesIO
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -168,7 +153,7 @@ if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
     st.success("Cache dibersihkan, memuat data terbaru...")
     st.rerun()
 
-@st.cache_data(ttl=300, show_spinner="Memuat data dari Google Sheets...")
+@st.cache_data(ttl=300, show_spinner="Memuat database...")
 def load_cached_database():
     df = conn.read(worksheet="Database log", ttl=0)
     return df
@@ -224,11 +209,11 @@ else:
     with col_head1:
         st.markdown("### Pre Load Shipment Cabang ")
     with col_head2:
-        st.text(f"{st.session_state.user_nama}")
+        st.text(f" 👨🏻‍💼{st.session_state.user_nama}")
         
         components.html("""
         <div style="font-family: sans-serif; font-size: 13px; color: #FFFFFF; margin-top: -10px;">
-             <span id="live-clock">Loading...</span>
+            🕑<span id="live-clock">Loading...</span>
         </div>
         <script>
         function updateClock() {
@@ -264,7 +249,7 @@ else:
     try:
         df_database = load_cached_database()
     except Exception as e:
-        st.error("❌ Gagal terhubung ke Google Sheets. Detail Error:")
+        st.error("❌ Gagal terhubung ke database. Detail Error:")
         st.exception(e)
         df_database = pd.DataFrame()
 
@@ -453,11 +438,10 @@ else:
                 else:
                     st.error(m_text)
                 del st.session_state[f"last_msg_{wilayah}"]
-                # --- BLOK PEMUTAR AUDIO YANG AMAN DAN KEBAL ERROR ---
+                
             sound_effect_key = f"sound_effect_{wilayah}"
             audio_data = st.session_state.get(sound_effect_key)
             
-            # Pastikan audio_data tidak None dan berbentuk tuple/list dengan 2 elemen
             if audio_data is not None:
                 if isinstance(audio_data, (list, tuple)) and len(audio_data) == 2:
                     sound_type, timestamp_id = audio_data
@@ -489,13 +473,12 @@ else:
                     except Exception as e:
                         st.warning(f"File audio lokal tidak ditemukan: {local_audio_path}")
                 
-                # Hapus key dari session_state agar error tidak berulang
                 del st.session_state[sound_effect_key]
 
             st.markdown("---")
 
             if st.session_state.get(changes_key, False):
-                st.warning("⚠️ Ada perubahan data yang **belum disimpan** ke Database!")
+                st.warning("⚠️ Ada perubahan data yang **belum disimpan** ke database!")
                 col_btn1, col_btn2 = st.columns(2)
                 
                 with col_btn1:
@@ -537,7 +520,7 @@ else:
                                 ws.update_cells(cell_updates)
                                 st.session_state[changes_key] = False
                                 st.cache_data.clear()
-                                st.success("✅ Perubahan berhasil disimpan ke Database!")
+                                st.success("✅ Perubahan berhasil disimpan ke database!")
                                 st.rerun()
 
                         except Exception as e:
@@ -590,14 +573,12 @@ else:
                         if selected_ids_mz and selected_zones:
                             string_zona_hasil = ", ".join(selected_zones)
                             
-                            # 1. Update data di DataFrame lokal terlebih dahulu
                             for target_id in selected_ids_mz:
                                 m_idx = df_lokal[df_lokal[id_col_name].astype(str).str.contains(target_id)].index
                                 if len(m_idx) > 0:
                                     df_lokal.at[m_idx[0], "Zona Mezzanine"] = string_zona_hasil
         
-                            # 2. LANGSUNG SIMPAN OTOMATIS KE GOOGLE SHEETS
-                            with st.spinner("💾 Menyimpan Zona Mezzanine ke Google Sheets..."):
+                            with st.spinner("💾 Menyimpan Zona Mezzanine ke database..."):
                                 try:
                                     creds_dict = dict(st.secrets["connections"]["gsheets"])
                                     gc = gspread.service_account_from_dict(creds_dict)
@@ -797,26 +778,18 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Gagal memuat data manifest: {e}")
         
-            # --- PERBAIKAN LOGIKA IF / ELSE DATAFRAME KOSONG ---
             if df_manifest_wilayah.empty:
                 st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
             else:
                 for idx, m_row in df_manifest_wilayah.iterrows():
-                    # Ekstrak data dari m_row secara aman
+                    
                     mnf_num = str(m_row.get("Nomor Manifest", ""))
                     zona_raw = str(m_row.get("Zona Mezzanine", ""))
                     box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
                     m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
                     
-                    # Mendahului kolom "Dibuat Oleh" dari database
                     m_creator = str(
-                        m_row.get("Dibuat Oleh") or 
-                        m_row.get("Oleh") or 
-                        m_row.get("Creator") or 
-                        m_row.get("User") or 
-                        m_row.get("Username") or 
-                        m_row.get("Pembuat") or 
-                        m_row.get("Nama") or 
+                        m_row.get("Dibuat Oleh") or  
                         "-"
                     )
                     if m_creator.lower() in ["nan", "none", ""]:
@@ -824,7 +797,6 @@ else:
         
                     m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
         
-                    # Hitung jumlah box per zona secara dinamis
                     list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
                     manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
         
@@ -989,7 +961,6 @@ else:
                     
                     st.markdown("---")
 
-            # --- 2. JIKA ADA MANIFEST AKTIF YANG DITEKAN DETAILNYA ---
             active_mnf = st.session_state.get(f"active_detail_manifest_{wilayah}")
             if active_mnf and not df_manifest_wilayah.empty:
                 selected_row_data = df_manifest_wilayah[df_manifest_wilayah["Nomor Manifest"].astype(str) == str(active_mnf)]
@@ -1007,7 +978,6 @@ else:
                     
                     col_scan_in, col_scan_out = st.columns(2)
                     
-                    # --- FORM TAMBAH ID KE MANIFEST ---
                     with col_scan_in:
                         with st.form(key=f"form_scan_susulan_{active_mnf}", clear_on_submit=True):
                             st.markdown("##### ➕ Tambah ID baru ke Manifest")
@@ -1084,11 +1054,10 @@ else:
                                                     st.success(f"✅ Berhasil menambahkan ID `{clean_new_id}` sebanyak {added_box_input} box ke manifest!")
                                                     st.rerun()
                                                 else:
-                                                    st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
+                                                    st.error("❌ Baris manifest tidak ditemukan di database.")
                                             except Exception as e:
                                                 st.error(f"❌ Gagal memperbarui manifest: {e}")
                     
-                    # --- FORM KELUARKAN ID DARI MANIFEST ---
                     with col_scan_out:
                         with st.form(key=f"form_scan_keluar_{active_mnf}", clear_on_submit=True):
                             st.markdown("##### ➖ Keluarkan ID dari Manifest")
@@ -1165,13 +1134,12 @@ else:
                                                 st.success(f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest!")
                                                 st.rerun()
                                             else:
-                                                st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
+                                                st.error("❌ Baris manifest tidak ditemukan di database.")
                                         except Exception as e:
                                             st.error(f"❌ Gagal mengeluarkan ID: {e}")
                     
                     st.markdown("---")
                     
-                    # --- EXPANDER GABUNG ID MANIFEST ---
                     with st.expander("🔗 Gabungkan Beberapa ID Menjadi 1 Box", expanded=False):
                         with st.form(key=f"form_gabung_box_{active_mnf}", clear_on_submit=True):
                             st.markdown("Pilih beberapa ID yang ingin digabungkan box-nya dalam manifest ini:")
@@ -1227,7 +1195,7 @@ else:
                                                 st.success(f"✅ Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini!")
                                                 st.rerun()
                                             else:
-                                                st.error("❌ Baris manifest tidak ditemukan di Google Sheets.")
+                                                st.error("❌ Baris manifest tidak ditemukan di database.")
                                         except Exception as e:
                                             st.error(f"❌ Gagal melakukan penggabungan box: {e}")
                     
@@ -1250,7 +1218,6 @@ else:
                     else:
                         df_detail_manifest = pd.DataFrame()
                 
-                    # 2. Buat file excel berdasarkan data yang sudah siap
                     if not df_detail_manifest.empty:
                         creator_val = row_info.get("Dibuat Oleh") or row_info.get("Oleh") or str(st.session_state.get("user_nama", "Admin"))
                         time_val = row_info.get("Waktu Buat") or row_info.get("Timestamp") or "-"
@@ -1272,7 +1239,6 @@ else:
                             use_container_width=True
                         )
                 
-                    # 3. Tampilkan tabel dan informasi lainnya
                     st.markdown("##### List ID Request Manifest :")
                     if not df_detail_manifest.empty:
                         st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
@@ -1280,7 +1246,6 @@ else:
                         st.info("ℹ️ ID Terdaftar:")
                         st.write(ids_in_manifest)
                 
-                    # --- TOMBOL TUTUP DETAIL ---
                     if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                         st.session_state[f"active_detail_manifest_{wilayah}"] = None
                         st.rerun()
