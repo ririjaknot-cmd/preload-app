@@ -219,48 +219,45 @@ else:
     with col_head1:
         st.markdown("### Pre Load Shipment Cabang ")
     with col_head2:
-        st.text(f" 👨🏻‍💼{st.session_state.user_nama}")
-        
-        components.html("""
-        <div style="font-family: sans-serif; font-size: 13px; color: #FFFFFF; margin-top: -10px;">
-            🕑<span id="live-clock">Loading...</span>
-        </div>
-        <script>
-        function updateClock() {
-            const now = new Date();
-            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            
-            const dayName = days[now.getDay()];
-            const dayNum = String(now.getDate()).padStart(2, '0');
-            const monthName = months[now.getMonth()];
-            const year = now.getFullYear();
-            
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            
-            const timeString = `${dayName}, ${dayNum} ${monthName} ${year}, ${hours}:${minutes}:${seconds}`;
-            document.getElementById('live-clock').innerText = timeString;
-        }
-        setInterval(updateClock, 1000);
-        updateClock();
-        </script>
-        """, height=30)
+        # Tampilkan Nama & Jam dalam satu blok kecil yang rapi
+        st.markdown(
+            f"""
+            <div style="text-align: right; font-family: sans-serif; line-height: 1.4; margin-bottom: 8px;">
+                <span style="font-size: 14px; font-weight: bold; color: #FFFFFF;">👨🏻‍💼 {st.session_state.user_nama}</span><br>
+                <span id="live-clock" style="font-size: 12px; color: #A0A0A0;">🕑 Memuat waktu...</span>
+            </div>
+            <script>
+            function updateClock() {
+                const now = new Date();
+                const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                
+                const dayName = days[now.getDay()];
+                const dayNum = String(now.getDate()).padStart(2, '0');
+                const monthName = months[now.getMonth()];
+                const year = now.getFullYear();
+                
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                
+                const timeString = `${dayName}, ${dayNum} ${monthName} ${year}, ${hours}:${minutes}:${seconds}`;
+                const elem = document.getElementById('live-clock');
+                if (elem) elem.innerText = timeString;
+            }
+            setInterval(updateClock, 1000);
+            updateClock();
+            </script>
+            """,
+            unsafe_allow_html=True
+        )
 
-        # Tombol Berdampingan: Logout & Ganti Password
-        sub_col1, sub_col2 = st.columns(2)
+        # Tombol Aksi Berdampingan yang Lebih Proporsional
+        btn_col1, btn_col2 = st.columns(2)
         
-        with sub_col1:
-            if st.button("Logout", use_container_width=True):
-                st.session_state.logged_in = False
-                st.session_state.user_email = ""
-                st.session_state.user_nama = ""
-                st.rerun()
-
-        with sub_col2:
-            with st.popover("Password", use_container_width=True):
-                st.markdown("##### Ubah Password")
+        with btn_col1:
+            with st.popover("🔑 Sandi", use_container_width=True):
+                st.markdown("##### 🔐 Ubah Password")
                 with st.form(key=f"form_ubah_pin_{st.session_state.user_email}", clear_on_submit=True):
                     old_pin = st.text_input("Password Lama:", type="password")
                     new_pin = st.text_input("Password Baru:", type="password")
@@ -275,7 +272,7 @@ else:
                             st.error("❌ Password baru tidak cocok.")
                         else:
                             try:
-                                with st.spinner("⏳ Memperbarui password..."):
+                                with st.spinner("⏳ Memperbarui..."):
                                     creds_dict = dict(st.secrets["connections"]["gsheets"])
                                     gc = gspread.service_account_from_dict(creds_dict)
                                     spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -285,7 +282,7 @@ else:
                                     header_users = ws_users.row_values(1)
                                     
                                     user_col_i = header_users.index("Username") + 1 if "Username" in header_users else 1
-                                    pin_col_i = header_users.index("Pin") + 1 if "Pin" in header_users else (header_users.index("Password") + 1 if "Password" in header_users else 3)
+                                    pin_col_i = header_users.index("Pin / Password") + 1 if "Pin / Password" in header_users else (header_users.index("Pin") + 1 if "Pin" in header_users else 3)
                                     
                                     usernames_list = ws_users.col_values(user_col_i)
                                     pins_list = ws_users.col_values(pin_col_i)
@@ -304,9 +301,16 @@ else:
                                     
                                     if target_row:
                                         ws_users.update_cell(target_row, pin_col_i, new_pin.strip())
-                                        st.success("Password berhasil diubah! Gunakan password baru pada sesi login berikutnya.")
+                                        st.success("✅ Berhasil! Gunakan password baru saat login.")
                             except Exception as e:
                                 st.error(f"❌ Gagal memperbarui password ke database: {e}")
+
+        with btn_col2:
+            if st.button("🚪 Keluar", use_container_width=True):
+                st.session_state.logged_in = False
+                st.session_state.user_email = ""
+                st.session_state.user_nama = ""
+                st.rerun()
 
     st.divider()
 
