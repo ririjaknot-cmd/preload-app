@@ -123,7 +123,7 @@ USER_DATABASE = {
     "kurnianto.kdy": {"nama": "Aji Kurnianto", "pin": "1234"},
     "handoko.kdy": {"nama": "Alek Handoko", "pin": "1234"},
     "athian.kdy": {"nama": "Athian Alghifari", "pin": "1234"},
-    "amelya.kdy": {"nama": "Amelya Putri", "pin": "1234"},
+    "amelya.kdy": {"nama": "Amelya Putri", "pin": "ameng11"},
     "ekafebri.kdy": {"nama": "Eka Febri Setiardi", "pin": "1234"},
     "arif.kdy": {"nama": "Arif Saputra", "pin": "1234"},
     "fadhil.kdy": {"nama": "Fadhilah Al Azani", "pin": "1234"},
