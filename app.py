@@ -222,13 +222,13 @@ if not st.session_state.logged_in:
 else:
     col_head1, col_head2 = st.columns([4, 1])
     with col_head1:
-        st.markdown("### V2 Pre Load Shipment Cabang ")
+        st.markdown("### Pre Load Shipment Cabang ")
     with col_head2:
-        st.text(f" {st.session_state.user_nama}")
+        st.text(f"{st.session_state.user_nama}")
         
         components.html("""
         <div style="font-family: sans-serif; font-size: 13px; color: #FFFFFF; margin-top: -10px;">
-            🕒 <span id="live-clock">Loading...</span>
+             <span id="live-clock">Loading...</span>
         </div>
         <script>
         function updateClock() {
