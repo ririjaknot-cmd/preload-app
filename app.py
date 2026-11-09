@@ -167,7 +167,7 @@ def tampilkan_halaman_login():
                         st.session_state.logged_in = True
                         st.session_state.user_email = username_input
                         st.session_state.user_nama = nama_user
-                        st.success("✅ Login berhasil!")
+                        st.success(f"Login berhasil! Selamat datang, {st.session_state.user_nama}")
                         st.rerun()
                     else:
                         st.error("❌ Username atau PIN salah.")
@@ -259,8 +259,8 @@ else:
                 st.rerun()
 
         with sub_col2:
-            with st.popover("🔑 Password", use_container_width=True):
-                st.markdown("##### Ubah Password Mandiri")
+            with st.popover("Password", use_container_width=True):
+                st.markdown("##### Ubah Password")
                 with st.form(key=f"form_ubah_pin_{st.session_state.user_email}", clear_on_submit=True):
                     old_pin = st.text_input("Password Lama:", type="password")
                     new_pin = st.text_input("Password Baru:", type="password")
@@ -304,7 +304,7 @@ else:
                                     
                                     if target_row:
                                         ws_users.update_cell(target_row, pin_col_i, new_pin.strip())
-                                        st.success("✅ Password berhasil diubah! Gunakan password baru pada sesi login berikutnya.")
+                                        st.success("Password berhasil diubah! Gunakan password baru pada sesi login berikutnya.")
                             except Exception as e:
                                 st.error(f"❌ Gagal memperbarui password ke database: {e}")
 
