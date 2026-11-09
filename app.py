@@ -208,7 +208,6 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
         return "🟢 Completed"
 
 if not st.session_state.logged_in:
-    tampilkan_halaman_login()
 else:
     col_head1, col_head2 = st.columns([4, 1])
     with col_head1:
