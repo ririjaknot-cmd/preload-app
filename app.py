@@ -124,11 +124,15 @@ if "user_nama" not in st.session_state:
     st.session_state.user_nama = ""
 
 def tampilkan_halaman_login():
-    st.subheader("🔑 Login Pre Load Shipment")
-    with st.form("form_login"):
-        username_input = st.text_input("Username").strip().lower()
-        pin_input = st.text_input("PIN / Password", type="password")
-        submit_login = st.form_submit_button("Masuk", type="primary")
+    st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan Username terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        with st.form("form_login"):
+            email_input = st.text_input("Nama Pengguna").strip().lower()
+            pin_input = st.text_input("PIN / Password", type="password")
+            submit_btn = st.form_submit_button("Masuk (Login)", use_container_width=True)
         
         if submit_login:
             try:
