@@ -123,6 +123,7 @@ if "user_email" not in st.session_state:
 if "user_nama" not in st.session_state:
     st.session_state.user_nama = ""
 
+# --- 2. FUNGSI HALAMAN LOGIN ---
 def tampilkan_halaman_login():
     st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan Username terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
@@ -130,47 +131,50 @@ def tampilkan_halaman_login():
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("form_login"):
-            email_input = st.text_input("Nama Pengguna").strip().lower()
+            username_input = st.text_input("Nama Pengguna").strip().lower()
             pin_input = st.text_input("PIN / Password", type="password")
             submit_btn = st.form_submit_button("Masuk (Login)", use_container_width=True)
         
-        if submit_login:
-            try:
-                # Koneksi ke Google Sheets
-                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                gc = gspread.service_account_from_dict(creds_dict)
-                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                
-                ws_users = sh.worksheet("Data User")
-                records = ws_users.get_all_records()
-                
-                login_berhasil = False
-                nama_user = ""
-                
-                # Cek pencocokan username dan pin dari Google Sheets
-                for row in records:
-                    db_user = str(row.get("Username", "")).strip().lower()
-                    db_pin = str(row.get("Pin", "")).strip() or str(row.get("Password", "")).strip()
-                    db_nama = str(row.get("Nama", "")).strip()
+        if submit_btn:
+            if not username_input or not pin_input:
+                st.warning("⚠️ Masukkan Username dan PIN terlebih dahulu.")
+            else:
+                try:
+                    # Koneksi ke Google Sheets
+                    creds_dict = dict(st.secrets["connections"]["gsheets"])
+                    gc = gspread.service_account_from_dict(creds_dict)
+                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                     
-                    if db_user == username_input and db_pin == pin_input.strip():
-                        login_berhasil = True
-                        nama_user = db_nama
-                        break
-                
-                if login_berhasil:
-                    st.session_state.logged_in = True
-                    st.session_state.user_email = username_input
-                    st.session_state.user_nama = nama_user
-                    st.success("✅ Login berhasil!")
-                    st.rerun()
-                else:
-                    st.error("❌ Username atau PIN salah.")
-            except Exception as e:
-                st.error(f"❌ Gagal memuat data login dari database: {e}")
+                    ws_users = sh.worksheet("Data User")
+                    records = ws_users.get_all_records()
+                    
+                    login_berhasil = False
+                    nama_user = ""
+                    
+                    # Cek pencocokan username dan pin dari Google Sheets
+                    for row in records:
+                        db_user = str(row.get("Username", "")).strip().lower()
+                        db_pin = str(row.get("Pin", "")).strip() or str(row.get("Password", "")).strip()
+                        db_nama = str(row.get("Nama", "")).strip()
+                        
+                        if db_user == username_input and db_pin == pin_input.strip():
+                            login_berhasil = True
+                            nama_user = db_nama
+                            break
+                    
+                    if login_berhasil:
+                        st.session_state.logged_in = True
+                        st.session_state.user_email = username_input
+                        st.session_state.user_nama = nama_user
+                        st.success("✅ Login berhasil!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Username atau PIN salah.")
+                except Exception as e:
+                    st.error(f"❌ Gagal memuat data login dari database: {e}")
 
-
+# --- 3. KONEKSI & LOAD DATABASE LOG ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 st.sidebar.markdown("---")
@@ -207,7 +211,9 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
     else:
         return "🟢 Completed"
 
+# --- 4. ALUR UTAMA APLIKASI (ROUTING LOGIN) ---
 if not st.session_state.logged_in:
+    tampilkan_halaman_login()
 else:
     col_head1, col_head2 = st.columns([4, 1])
     with col_head1:
@@ -242,11 +248,65 @@ else:
         </script>
         """, height=30)
 
-        if st.button("Logout"):
-            st.session_state.logged_in = False
-            st.session_state.user_email = ""
-            st.session_state.user_nama = ""
-            st.rerun()
+        # Tombol Berdampingan: Logout & Ganti Password
+        sub_col1, sub_col2 = st.columns(2)
+        
+        with sub_col1:
+            if st.button("Logout", use_container_width=True):
+                st.session_state.logged_in = False
+                st.session_state.user_email = ""
+                st.session_state.user_nama = ""
+                st.rerun()
+
+        with sub_col2:
+            with st.popover("🔑 Password", use_container_width=True):
+                st.markdown("##### Ubah Password Mandiri")
+                with st.form(key=f"form_ubah_pin_{st.session_state.user_email}", clear_on_submit=True):
+                    old_pin = st.text_input("Password Lama:", type="password")
+                    new_pin = st.text_input("Password Baru:", type="password")
+                    confirm_pin = st.text_input("Konfirmasi Password Baru:", type="password")
+                    
+                    btn_save_pin = st.form_submit_button("Simpan", type="primary", use_container_width=True)
+                    
+                    if btn_save_pin:
+                        if not old_pin or not new_pin or not confirm_pin:
+                            st.warning("⚠️ Semua kolom harus diisi.")
+                        elif new_pin != confirm_pin:
+                            st.error("❌ Password baru tidak cocok.")
+                        else:
+                            try:
+                                with st.spinner("⏳ Memperbarui password..."):
+                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                    gc = gspread.service_account_from_dict(creds_dict)
+                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                    
+                                    ws_users = sh.worksheet("Data User")
+                                    header_users = ws_users.row_values(1)
+                                    
+                                    user_col_i = header_users.index("Username") + 1 if "Username" in header_users else 1
+                                    pin_col_i = header_users.index("Pin") + 1 if "Pin" in header_users else (header_users.index("Password") + 1 if "Password" in header_users else 3)
+                                    
+                                    usernames_list = ws_users.col_values(user_col_i)
+                                    pins_list = ws_users.col_values(pin_col_i)
+                                    
+                                    current_user = str(st.session_state.user_email).strip()
+                                    target_row = None
+                                    
+                                    for idx_u, u_val in enumerate(usernames_list, start=1):
+                                        if str(u_val).strip().lower() == current_user:
+                                            target_row = idx_u
+                                            stored_pin = str(pins_list[idx_u - 1]).strip() if (idx_u - 1) < len(pins_list) else ""
+                                            if stored_pin != old_pin.strip():
+                                                st.error("❌ Password lama salah!")
+                                                target_row = None
+                                            break
+                                    
+                                    if target_row:
+                                        ws_users.update_cell(target_row, pin_col_i, new_pin.strip())
+                                        st.success("✅ Password berhasil diubah! Gunakan password baru pada sesi login berikutnya.")
+                            except Exception as e:
+                                st.error(f"❌ Gagal memperbarui password ke database: {e}")
 
     st.divider()
 
