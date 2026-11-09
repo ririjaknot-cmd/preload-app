@@ -227,7 +227,7 @@ else:
         """, unsafe_allow_html=True)
 
         components.html("""
-        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: right; margin-top: -15px;">
+        <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: right; margin-top: -10px;">
             🕑<span id="live-clock">Loading...</span>
         </div>
         <script>
@@ -258,7 +258,7 @@ else:
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
-            with st.popover("🔑 Sandi", use_container_width=True):
+            with st.popover("Sandi", use_container_width=True):
                 st.markdown("##### 🔐 Ubah Password")
                 with st.form(key=f"form_ubah_pin_{st.session_state.user_email}", clear_on_submit=True):
                     old_pin = st.text_input("Password Lama:", type="password")
