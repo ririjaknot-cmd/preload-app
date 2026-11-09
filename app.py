@@ -155,7 +155,7 @@ def tampilkan_halaman_login():
                     # Cek pencocokan username dan pin dari Google Sheets
                     for row in records:
                         db_user = str(row.get("Username", "")).strip().lower()
-                        db_pin = str(row.get("Pin", "")).strip() or str(row.get("Password", "")).strip()
+                        db_pin = str(row.get("Pin / Password", "")).strip() or str(row.get("Pin", "")).strip() or str(row.get("Password", "")).strip()
                         db_nama = str(row.get("Nama", "")).strip()
                         
                         if db_user == username_input and db_pin == pin_input.strip():
