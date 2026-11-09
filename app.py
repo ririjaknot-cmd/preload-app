@@ -244,6 +244,60 @@ else:
             st.session_state.user_nama = ""
             st.rerun()
 
+    # --- FITUR UBAH PASSWORD DI SIDEBAR ---
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown(f"👤 **Akun Aktif:** `{st.session_state.get('user_nama', '-')}`")
+        
+        with st.expander("🔐 Ubah Password", expanded=False):
+            with st.form(key=f"form_change_password_{st.session_state.get('user_nama', 'user')}", clear_on_submit=True):
+                old_pass_input = st.text_input("Password Lama:", type="password")
+                new_pass_input = st.text_input("Password Baru:", type="password")
+                confirm_pass_input = st.text_input("Konfirmasi Password Baru:", type="password")
+                
+                btn_submit_pass = st.form_submit_button("Simpan Password Baru", type="primary")
+                
+                if btn_submit_pass:
+                    if not old_pass_input or not new_pass_input or not confirm_pass_input:
+                        st.warning("⚠️ Semua kolom password harus diisi.")
+                    elif new_pass_input != confirm_pass_input:
+                        st.error("❌ Password baru dan konfirmasi password tidak cocok.")
+                    else:
+                        try:
+                            with st.spinner("⏳ Memperbarui password..."):
+                                creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                gc = gspread.service_account_from_dict(creds_dict)
+                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                
+                                # Sesuaikan nama worksheet tempat menyimpan data user Anda (misal: "Data User")
+                                ws_users = sh.worksheet("Data User") 
+                                header_users = ws_users.row_values(1)
+                                
+                                user_col_i = header_users.index("Username") + 1 if "Username" in header_users else 1
+                                pass_col_i = header_users.index("Password") + 1 if "Password" in header_users else 2
+                                
+                                usernames_list = ws_users.col_values(user_col_i)
+                                passwords_list = ws_users.col_values(pass_col_i)
+                                
+                                current_user = str(st.session_state.get("user_nama", "")).strip()
+                                target_row_idx = None
+                                
+                                for idx_u, u_val in enumerate(usernames_list, start=1):
+                                    if str(u_val).strip() == current_user:
+                                        target_row_idx = idx_u
+                                        stored_password = str(passwords_list[idx_u - 1]).strip() if (idx_u - 1) < len(passwords_list) else ""
+                                        if stored_password != old_pass_input.strip():
+                                            st.error("❌ Password lama yang Anda masukkan salah!")
+                                            target_row_idx = None
+                                        break
+                                
+                                if target_row_idx:
+                                    ws_users.update_cell(target_row_idx, pass_col_i, new_pass_input.strip())
+                                    st.success("✅ Password berhasil diubah! Silakan gunakan password baru pada sesi login berikutnya.")
+                        except Exception as e:
+                            st.error(f"❌ Gagal mengubah password ke database: {e}")
+
     st.divider()
 
     try:
