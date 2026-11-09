@@ -123,7 +123,7 @@ USER_DATABASE = {
     "kurnianto.kdy": {"nama": "Aji Kurnianto", "pin": "1234"},
     "handoko.kdy": {"nama": "Alek Handoko", "pin": "1234"},
     "athian.kdy": {"nama": "Athian Alghifari", "pin": "1234"},
-    "amelya.kdy": {"nama": "Amelya Putri", "pin": "ameng11"},
+    "amelya.kdy": {"nama": "Amelya Putri", "pin": "1234"},
     "ekafebri.kdy": {"nama": "Eka Febri Setiardi", "pin": "1234"},
     "arif.kdy": {"nama": "Arif Saputra", "pin": "1234"},
     "fadhil.kdy": {"nama": "Fadhilah Al Azani", "pin": "1234"},
@@ -238,66 +238,11 @@ else:
         </script>
         """, height=30)
 
-        # --- MEMBUAT TOMBOL BERDAMPINGAN (LOGOUT & GANTI PASSWORD) ---
-        sub_col1, sub_col2 = st.columns(2)
-        
-        with sub_col1:
-            if st.button("Logout", use_container_width=True):
-                st.session_state.logged_in = False
-                st.session_state.user_email = ""
-                st.session_state.user_nama = ""
-                st.rerun()
-
-        with sub_col2:
-            # Menggunakan popover agar form ganti password rapi muncul saat diklik
-            with st.popover("🔑 Password", use_container_width=True):
-                st.markdown("##### Ubah Password Akun")
-                with st.form(key=f"form_change_password_{st.session_state.get('user_nama', 'user')}", clear_on_submit=True):
-                    old_pass_input = st.text_input("Password Lama:", type="password")
-                    new_pass_input = st.text_input("Password Baru:", type="password")
-                    confirm_pass_input = st.text_input("Konfirmasi Password Baru:", type="password")
-                    
-                    btn_submit_pass = st.form_submit_button("Simpan", type="primary", use_container_width=True)
-                    
-                    if btn_submit_pass:
-                        if not old_pass_input or not new_pass_input or not confirm_pass_input:
-                            st.warning("⚠️ Semua kolom harus diisi.")
-                        elif new_pass_input != confirm_pass_input:
-                            st.error("❌ Password baru tidak cocok.")
-                        else:
-                            try:
-                                with st.spinner("⏳ Memperbarui..."):
-                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                    gc = gspread.service_account_from_dict(creds_dict)
-                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                    
-                                    ws_users = sh.worksheet("Data User") 
-                                    header_users = ws_users.row_values(1)
-                                    
-                                    user_col_i = header_users.index("Username") + 1 if "Username" in header_users else 1
-                                    pass_col_i = header_users.index("Password") + 1 if "Password" in header_users else 2
-                                    
-                                    usernames_list = ws_users.col_values(user_col_i)
-                                    passwords_list = ws_users.col_values(pass_col_i)
-                                    
-                                    current_user = str(st.session_state.get("user_nama", "")).strip()
-                                    target_row_idx = None
-                                    
-                                    for idx_u, u_val in enumerate(usernames_list, start=1):
-                                        if str(u_val).strip() == current_user:
-                                            target_row_idx = idx_u
-                                            stored_password = str(passwords_list[idx_u - 1]).strip() if (idx_u - 1) < len(passwords_list) else ""
-                                            if stored_password != old_pass_input.strip():
-                                                st.error("❌ Password lama salah!")
-                                                target_row_idx = None
-                                            break
-                                    
-                                    if target_row_idx:
-                                        ws_users.update_cell(target_row_idx, pass_col_i, new_pass_input.strip())
-                                        st.success("✅ Berhasil! Gunakan password baru saat login berikutnya.")
-                            except Exception as e:
-                                st.error(f"❌ Gagal mengubah password: {e}")
+        if st.button("Logout"):
+            st.session_state.logged_in = False
+            st.session_state.user_email = ""
+            st.session_state.user_nama = ""
+            st.rerun()
 
     st.divider()
 
