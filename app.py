@@ -1257,8 +1257,14 @@ else:
                             df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
                             
                             for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
+                                # --- GANTI BARIS 1261 DENGAN KODE INI ---
                                 if col_num_check in df_detail_manifest.columns:
-                                    df_detail_manifest[col_num_check] = df_detail_manifest[col_num_check].astype(str).str.split('.').str[0]
+                                    col_data = df_detail_manifest[col_num_check]
+                                    # Jika kolom duplikat sehingga menjadi DataFrame, ambil kolom pertama
+                                    if isinstance(col_data, pd.DataFrame):
+                                        col_data = col_data.iloc[:, 0]
+                                    
+                                    df_detail_manifest[col_num_check] = col_data.astype(str).str.split('.').str[0].replace({"nan": "", "None": ""})
                                     
                             if "clean_id" in df_detail_manifest.columns:
                                 df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
