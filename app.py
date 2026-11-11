@@ -571,35 +571,47 @@ else:
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
+                    
+                    # --- KUNCI UTAMA: AMBIL NILAI SEMENTARA DARI MULTISELECT SESSION STATE ---
+                    zona_box_counts = {}
+                    for _, r_item in df_aktif.iterrows():
+                        c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
+                        b_count = int(r_item.get("Progress") or 0)
+                        
+                        # Cek apakah multiselect widget sudah menyimpan nilai di session_state
+                        widget_key = f"mz_row_{wilayah}_{c_id_str}"
+                        if widget_key in st.session_state:
+                            selected_zones = st.session_state[widget_key]
+                        else:
+                            # Ambil dari database/df lokal jika belum ada di widget state
+                            db_z = str(r_item.get("Zona Mezzanine", ""))
+                            selected_zones = [z.strip() for z in db_z.split(",") if z.strip()] if db_z not in ["nan", "None", ""] else []
+        
+                        for z_name in selected_zones:
+                            if z_name:
+                                zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
+        
+                    # --- SUSUN HTML RINGKASAN ZONA ---
+                    summary_zona_html = ""
+                    if zona_box_counts:
+                        summary_items = [f"• **({z_name}) {total_b} Box**" for z_name, total_b in sorted(zona_box_counts.items())]
+                        summary_zona_html = " <br> ".join(summary_items)
+                    else:
+                        summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
+        
+                    # --- TAMPILKAN KOTAK INFORMASI DI ATAS ---
+                    st.markdown(
+                        f"""
+                        <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
+                            <b>Ringkasan Zona Mezzanine:</b><br>{summary_zona_html}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+        
+                    # --- FORM PENGATURAN ZONA ---
                     with st.form(key=f"form_batch_zona_{wilayah}"):
                         st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
-
-                        zona_box_counts = {}
-                        for _, r_item in df_aktif.iterrows():
-                            z_str = str(r_item.get("Zona Mezzanine", "")).strip()
-                            b_count = int(r_item.get("Progress") or 0)
-                            
-                            if z_str and z_str not in ["nan", "None", ""]:
-                                z_list = [z.strip() for z in z_str.split(",") if z.strip()]
-                                for z_name in z_list:
-                                    zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
-        
-                        # --- SELALU TAMPILKAN KOTAK INFORMASI RINGKASAN ---
-                        summary_zona_html = ""
-                        if zona_box_counts:
-                            summary_items = [f"• **({z_name}) {total_b} Box**" for z_name, total_b in sorted(zona_box_counts.items())]
-                            summary_zona_html = " <br> ".join(summary_items)
-                        else:
-                            summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
-        
-                        st.markdown(
-                            f"""
-                            <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
-                                <b>Ringkasan Zona Mezzanine:</b><br>{summary_zona_html}
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
                         
                         for idx_row, row_item in df_aktif.iterrows():
                             current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
@@ -623,7 +635,8 @@ else:
                                     options=daftar_zona_mezzanine,
                                     default=[z for z in current_zona_db if z in daftar_zona_mezzanine],
                                     key=f"mz_row_{wilayah}_{current_id_str}",
-                                    label_visibility="collapsed"
+                                    label_visibility="collapsed",
+                                    on_change=lambda: st.rerun() # <--- AGAR LANGSUNG REFRESH SAAT PILIH ZONA
                                 )
                                 if selected_z:
                                     df_lokal.at[idx_row, "Zona Mezzanine"] = ", ".join(selected_z)
@@ -674,7 +687,6 @@ else:
                                     if cell_updates:
                                         ws.update_cells(cell_updates)
                                         
-                                        # BERSIHKAN SESI AGAR LIST HILANG SETELAH TERSIMPAN
                                         st.session_state[scanned_ids_key] = []
                                         st.session_state[changes_key] = False
                                         if local_df_key in st.session_state:
