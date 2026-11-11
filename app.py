@@ -1256,38 +1256,21 @@ else:
                             df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
                             df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
                             
-                            # Hapus kolom duplikat jika ada
-                            df_detail_manifest = df_detail_manifest.loc[:, ~df_detail_manifest.columns.duplicated()].copy()
-                            
-                            # --- PERBAIKAN AMAN UNTUK PEMBERSIHAN KOLOM ---
-                            for col_num_check in ["Jumlah Box", "Progress"]:
+                            for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
                                 if col_num_check in df_detail_manifest.columns:
-                                    # Ambil kolom secara aman (jika berupa DataFrame, ambil kolom pertama)
-                                    col_data = df_detail_manifest[col_num_check]
-                                    if isinstance(col_data, pd.DataFrame):
-                                        col_data = col_data.iloc[:, 0]
+                                    df_detail_manifest[col_num_check] = df_detail_manifest[col_num_check].astype(str).str.split('.').str[0]
                                     
-                                    # Konversi paksa ke string terlebih dahulu, baru bersihkan format desimal (.0)
-                                    df_detail_manifest[col_num_check] = (
-                                        col_data.astype(str)
-                                        .str.split('.')
-                                        .str[0]
-                                        .replace({"nan": "", "None": "", "nat": ""})
-                                    )
-                            
                             if "clean_id" in df_detail_manifest.columns:
                                 df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
                         else:
                             df_detail_manifest = pd.DataFrame()
                     else:
                         df_detail_manifest = pd.DataFrame()
-                    
-                    # --- TAMPILAN DETAIL MANIFEST ---
+                
                     if not df_detail_manifest.empty:
                         creator_val = row_info.get("Dibuat Oleh") or row_info.get("Oleh") or str(st.session_state.get("user_nama", "Admin"))
                         time_val = row_info.get("Waktu Buat") or row_info.get("Timestamp") or "-"
                         
-                        # Generate file Excel
                         excel_data = generate_manifest_excel(
                             mnf_num=active_mnf,
                             wilayah=wilayah,
@@ -1296,22 +1279,22 @@ else:
                             df_items=df_detail_manifest
                         )
                         
-                        # Tombol Download Excel
                         st.download_button(
-                            label="📥 Download Xls",
+                            label="📥Download Xls",
                             data=excel_data,
                             file_name=f"{active_mnf}_{wilayah}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Diperbaiki dari chssheet
                             key=f"dl_excel_{active_mnf}",
                             use_container_width=True
                         )
-                    
-                        st.markdown("##### List ID Request Manifest :")
+                
+                    st.markdown("##### List ID Request Manifest :")
+                    if not df_detail_manifest.empty:
                         st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
                     else:
                         st.info("ℹ️ ID Terdaftar:")
                         st.write(ids_in_manifest)
-                    
+                
                     if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                         st.session_state[f"active_detail_manifest_{wilayah}"] = None
                         st.rerun()
