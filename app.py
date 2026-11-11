@@ -614,16 +614,16 @@ else:
                                     spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                     sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                     ws = sh.worksheet("Database log")
-                        
+        
                                     records_main = ws.get_all_records()
                                     header_main = ws.row_values(1)
-                        
+        
                                     prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
                                     loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
                                     waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
                                     zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
                                     status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
-                        
+        
                                     cell_updates = []
                                     for _, row in df_lokal.iterrows():
                                         r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
@@ -632,7 +632,7 @@ else:
                                         w_val = row.get("Waktu Preload")
                                         z_val = row.get("Zona Mezzanine")
                                         s_val = row.get("Status")
-                        
+        
                                         if pd.notna(l_val) and str(l_val).strip() != "" and str(l_val).strip() != "nan":
                                             for r_idx, r_val in enumerate(records_main, start=2):
                                                 sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
@@ -643,19 +643,22 @@ else:
                                                     cell_updates.append(gspread.Cell(r_idx, zona_col_i, str(z_val)))
                                                     cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
                                                     break
-                        
+        
                                     if cell_updates:
                                         ws.update_cells(cell_updates)
                                         
-                                        # --- RESET STATE & HAPUS DRAFT LOKAL ---
+                                        # --- KUNCI UTAMA AGAR LIST OTOMATIS HILANG ---
+                                        # 1. Set status perubahan menjadi False
                                         st.session_state[changes_key] = False
+                                        
+                                        # 2. Hapus draft lokal agar sesi scan baru bersih kembali
                                         if local_df_key in st.session_state:
                                             del st.session_state[local_df_key]
-                                        
+                                            
                                         st.cache_data.clear()
                                         st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
                                         st.rerun()
-                        
+        
                             except Exception as e:
                                 st.error(f"❌ Gagal menyimpan ke database: {e}")
         
