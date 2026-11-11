@@ -556,9 +556,6 @@ else:
                 del st.session_state[sound_effect_key]
         
             st.markdown("---")
-        
-            # --- 2. LIST HANYA UNTUK ID YANG BARU DISCAN (DRAFT AKTIF) & PENGATURAN ZONA MEZZANINE ---
-            st.markdown("##### 📋 List ID Baru Discan & Pengaturan Zona Mezzanine (Belum Disimpan)")
             
             if not df_lokal.empty:
                 df_aktif = df_lokal.copy()
