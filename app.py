@@ -557,29 +557,27 @@ else:
         
             st.markdown("---")
         
-            # --- 2. LIST ID YANG SUDAH DIPROSES & UPDATE ZONA MEZZANINE ---
-            st.markdown("##### 📋 List ID Terproses & Pengaturan Zona Mezzanine")
+            # --- 2. LIST HANYA UNTUK ID YANG BARU DISCAN (DRAFT AKTIF) & PENGATURAN ZONA MEZZANINE ---
+            st.markdown("##### 📋 List ID Baru Discan & Pengaturan Zona Mezzanine (Belum Disimpan)")
             
             if not df_lokal.empty:
-                # Filter hanya ID yang sudah mulai diproses (Progress > 0 atau ada Loader)
                 df_aktif = df_lokal.copy()
                 df_aktif["_prog_numeric"] = pd.to_numeric(df_aktif["Progress"], errors="coerce").fillna(0)
                 df_aktif["_loader_clean"] = df_aktif["Loader"].astype(str).str.strip().str.lower()
                 
+                # Filter HANYA item yang baru saja di-scan pada sesi aktif ini (Progress > 0 dan loader sesuai user aktif)
+                current_user_str = str(st.session_state.user_nama).strip().lower()
                 df_aktif = df_aktif[
                     (df_aktif["_prog_numeric"] > 0) & 
-                    (df_aktif["_loader_clean"] != "") & 
-                    (df_aktif["_loader_clean"] != "none") & 
-                    (df_aktif["_loader_clean"] != "nan")
+                    (df_aktif["_loader_clean"] == current_user_str)
                 ]
         
                 if df_aktif.empty:
-                    st.info("ℹ️ Belum ada ID yang diproses. Silakan lakukan scan preload di atas terlebih dahulu.")
+                    st.info("ℹ️ Belum ada ID yang baru Anda scan pada sesi ini. Silakan lakukan scan di atas.")
                 else:
                     with st.form(key=f"form_batch_zona_{wilayah}"):
-                        st.write("Atur zona mezzanine untuk masing-masing ID di bawah ini:")
+                        st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
                         
-                        # Render baris interaktif untuk setiap ID unik yang sudah discan
                         for idx_row, row_item in df_aktif.iterrows():
                             current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
                             current_prog = int(row_item["Progress"])
@@ -588,7 +586,6 @@ else:
                             if current_zona_db in ["nan", "None", ""]:
                                 current_zona_db = []
                             else:
-                                # Ubah string zona koma menjadi list untuk default multiselect
                                 current_zona_db = [z.strip() for z in current_zona_db.split(",") if z.strip()]
         
                             cols_row = st.columns([2, 2, 4])
@@ -597,7 +594,6 @@ else:
                             with cols_row[1]:
                                 st.markdown(f"Box: **{current_prog}/{max_b}**")
                             with cols_row[2]:
-                                # Multiselect zona mezzanine unik per baris ID
                                 selected_z = st.multiselect(
                                     f"Zona Mezzanine {current_id_str}",
                                     options=daftar_zona_mezzanine,
@@ -605,7 +601,6 @@ else:
                                     key=f"mz_row_{wilayah}_{current_id_str}",
                                     label_visibility="collapsed"
                                 )
-                                # Simpan pilihan sementara ke DataFrame lokal
                                 if selected_z:
                                     df_lokal.at[idx_row, "Zona Mezzanine"] = ", ".join(selected_z)
                                 else:
@@ -616,7 +611,6 @@ else:
         
                         if submit_batch_mz:
                             st.session_state[changes_key] = True
-                            # Langsung eksekusi simpan ke Google Sheets
                             try:
                                 with st.spinner("⏳ Menyimpan data preload & zona mezzanine ke database..."):
                                     creds_dict = dict(st.secrets["connections"]["gsheets"])
@@ -663,6 +657,15 @@ else:
         
                             except Exception as e:
                                 st.error(f"❌ Gagal menyimpan ke database: {e}")
+        
+            # --- 3. TABEL REKAP DATA PRELOAD DI BAWAH (MENAMPILKAN KOLOM ZONA MEZZANINE) ---
+            st.markdown("---")
+            st.markdown("##### 📊 Rekap Data Preload Cabang (Termasuk Zona Mezzanine)")
+            
+            # Pilih kolom yang relevan untuk ditampilkan pada tabel di bawah
+            cols_tampil = [c for c in ["ID", "id request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Status", "Zona Mezzanine", "Loader", "Waktu Preload"] if c in df_lokal.columns]
+            if cols_tampil:
+                st.dataframe(df_lokal[cols_tampil], use_container_width=True, hide_index=True)
         
             # --- TOMBOL RESET DRAFT ---
             if st.session_state.get(changes_key, False):
