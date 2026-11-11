@@ -573,6 +573,33 @@ else:
                 if not df_aktif.empty:
                     with st.form(key=f"form_batch_zona_{wilayah}"):
                         st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
+
+                        zona_box_counts = {}
+                        for _, r_item in df_aktif.iterrows():
+                            z_str = str(r_item.get("Zona Mezzanine", "")).strip()
+                            b_count = int(r_item.get("Progress") or 0)
+                            
+                            if z_str and z_str not in ["nan", "None", ""]:
+                                z_list = [z.strip() for z in z_str.split(",") if z.strip()]
+                                for z_name in z_list:
+                                    zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
+        
+                        # --- SELALU TAMPILKAN KOTAK INFORMASI RINGKASAN ---
+                        summary_zona_html = ""
+                        if zona_box_counts:
+                            summary_items = [f"• **({z_name}) {total_b} Box**" for z_name, total_b in sorted(zona_box_counts.items())]
+                            summary_zona_html = " <br> ".join(summary_items)
+                        else:
+                            summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
+        
+                        st.markdown(
+                            f"""
+                            <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
+                                <b>Ringkasan Zona Mezzanine:</b><br>{summary_zona_html}
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
                         
                         for idx_row, row_item in df_aktif.iterrows():
                             current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
