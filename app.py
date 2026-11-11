@@ -584,6 +584,93 @@ else:
                                 current_zona_db = []
                             else:
                                 current_zona_db = [z.strip() for z in current_zona_db.split(",") if z.strip()]
+
+                                tooltip_lines = []
+                                if list_zona_split and not df_filtered.empty:
+                                    col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
+                                    
+                                    if col_id_name:
+                                        df_temp = df_filtered.copy()
+                                        df_temp["clean_id"] = df_temp[col_id_name].astype(str).str.split('.').str[0].str.strip()
+                                        df_mnf_items = df_temp[df_temp["clean_id"].isin(manifest_id_list)]
+                                        
+                                        for z in list_zona_split:
+                                            zone_matched = df_mnf_items[df_mnf_items["Zona Mezzanine"].astype(str).str.contains(z, case=False, na=False)]
+                                            
+                                            box_count = 0
+                                            if not zone_matched.empty:
+                                                for _, row_item in zone_matched.iterrows():
+                                                    val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
+                                                    try:
+                                                        box_count += int(float(str(val_p).split('.')[0]))
+                                                    except:
+                                                        box_count += 1
+                                            else:
+                                                box_count = 1
+                                                
+                                            tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
+                                        
+                                        tooltip_items_html = "".join(tooltip_lines)
+                                    else:
+                                        tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split])
+                                else:
+                                    tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
+                    
+                                clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
+                                
+                                manifest_info_html = f"""
+                                <style>
+                                .tooltip-container-{clean_css_id} {{
+                                  position: relative;
+                                  display: inline-block;
+                                  cursor: pointer;
+                                  color: #ff4b4b;
+                                  font-weight: bold;
+                                }}
+                                .tooltip-container-{clean_css_id} .tooltip-text {{
+                                  visibility: hidden;
+                                  width: 150px;
+                                  background-color: #262730;
+                                  color: #fff;
+                                  text-align: left;
+                                  border-radius: 6px;
+                                  padding: 8px 10px;
+                                  position: absolute;
+                                  z-index: 1000;
+                                  bottom: 135%;
+                                  left: 50%;
+                                  transform: translateX(-50%);
+                                  opacity: 0;
+                                  transition: opacity 0.3s;
+                                  font-size: 13px;
+                                  box-shadow: 0px 4px 12px rgba(0,0,0,0.4);
+                                  border: 1px solid #46485f;
+                                }}
+                                .tooltip-container-{clean_css_id}:hover .tooltip-text {{
+                                  visibility: visible;
+                                  opacity: 1;
+                                }}
+                                </style>
+            
+                                <div style="font-size: 14px; color: #fafafa; line-height: 1.6;">
+                                  <div>
+                                    <b>No. Manifest:</b> <code>{mnf_num}</code> &nbsp;|&nbsp; 
+                                    <div class="tooltip-container-{clean_css_id}">
+                                      Zona
+                                      <div class="tooltip-text">
+                                        {tooltip_items_html}
+                                      </div>
+                                    </div> 
+                                    &nbsp;|&nbsp; <b>Jumlah Box:</b> {box_total}
+                                  </div>
+                                  <div style="color: #b0b0b0; font-size: 13px;">
+                                    <b>Status:</b> <span style="background-color: #262730; padding: 2px 6px; border-radius: 4px; border: 1px solid #46485f; color: #fff;">{m_status}</span> 
+                                    &nbsp;|&nbsp; <b>Oleh:</b> {m_creator} ({m_time})
+                                  </div>
+                                </div>
+                                """
+            
+                                col_info, col_action = st.columns([3, 1])
         
                             cols_row = st.columns([2, 2, 4])
                             with cols_row[0]:
