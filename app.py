@@ -646,18 +646,18 @@ else:
                                                     break
         
                                     if cell_updates:
-                                ws.update_cells(cell_updates)
-                                
-                                # SET STATUS PERUBAHAN JADI FALSE (Agar tombol otomatis hilang)
-                                st.session_state[changes_key] = False
-                                
-                                # HAPUS / RESET DRAFT LOKAL AGAR LIST ID BARU SCAN KOSONG KEMBALI
-                                if local_df_key in st.session_state:
-                                    del st.session_state[local_df_key]
-                                    
-                                st.cache_data.clear()
-                                st.success("✅ Berhasil disimpan ke database!")
-                                st.rerun()
+                                        ws.update_cells(cell_updates)
+                                        
+                                        # SET STATUS PERUBAHAN JADI FALSE (Agar tombol otomatis hilang)
+                                        st.session_state[changes_key] = False
+                                        
+                                        # HAPUS / RESET DRAFT LOKAL AGAR LIST ID BARU SCAN KOSONG KEMBALI
+                                        if local_df_key in st.session_state:
+                                            del st.session_state[local_df_key]
+                                            
+                                        st.cache_data.clear()
+                                        st.success("✅ Berhasil disimpan ke database!")
+                                        st.rerun()
         
                             except Exception as e:
                                 st.error(f"❌ Gagal menyimpan ke database: {e}")
