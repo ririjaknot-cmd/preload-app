@@ -1253,20 +1253,23 @@ else:
                     if not df_filtered.empty:
                         col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
                         if col_id_name:
-                            # 1. Buat kolom temporary clean_id untuk pencocokan ID
                             df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
                             df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
                             
-                            # 2. Bersihkan format angka/string tanpa menghapus clean_id di dalam loop ini
+                            # --- HAPUS KOLOM DUPLIKAT DI SINI ---
+                            df_detail_manifest = df_detail_manifest.loc[:, ~df_detail_manifest.columns.duplicated()].copy()
+                            
+                            # Bersihkan format angka/string secara aman
                             for col_num_check in ["Jumlah Box", "Progress"]:
                                 if col_num_check in df_detail_manifest.columns:
-                                    col_data = df_detail_manifest[col_num_check]
-                                    if isinstance(col_data, pd.DataFrame):
-                                        col_data = col_data.iloc[:, 0]
-                                    
-                                    df_detail_manifest[col_num_check] = col_data.astype(str).str.split('.').str[0].replace({"nan": "", "None": ""})
+                                    df_detail_manifest[col_num_check] = (
+                                        df_detail_manifest[col_num_check]
+                                        .astype(str)
+                                        .str.split('.')
+                                        .str[0]
+                                        .replace({"nan": "", "None": ""})
+                                    )
                             
-                            # 3. Hapus kolom temporary clean_id setelah pemrosesan selesai
                             if "clean_id" in df_detail_manifest.columns:
                                 df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
                         else:
