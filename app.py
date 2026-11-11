@@ -777,8 +777,8 @@ else:
                     st.session_state[changes_key] = False
                     st.rerun()
 
-    else:
-        st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
+                else:
+                    st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
         with tab_manifest:
             st.subheader(f" Manifest Pengiriman - {wilayah}")
