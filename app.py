@@ -633,7 +633,7 @@ else:
                                 else:
                                     df_lokal.at[idx_row, "Zona Mezzanine"] = ""
             
-                        st.markdown("")
+                    st.markdown("")
                         submit_batch_mz = st.form_submit_button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True)
             
                         if submit_batch_mz:
