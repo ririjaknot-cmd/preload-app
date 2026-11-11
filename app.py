@@ -693,7 +693,7 @@ else:
             df_preload_display = df_preload_display[cols]
         
         # --- GANTI st.dataframe MENJADI st.data_editor AGAR BISA DIEDIT ---
-        cols_tampil = [c for c in ["ID" if "ID" in df_preload_display.columns else "id request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Status", "Waktu Preload", "Zona Mezzanine", "Loader"] if c in df_preload_display.columns]
+        cols_tampil = [c for c in ["ID" if "ID" in df_preload_display.columns else "id request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Loader", "Waktu Preload", "Zona Mezzanine", "Status"] if c in df_preload_display.columns]
         
         df_editor_source = df_preload_display[cols_tampil].copy()
         
