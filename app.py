@@ -565,15 +565,46 @@ else:
             st.markdown("---")
             if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
                 st.markdown("##### 📋 List ID Baru Discan & Pengaturan Zona Mezzanine (Belum Disimpan)")
-        
+            
                 df_aktif = df_lokal.copy()
                 df_aktif["_id_clean"] = df_aktif[id_col_name].astype(str).str.split('.').str[0].str.strip()
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
-        
+            
                 if not df_aktif.empty:
                     with st.form(key=f"form_batch_zona_{wilayah}"):
                         st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
                         
+                        # --- HITUNG AKUMULASI TOTAL BOX PER ZONA PADA ITEM YANG BARU DISCAN ---
+                        summary_zona_list = []
+                        # Memecah zona jika satu ID memilih lebih dari 1 zona (dipisahkan koma)
+                        df_temp_scan = df_aktif.copy()
+                        
+                        # Buat dictionary penampung total box per zona
+                        zona_box_counts = {}
+                        for _, r_item in df_temp_scan.iterrows():
+                            z_str = str(r_item.get("Zona Mezzanine", "")).strip()
+                            b_count = int(r_item.get("Progress") or 0)
+                            
+                            if z_str and z_str not in ["nan", "None", ""]:
+                                z_list = [z.strip() for z in z_str.split(",") if z.strip()]
+                                for z_name in z_list:
+                                    zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
+                        
+                        # Susun teks ringkasan jika ada zona yang dipilih
+                        if zona_box_counts:
+                            for z_name, total_b in sorted(zona_box_counts.items()):
+                                summary_zona_list.append(f"• **({z_name}) {total_b} Box**")
+                        
+                        # --- TAMPILKAN RINGKASAN ZONA DI POSISI SESUAI PANAH GAMBAR ---
+                        if summary_zona_list:
+                            st.markdown(
+                                "<div style='background-color: #1e1e2e; padding: 10px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>"
+                                + " <br> ".join(summary_zona_list) +
+                                "</div>",
+                                unsafe_allow_html=True
+                            )
+                        
+                        # --- LIST PER BARIS ID DISCAN ---
                         for idx_row, row_item in df_aktif.iterrows():
                             current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
                             current_prog = int(row_item["Progress"])
@@ -584,7 +615,7 @@ else:
                                 current_zona_db = []
                             else:
                                 current_zona_db = [z.strip() for z in current_zona_db.split(",") if z.strip()]
-        
+            
                             cols_row = st.columns([2, 2, 4])
                             with cols_row[0]:
                                 st.markdown(f"**ID:** `{current_id_str}`")
@@ -602,10 +633,10 @@ else:
                                     df_lokal.at[idx_row, "Zona Mezzanine"] = ", ".join(selected_z)
                                 else:
                                     df_lokal.at[idx_row, "Zona Mezzanine"] = ""
-        
+            
                         st.markdown("")
                         submit_batch_mz = st.form_submit_button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True)
-        
+            
                         if submit_batch_mz:
                             try:
                                 with st.spinner("⏳ Menyimpan data preload & zona mezzanine ke database..."):
@@ -614,16 +645,16 @@ else:
                                     spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                     sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                     ws = sh.worksheet("Database log")
-        
+            
                                     records_main = ws.get_all_records()
                                     header_main = ws.row_values(1)
-        
+            
                                     prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
                                     loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
                                     waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
                                     zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
                                     status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
-        
+            
                                     cell_updates = []
                                     for _, row in df_lokal.iterrows():
                                         r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
@@ -632,7 +663,7 @@ else:
                                         w_val = row.get("Waktu Preload")
                                         z_val = row.get("Zona Mezzanine")
                                         s_val = row.get("Status")
-        
+            
                                         if r_id in st.session_state[scanned_ids_key]:
                                             for r_idx, r_val in enumerate(records_main, start=2):
                                                 sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
@@ -643,7 +674,7 @@ else:
                                                     cell_updates.append(gspread.Cell(r_idx, zona_col_i, str(z_val)))
                                                     cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
                                                     break
-        
+            
                                     if cell_updates:
                                         ws.update_cells(cell_updates)
                                         
@@ -656,7 +687,7 @@ else:
                                         st.cache_data.clear()
                                         st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
                                         st.rerun()
-        
+            
                             except Exception as e:
                                 st.error(f"❌ Gagal menyimpan ke database: {e}")
         
