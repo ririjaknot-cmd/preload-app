@@ -555,37 +555,34 @@ else:
                         st.warning(f"File audio lokal tidak ditemukan: {local_audio_path}")
                 del st.session_state[sound_effect_key]
         
+            # --- 2. LIST HANYA UNTUK ID YANG BARU DISCAN PADA SESI INI ---
             st.markdown("---")
             
-            if not df_lokal.empty:
+            if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
+
                 df_aktif = df_lokal.copy()
-                df_aktif["_prog_numeric"] = pd.to_numeric(df_aktif["Progress"], errors="coerce").fillna(0)
-                df_aktif["_loader_clean"] = df_aktif["Loader"].astype(str).str.strip().str.lower()
-                
-                # Filter HANYA item yang baru saja di-scan pada sesi aktif ini (Progress > 0 dan loader sesuai user aktif)
-                current_user_str = str(st.session_state.user_nama).strip().lower()
-                df_aktif = df_aktif[
-                    (df_aktif["_prog_numeric"] > 0) & 
-                    (df_aktif["_loader_clean"] == current_user_str)
-                ]
+                df_aktif["_id_clean"] = df_aktif[id_col_name].astype(str).str.split('.').str[0].str.strip()
+                df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
-                if df_aktif.empty:
-                    st.info("ℹ️ Belum ada ID yang baru Anda scan pada sesi ini. Silakan lakukan scan di atas.")
-                else:
+                if not df_aktif.empty:
                     with st.form(key=f"form_batch_zona_{wilayah}"):
-                        st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
+                        st.write("Atur zona mezzanine atau hapus ID jika terjadi kesalahan scan:")
+                        
+                        ids_to_remove = [] # List penampung jika ada ID yang ingin dihapus
                         
                         for idx_row, row_item in df_aktif.iterrows():
                             current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
                             current_prog = int(row_item["Progress"])
                             max_b = int(float(str(row_item.get("Jumlah Box", 0))))
                             current_zona_db = str(row_item.get("Zona Mezzanine", ""))
+                            
                             if current_zona_db in ["nan", "None", ""]:
                                 current_zona_db = []
                             else:
                                 current_zona_db = [z.strip() for z in current_zona_db.split(",") if z.strip()]
         
-                            cols_row = st.columns([2, 2, 4])
+                            # Layout kolom: ID (1.5), Progress (1.5), Zona Mezzanine (3.5), Tombol Hapus (1.5)
+                            cols_row = st.columns([1.5, 1.5, 3.5, 1.5])
                             with cols_row[0]:
                                 st.markdown(f"**ID:** `{current_id_str}`")
                             with cols_row[1]:
@@ -602,6 +599,31 @@ else:
                                     df_lokal.at[idx_row, "Zona Mezzanine"] = ", ".join(selected_z)
                                 else:
                                     df_lokal.at[idx_row, "Zona Mezzanine"] = ""
+                            with cols_row[3]:
+                                # Tombol hapus per baris ID
+                                btn_hapus_id = st.form_submit_button(f"❌ Hapus {current_id_str}", use_container_width=True)
+                                if btn_hapus_id:
+                                    ids_to_remove.append(current_id_str)
+        
+                        # Jika ada tombol hapus yang diklik di dalam form
+                        if ids_to_remove:
+                            for rem_id in ids_to_remove:
+                                # 1. Hapus dari list sesi scan aktif
+                                if rem_id in st.session_state[scanned_ids_key]:
+                                    st.session_state[scanned_ids_key].remove(rem_id)
+                                
+                                # 2. Reset progress & loader item tersebut di df_lokal kembali ke 0 / kosong
+                                match_rem = df_lokal[df_lokal[id_col_name].astype(str).str.split('.').str[0].str.strip() == rem_id]
+                                if not match_rem.empty:
+                                    r_idx = match_rem.index[0]
+                                    df_lokal.at[r_idx, "Progress"] = 0
+                                    df_lokal.at[r_idx, "Status"] = "Pending"
+                                    df_lokal.at[r_idx, "Loader"] = ""
+                                    df_lokal.at[r_idx, "Waktu Preload"] = ""
+                                    df_lokal.at[r_idx, "Zona Mezzanine"] = ""
+        
+                            st.success(f"🗑️ ID berhasil dihapus dari sesi draft.")
+                            st.rerun()
         
                         st.markdown("")
                         submit_batch_mz = st.form_submit_button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True)
@@ -633,7 +655,7 @@ else:
                                         z_val = row.get("Zona Mezzanine")
                                         s_val = row.get("Status")
         
-                                        if pd.notna(l_val) and str(l_val).strip() != "" and str(l_val).strip() != "nan":
+                                        if r_id in st.session_state[scanned_ids_key]:
                                             for r_idx, r_val in enumerate(records_main, start=2):
                                                 sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                                 if sheet_id_str == r_id:
@@ -647,11 +669,9 @@ else:
                                     if cell_updates:
                                         ws.update_cells(cell_updates)
                                         
-                                        # --- KUNCI UTAMA AGAR LIST OTOMATIS HILANG ---
-                                        # 1. Set status perubahan menjadi False
+                                        # --- BERSIHKAN SESI SCAN AGAR LIST OTOMATIS HILANG ---
+                                        st.session_state[scanned_ids_key] = []
                                         st.session_state[changes_key] = False
-                                        
-                                        # 2. Hapus draft lokal agar sesi scan baru bersih kembali
                                         if local_df_key in st.session_state:
                                             del st.session_state[local_df_key]
                                             
