@@ -421,15 +421,22 @@ else:
         with tab_preload:
             st.subheader(f"Proses Preload & Zona Mezzanine - {wilayah}")
         
+            # --- DEFINISIKAN KEY DI BAGIAN ATAS INI ---
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
+            scanned_ids_key = f"session_scanned_ids_{wilayah}"  # <--- PASTIKAN INI ADA DI ATAS
             
+            # Inisialisasi session state jika belum ada
+            if scanned_ids_key not in st.session_state:
+                st.session_state[scanned_ids_key] = []
+        
             if local_df_key not in st.session_state or st.sidebar.button("🔄 Reset Draft", key=f"reset_{wilayah}"):
                 st.session_state[local_df_key] = df_filtered.copy()
                 st.session_state[changes_key] = False
         
             df_lokal = st.session_state[local_df_key]
             id_col_name = 'ID' if 'ID' in df_lokal.columns else 'id request'
+            # ... (lanjutan kode di bawahnya)
         
             for col_teks in ["Status", "Loader", "Waktu Preload", "Zona Mezzanine"]:
                 if col_teks in df_lokal.columns:
