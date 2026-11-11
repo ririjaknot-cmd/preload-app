@@ -658,15 +658,6 @@ else:
                             except Exception as e:
                                 st.error(f"❌ Gagal menyimpan ke database: {e}")
         
-            # --- 3. TABEL REKAP DATA PRELOAD DI BAWAH (MENAMPILKAN KOLOM ZONA MEZZANINE) ---
-            st.markdown("---")
-            st.markdown("##### 📊 Rekap Data Preload Cabang (Termasuk Zona Mezzanine)")
-            
-            # Pilih kolom yang relevan untuk ditampilkan pada tabel di bawah
-            cols_tampil = [c for c in ["ID", "id request", "Tujuan Pengiriman", "Jumlah Box", "Progress", "Status", "Zona Mezzanine", "Loader", "Waktu Preload"] if c in df_lokal.columns]
-            if cols_tampil:
-                st.dataframe(df_lokal[cols_tampil], use_container_width=True, hide_index=True)
-        
             # --- TOMBOL RESET DRAFT ---
             if st.session_state.get(changes_key, False):
                 if st.button("🔄 Reset Draft Perubahan", use_container_width=True, key=f"cancel_{wilayah}"):
