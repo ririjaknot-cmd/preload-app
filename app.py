@@ -1256,18 +1256,23 @@ else:
                             df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
                             df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
                             
-                            # --- HAPUS KOLOM DUPLIKAT DI SINI ---
+                            # Hapus kolom duplikat jika ada
                             df_detail_manifest = df_detail_manifest.loc[:, ~df_detail_manifest.columns.duplicated()].copy()
                             
-                            # Bersihkan format angka/string secara aman
+                            # --- PERBAIKAN AMAN UNTUK PEMBERSIHAN KOLOM ---
                             for col_num_check in ["Jumlah Box", "Progress"]:
                                 if col_num_check in df_detail_manifest.columns:
+                                    # Ambil kolom secara aman (jika berupa DataFrame, ambil kolom pertama)
+                                    col_data = df_detail_manifest[col_num_check]
+                                    if isinstance(col_data, pd.DataFrame):
+                                        col_data = col_data.iloc[:, 0]
+                                    
+                                    # Konversi paksa ke string terlebih dahulu, baru bersihkan format desimal (.0)
                                     df_detail_manifest[col_num_check] = (
-                                        df_detail_manifest[col_num_check]
-                                        .astype(str)
+                                        col_data.astype(str)
                                         .str.split('.')
                                         .str[0]
-                                        .replace({"nan": "", "None": ""})
+                                        .replace({"nan": "", "None": "", "nat": ""})
                                     )
                             
                             if "clean_id" in df_detail_manifest.columns:
