@@ -1089,9 +1089,9 @@ else:
                 
                         with c_btn3:
                             btn_del_key = f"del_mnf_{wilayah}_{mnf_num}_{idx}"
-                            if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} & kembalikan item", use_container_width=True):
+                            if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} & kembalikan status item", use_container_width=True):
                                 try:
-                                    with st.spinner(f"⏳ Menghapus manifest {mnf_num}..."):
+                                    with st.spinner(f"⏳ Menghapus manifest {mnf_num} dan mengembalikan status item..."):
                                         creds_dict = dict(st.secrets["connections"]["gsheets"])
                                         gc = gspread.service_account_from_dict(creds_dict)
                                         spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -1120,7 +1120,8 @@ else:
                                             # 1. Hapus baris manifest di Manifest log
                                             ws_m.delete_rows(row_idx_m)
                                             
-                                            # 2. Kembalikan status & progress item di Database log
+                                            # 2. Kembalikan item di Database log TANPA mereset progress/status ke 0/Pending
+                                            # Kita hanya perlu melepas ikatan atau mengubah statusnya kembali ke "Completed" (atau status sebelum di-manifest-kan)
                                             records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
                                             
@@ -1131,9 +1132,9 @@ else:
                                                 for r_i, r_v in enumerate(records_main, start=2):
                                                     r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
                                                     if r_id_str in ids_to_restore:
-                                                        # Kembalikan status ke Pending & reset Progress ke 0
-                                                        batch_restore_updates.append(gspread.Cell(r_i, status_col_i, "Preloaded"))
-                                                        
+                                                        # Kembalikan status ke "Completed" (atau status terakhir sebelum dimasukkan manifest)
+                                                        # Progress TIDAK diubah/dihapus agar jumlah box tetap utuh
+                                                        batch_restore_updates.append(gspread.Cell(r_i, status_col_i, "Completed"))
                                                 
                                                 if batch_restore_updates:
                                                     ws_main.update_cells(batch_restore_updates)
@@ -1147,7 +1148,7 @@ else:
                                                 if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                     del st.session_state[k]
                                                     
-                                            st.success(f"✅ Manifest `{mnf_num}` berhasil dihapus & progress ID dikembalikan!")
+                                            st.success(f"✅ Manifest `{mnf_num}` berhasil dihapus dan status item dikembalikan ke **Completed**!")
                                             st.rerun()
                                 except Exception as e:
                                     st.error(f"❌ Gagal menghapus manifest: {e}")
