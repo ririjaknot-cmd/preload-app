@@ -577,6 +577,7 @@ else:
                 del st.session_state[sound_effect_key]
         
             # --- 2. LIST ID BARU DISCAN DAN PENGATURAN ZONA MEZZANINE ---
+            # --- 2. LIST ID BARU DISCAN DAN PENGATURAN ZONA MEZZANINE ---
             st.markdown("---")
             if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
                 st.markdown("##### 📋 List ID Baru Discan & Pengaturan Zona Mezzanine (Belum Disimpan)")
@@ -607,13 +608,11 @@ else:
                     # --- KOTAK INFORMASI RINGKASAN ZONA ---
                     summary_zona_html = ""
                     if zona_box_counts:
-                        # Menggunakan tag HTML <b> agar format tebal terbaca sempurna di dalam kotak
                         summary_items = [f"• <b>({z_name}) {total_b} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
                         summary_zona_html = "<br>".join(summary_items)
                     else:
                         summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
         
-                    # --- TAMPILKAN KOTAK INFORMASI ---
                     st.markdown(
                         f"""
                         <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
@@ -622,9 +621,12 @@ else:
                         """,
                         unsafe_allow_html=True
                     )
+        
                     st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
                     
-                    # Render pilihan multiselect per baris ID (tanpa st.form pembungkus luar agar responsif)
+                    # --- RENDER BARIS ID DENGAN TOMBOL HAPUS DI SEBELAH KANAN ---
+                    ids_to_remove = None # Penampung ID yang akan dihapus jika tombol klik ditekan
+                    
                     for idx_row, row_item in df_aktif.iterrows():
                         current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
                         current_prog = int(row_item["Progress"])
@@ -636,7 +638,9 @@ else:
                         else:
                             current_zona_db = [z.strip() for z in current_zona_db.split(",") if z.strip()]
         
-                        cols_row = st.columns([2, 2, 4])
+                        # Menggunakan 4 kolom: [ID, Box, Multiselect Zona, Tombol Hapus]
+                        cols_row = st.columns([2, 1.5, 4, 1])
+                        
                         with cols_row[0]:
                             st.markdown(f"**ID:** `{current_id_str}`")
                         with cols_row[1]:
@@ -653,10 +657,35 @@ else:
                                 df_lokal.at[idx_row, "Zona Mezzanine"] = ", ".join(selected_z)
                             else:
                                 df_lokal.at[idx_row, "Zona Mezzanine"] = ""
+                                
+                        with cols_row[3]:
+                            # Tombol hapus per baris ID
+                            if st.button("🗑️", key=f"del_scan_{wilayah}_{current_id_str}", help=f"Hapus ID {current_id_str} dari list"):
+                                ids_to_remove = current_id_str
+        
+                    # Proses penghapusan jika tombol sampah diklik
+                    if ids_to_remove:
+                        # 1. Hapus dari list sesi scanned_ids
+                        if ids_to_remove in st.session_state[scanned_ids_key]:
+                            st.session_state[scanned_ids_key].remove(ids_to_remove)
+                        
+                        # 2. Kembalikan/Kurangi progress atau reset status lokal baris tersebut jika perlu
+                        for idx_r, r_it in df_lokal.iterrows():
+                            r_id_chk = str(r_it.get(id_col_name)).split('.')[0].strip()
+                            if r_id_chk == ids_to_remove:
+                                # Opsional: Jika ingin mereset progress saat item dihapus dari list draft
+                                df_lokal.at[idx_r, "Progress"] = max(0, int(r_it.get("Progress", 1)) - 1)
+                                if df_lokal.at[idx_r, "Progress"] == 0:
+                                    df_lokal.at[idx_r, "Status"] = "Pending" # atau kembalikan ke status semula
+                                df_lokal.at[idx_r, "Zona Mezzanine"] = ""
+                                break
+                        
+                        st.toast(f"🗑️ ID {ids_to_remove} berhasil dihapus dari daftar.", icon="ℹ️")
+                        st.rerun()
         
                     st.markdown("")
                     
-                    # Tombol Simpan (di luar form atau menggunakan tombol biasa dengan penanganan session)
+                    # Tombol Simpan Perubahan ke Database
                     if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
                         try:
                             with st.spinner("⏳ Menyimpan data preload & zona mezzanine ke database..."):
