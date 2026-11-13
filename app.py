@@ -773,13 +773,7 @@ else:
                     hide_index=True,
                     key=f"editor_preload_table_{wilayah}"
                 )
-                def normalize_zone(val):
-                    if val is None:
-                        return ""
-                    s = str(val).strip()
-                    if s.lower() in ["nan", "none", "nat", ""]:
-                        return ""
-                    return s
+               
                 has_zone_changes = False
                 for idx, row_edited in edited_preload_df.iterrows():
                     orig_row = df_preload_display.iloc[idx]
