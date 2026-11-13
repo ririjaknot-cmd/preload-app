@@ -535,10 +535,13 @@ else:
                 
             sound_effect_key = f"sound_effect_{wilayah}"
             audio_data = st.session_state.get(sound_effect_key)
+            
             if audio_data is not None:
                 if isinstance(audio_data, (list, tuple)) and len(audio_data) == 2:
                     sound_type, timestamp_id = audio_data
+                    # Pastikan nama file dan foldernya sesuai (case-sensitive)
                     local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
+                    
                     import base64
                     try:
                         with open(local_audio_path, "rb") as f:
@@ -546,39 +549,25 @@ else:
                         audio_base64 = base64.b64encode(audio_bytes).decode()
                         unique_audio_id = f"audio_{timestamp_id}"
                         
-                        # --- SCRIPT JAVASCRIPT YANG DISEMPURNAKAN UNTUK MENGATASI BROWSER OVERLAP ---
                         audio_html = f'''
-                            <audio id="{unique_audio_id}" preload="auto" style="display:none;">
+                            <audio id="{unique_audio_id}" preload="auto">
                                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
                             </audio>
                             <script>
-                                (function() {{
-                                    // Cari dan hentikan semua elemen audio lain yang mungkin masih bersuara
-                                    var oldAudios = document.querySelectorAll('audio');
-                                    oldAudios.forEach(function(el) {{
-                                        if (el.id !== "{unique_audio_id}") {{
-                                            el.pause();
-                                            el.currentTime = 0;
-                                        }}
+                                var audio = document.getElementById("{unique_audio_id}");
+                                if (audio) {{
+                                    audio.volume = 1.0;
+                                    audio.play().catch(function(error) {{
+                                        console.log("Autoplay dicegah browser: ", error);
                                     }});
-        
-                                    var audio = document.getElementById("{unique_audio_id}");
-                                    if (audio) {{
-                                        audio.volume = 1.0;
-                                        audio.currentTime = 0;
-                                        var playPromise = audio.play();
-                                        if (playPromise !== undefined) {{
-                                            playPromise.catch(function(error) {{
-                                                console.log("Autoplay dicegah browser: ", error);
-                                            }});
-                                        }}
-                                    }}
-                                }})();
+                                }}
                             </script>
                         '''
                         st.markdown(audio_html, unsafe_allow_html=True)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Ini akan memunculkan peringatan di layar jika file mp3 gagal dimuat/tidak ketemu
+                        st.error(f"⚠️ Gagal memuat file audio dari `{local_audio_path}`. Error: {e}")
+                        
                 del st.session_state[sound_effect_key]
         
             # --- 2. LIST ID BARU DISCAN DAN PENGATURAN ZONA MEZZANINE ---
