@@ -592,11 +592,13 @@ else:
                     # --- KOTAK INFORMASI RINGKASAN ZONA ---
                     summary_zona_html = ""
                     if zona_box_counts:
-                        summary_items = [f"• **({z_name}) {total_b} Box**" for z_name, total_b in sorted(zona_box_counts.items())]
-                        summary_zona_html = " <br> ".join(summary_items)
+                        # Menggunakan tag HTML <b> agar format tebal terbaca sempurna di dalam kotak
+                        summary_items = [f"• <b>({z_name}) {total_b} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
+                        summary_zona_html = "<br>".join(summary_items)
                     else:
                         summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
         
+                    # --- TAMPILKAN KOTAK INFORMASI ---
                     st.markdown(
                         f"""
                         <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
@@ -605,7 +607,6 @@ else:
                         """,
                         unsafe_allow_html=True
                     )
-        
                     st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
                     
                     # Render pilihan multiselect per baris ID (tanpa st.form pembungkus luar agar responsif)
