@@ -698,7 +698,6 @@ else:
                                 records_main = ws.get_all_records()
                                 header_main = ws.row_values(1)
         
-                                prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
                                 loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
                                 waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
                                 zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
@@ -717,7 +716,7 @@ else:
                                         for r_idx, r_val in enumerate(records_main, start=2):
                                             sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                             if sheet_id_str == r_id:
-                                                cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
+                                                
                                                 cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
                                                 cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
                                                 cell_updates.append(gspread.Cell(r_idx, zona_col_i, str(z_val)))
@@ -910,7 +909,7 @@ else:
                 st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
             else:
                 for idx, m_row in df_manifest_wilayah.iterrows():
-                    
+    
                     mnf_num = str(m_row.get("Nomor Manifest", ""))
                     zona_raw = str(m_row.get("Zona Mezzanine", ""))
                     box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
@@ -922,12 +921,12 @@ else:
                     )
                     if m_creator.lower() in ["nan", "none", ""]:
                         m_creator = "-"
-        
+                
                     m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
-        
+                
                     list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
                     manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
-        
+                
                     tooltip_lines = []
                     if list_zona_split and not df_filtered.empty:
                         col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
@@ -958,7 +957,7 @@ else:
                             tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split])
                     else:
                         tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
-        
+                
                     clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
                     
                     manifest_info_html = f"""
@@ -994,7 +993,7 @@ else:
                       opacity: 1;
                     }}
                     </style>
-
+                
                     <div style="font-size: 14px; color: #fafafa; line-height: 1.6;">
                       <div>
                         <b>No. Manifest:</b> <code>{mnf_num}</code> &nbsp;|&nbsp; 
@@ -1012,14 +1011,15 @@ else:
                       </div>
                     </div>
                     """
-
-                    col_info, col_action = st.columns([3, 1])
+                
+                    # Proporsi kolom disesuaikan agar muat 3 tombol aksi dengan rapi
+                    col_info, col_action = st.columns([2.6, 1.4])
                     
                     with col_info:
                         st.markdown(manifest_info_html, unsafe_allow_html=True)
                     
                     with col_action:
-                        c_btn1, c_btn2 = st.columns(2)
+                        c_btn1, c_btn2, c_btn3 = st.columns([2, 2, 1])
                         
                         with c_btn1:
                             btn_key = f"detail_mnf_{wilayah}_{mnf_num}_{idx}"
@@ -1086,6 +1086,71 @@ else:
                                         st.error(f"❌ Gagal merubah status On Delivery: {e}")
                             else:
                                 st.markdown("*On Delivery*")
+                
+                        with c_btn3:
+                            btn_del_key = f"del_mnf_{wilayah}_{mnf_num}_{idx}"
+                            if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} & kembalikan item", use_container_width=True):
+                                try:
+                                    with st.spinner(f"⏳ Menghapus manifest {mnf_num}..."):
+                                        creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                        gc = gspread.service_account_from_dict(creds_dict)
+                                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                        
+                                        ws_m = sh.worksheet("Manifest log")
+                                        ws_main = sh.worksheet("Database log")
+                                        
+                                        header_m = ws_m.row_values(1)
+                                        mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                        idlist_m_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
+                                        
+                                        manifest_col_values = ws_m.col_values(mnf_col_idx)
+                                        row_idx_m = None
+                                        ids_to_restore = []
+                                        
+                                        for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                            if str(val_m).strip() == str(mnf_num):
+                                                row_idx_m = idx_m
+                                                row_vals_m = ws_m.row_values(idx_m)
+                                                if len(row_vals_m) >= idlist_m_idx:
+                                                    ids_to_restore = [i.strip().split('.')[0] for i in row_vals_m[idlist_m_idx - 1].split(",") if i.strip()]
+                                                break
+                                        
+                                        if row_idx_m:
+                                            # 1. Hapus baris manifest di Manifest log
+                                            ws_m.delete_rows(row_idx_m)
+                                            
+                                            # 2. Kembalikan status & progress item di Database log
+                                            records_main = ws_main.get_all_records()
+                                            header_main = ws_main.row_values(1)
+                                            
+                                            status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else 10)
+                                            
+                                            if ids_to_restore:
+                                                batch_restore_updates = []
+                                                for r_i, r_v in enumerate(records_main, start=2):
+                                                    r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
+                                                    if r_id_str in ids_to_restore:
+                                                        # Kembalikan status ke Pending & reset Progress ke 0
+                                                        batch_restore_updates.append(gspread.Cell(r_i, status_col_i, "Preloaded"))
+                                                        
+                                                
+                                                if batch_restore_updates:
+                                                    ws_main.update_cells(batch_restore_updates)
+                                            
+                                            # Tutup panel detail jika manifest yang dihapus sedang dibuka
+                                            if st.session_state.get(f"active_detail_manifest_{wilayah}") == mnf_num:
+                                                del st.session_state[f"active_detail_manifest_{wilayah}"]
+                                                
+                                            st.cache_data.clear()
+                                            for k in list(st.session_state.keys()):
+                                                if "local_df_preload" in k or "has_unsaved_changes" in k:
+                                                    del st.session_state[k]
+                                                    
+                                            st.success(f"✅ Manifest `{mnf_num}` berhasil dihapus & progress ID dikembalikan!")
+                                            st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Gagal menghapus manifest: {e}")
                     
                     st.markdown("---")
 
@@ -1134,7 +1199,7 @@ else:
                                                 header_main = ws_main.row_values(1)
                                                 
                                                 id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
-                                                prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                                
                                                 
                                                 if id_col_i and prog_col_i:
                                                     for r_idx, r_val in enumerate(records_main, start=2):
@@ -1142,7 +1207,7 @@ else:
                                                         if r_id_str == clean_new_id:
                                                             old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
                                                             new_p = min(max_b, old_p + int(added_box_input))
-                                                            ws_main.update_cell(r_idx, prog_col_i, int(new_p))
+                                                        
                                                             break
                                                 
                                                 ws_m = sh.worksheet("Manifest log")
@@ -1210,7 +1275,7 @@ else:
                                             header_main = ws_main.row_values(1)
                                             
                                             id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
-                                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                           
                                             
                                             sisa_progress = 0
                                             if id_col_i and prog_col_i:
@@ -1219,7 +1284,7 @@ else:
                                                     if r_id_str == clean_out_id:
                                                         old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
                                                         sisa_progress = max(0, old_p - int(removed_box_input))
-                                                        ws_main.update_cell(r_idx, prog_col_i, int(sisa_progress))
+                                                        
                                                         break
                                             
                                             ws_m = sh.worksheet("Manifest log")
