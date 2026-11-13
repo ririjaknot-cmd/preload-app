@@ -723,7 +723,6 @@ else:
                         except Exception as e:
                             st.error(f"❌ Gagal menyimpan ke database: {e}")
         
-            # --- 3. TABEL DATA PRELOAD CABANG (EDITABLE ZONA MEZZANINE) ---
             st.markdown("---")
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             if not df_lokal.empty:
@@ -758,6 +757,7 @@ else:
                 cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
                 id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
                 
+                # Render tabel editor
                 edited_preload_df = st.data_editor(
                     df_preload_display[cols_tersedia],
                     column_config={
@@ -774,50 +774,64 @@ else:
                     key=f"editor_preload_table_{wilayah}"
                 )
                 
-                if st.button("💾 Simpan Perubahan Zona Mezzanine", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
-                    try:
-                        with st.spinner("⏳ Menyimpan perubahan zona ke database..."):
-                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                            gc = gspread.service_account_from_dict(creds_dict)
-                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                            ws = sh.worksheet("Database log")
+                # --- CEK APAKAH ADA PERUBAHAN ZONA ---
+                has_zone_changes = False
+                for idx, row_edited in edited_preload_df.iterrows():
+                    orig_row = df_preload_display.iloc[idx]
+                    orig_zona = str(orig_row.get("Zona Mezzanine", "")).strip()
+                    ed_zona = str(row_edited.get("Zona Mezzanine", "")).strip()
+                    
+                    if orig_zona in ["nan", "None", ""]: orig_zona = ""
+                    if ed_zona in ["nan", "None", ""]: ed_zona = ""
+                    
+                    if orig_zona != ed_zona:
+                        has_zone_changes = True
+                        break
 
-                            records_main = ws.get_all_records()
-                            header_main = ws.row_values(1)
+                # --- TOMBOL SIMPAN HANYA MUNCUL JIKA ADA PERUBAHAN ---
+                if has_zone_changes:
+                    if st.button("💾 Simpan Perubahan Zona Mezzanine", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
+                        try:
+                            with st.spinner("⏳ Menyimpan perubahan zona ke database..."):
+                                creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                gc = gspread.service_account_from_dict(creds_dict)
+                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                ws = sh.worksheet("Database log")
 
-                            zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
+                                records_main = ws.get_all_records()
+                                header_main = ws.row_values(1)
 
-                            cell_updates = []
-                            for _, row_edited in edited_preload_df.iterrows():
-                                e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
-                                e_zona = str(row_edited.get("Zona Mezzanine", ""))
-                                if e_zona in ["nan", "None"]:
-                                    e_zona = ""
+                                zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
 
-                                for r_idx, r_val in enumerate(records_main, start=2):
-                                    sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
-                                    if sheet_id_str == e_id:
-                                        old_zona = str(r_val.get("Zona Mezzanine", ""))
-                                        if old_zona != e_zona:
-                                            cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
-                                        break
+                                cell_updates = []
+                                for _, row_edited in edited_preload_df.iterrows():
+                                    e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
+                                    e_zona = str(row_edited.get("Zona Mezzanine", ""))
+                                    if e_zona in ["nan", "None"]:
+                                        e_zona = ""
 
-                            if cell_updates:
-                                ws.update_cells(cell_updates)
-                                st.cache_data.clear()
-                                
-                                if local_df_key in st.session_state:
-                                    del st.session_state[local_df_key]
-                                st.session_state[changes_key] = False
-                                        
-                                st.success("✅ Zona Mezzanine pada data preload berhasil diperbarui!")
-                                st.rerun()
-                            else:
-                                st.info("ℹ️ Tidak ada perubahan zona yang dideteksi.")
+                                    for r_idx, r_val in enumerate(records_main, start=2):
+                                        sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                        if sheet_id_str == e_id:
+                                            old_zona = str(r_val.get("Zona Mezzanine", ""))
+                                            if old_zona != e_zona:
+                                                cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
+                                            break
 
-                    except Exception as e:
-                        st.error(f"❌ Gagal menyimpan zona: {e}")
+                                if cell_updates:
+                                    ws.update_cells(cell_updates)
+                                    st.cache_data.clear()
+                                    
+                                    if local_df_key in st.session_state:
+                                        del st.session_state[local_df_key]
+                                    st.session_state[changes_key] = False
+                                            
+                                    st.success("✅ Zona Mezzanine pada data preload berhasil diperbarui!")
+                                    st.rerun()
+
+                        except Exception as e:
+                            st.error(f"❌ Gagal menyimpan zona: {e}")
             else:
                 st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
