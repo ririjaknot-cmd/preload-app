@@ -463,9 +463,11 @@ else:
                 with col_f2:
                     jumlah_box_val = st.number_input("Jumlah Box:", min_value=1, value=1, step=1)
                 
-                submit_input = st.form_submit_button("⚡ Proses Preload", type="primary", use_container_width=True)
+            submit_input = st.form_submit_button("⚡ Proses Preload", type="primary", use_container_width=True)
         
             if submit_input:
+                target_id = input_id_val.strip().split('.')[0]
+                
                 import time, random
                 current_ts = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
                 
