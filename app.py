@@ -775,20 +775,29 @@ else:
                 )
                 
                 # --- CEK APAKAH ADA PERUBAHAN ZONA ---
+                # --- CEK PERUBAHAN ZONA YANG LEBIH AKURAT ---
                 has_zone_changes = False
                 for idx, row_edited in edited_preload_df.iterrows():
                     orig_row = df_preload_display.iloc[idx]
-                    orig_zona = str(orig_row.get("Zona Mezzanine", "")).strip()
-                    ed_zona = str(row_edited.get("Zona Mezzanine", "")).strip()
                     
-                    if orig_zona in ["nan", "None", ""]: orig_zona = ""
-                    if ed_zona in ["nan", "None", ""]: ed_zona = ""
+                    # Ambil nilai awal dan ubah jadi string bersih
+                    orig_zona = str(orig_row.get("Zona Mezzanine", ""))
+                    if orig_zona.lower() in ["nan", "none", "nat"]:
+                        orig_zona = ""
+                    orig_zona = orig_zona.strip()
                     
+                    # Ambil nilai hasil edit di tabel
+                    ed_zona = str(row_edited.get("Zona Mezzanine", ""))
+                    if ed_zona.lower() in ["nan", "none", "nat"]:
+                        ed_zona = ""
+                    ed_zona = ed_zona.strip()
+                    
+                    # Jika ada perbedaan, tandai bahwa ada perubahan
                     if orig_zona != ed_zona:
                         has_zone_changes = True
                         break
 
-                # --- TOMBOL SIMPAN HANYA MUNCUL JIKA ADA PERUBAHAN ---
+                # --- TOMBOL SIMPAN HANYA MUNCUL JIKA BENAR-BENAR ADA PERUBAHAN ---
                 if has_zone_changes:
                     if st.button("💾 Simpan Perubahan Zona Mezzanine", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
                         try:
@@ -808,14 +817,17 @@ else:
                                 for _, row_edited in edited_preload_df.iterrows():
                                     e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
                                     e_zona = str(row_edited.get("Zona Mezzanine", ""))
-                                    if e_zona in ["nan", "None"]:
+                                    if e_zona.lower() in ["nan", "none"]:
                                         e_zona = ""
 
                                     for r_idx, r_val in enumerate(records_main, start=2):
                                         sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                         if sheet_id_str == e_id:
                                             old_zona = str(r_val.get("Zona Mezzanine", ""))
-                                            if old_zona != e_zona:
+                                            if old_zona.lower() in ["nan", "none"]:
+                                                old_zona = ""
+                                                
+                                            if old_zona.strip() != e_zona.strip():
                                                 cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
                                             break
 
