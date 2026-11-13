@@ -525,7 +525,6 @@ else:
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
         
-            # --- NOTIFIKASI & AUDIO ---
             if f"last_msg_{wilayah}" in st.session_state:
                 m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
                 if m_type == "success":
@@ -546,16 +545,35 @@ else:
                             audio_bytes = f.read()
                         audio_base64 = base64.b64encode(audio_bytes).decode()
                         unique_audio_id = f"audio_{timestamp_id}"
+                        
+                        # --- SCRIPT JAVASCRIPT YANG DISEMPURNAKAN UNTUK MENGATASI BROWSER OVERLAP ---
                         audio_html = f'''
-                            <audio id="{unique_audio_id}" autoplay style="display:none;">
+                            <audio id="{unique_audio_id}" preload="auto" style="display:none;">
                                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
                             </audio>
                             <script>
-                                var audio = document.getElementById("{unique_audio_id}");
-                                if (audio) {{
-                                    audio.volume = 1.0;
-                                    audio.play().catch(function(error) {{ console.log("Autoplay dicegah browser: ", error); }});
-                                }}
+                                (function() {{
+                                    // Cari dan hentikan semua elemen audio lain yang mungkin masih bersuara
+                                    var oldAudios = document.querySelectorAll('audio');
+                                    oldAudios.forEach(function(el) {{
+                                        if (el.id !== "{unique_audio_id}") {{
+                                            el.pause();
+                                            el.currentTime = 0;
+                                        }}
+                                    }});
+        
+                                    var audio = document.getElementById("{unique_audio_id}");
+                                    if (audio) {{
+                                        audio.volume = 1.0;
+                                        audio.currentTime = 0;
+                                        var playPromise = audio.play();
+                                        if (playPromise !== undefined) {{
+                                            playPromise.catch(function(error) {{
+                                                console.log("Autoplay dicegah browser: ", error);
+                                            }});
+                                        }}
+                                    }}
+                                }})();
                             </script>
                         '''
                         st.markdown(audio_html, unsafe_allow_html=True)
