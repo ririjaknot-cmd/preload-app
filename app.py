@@ -539,7 +539,6 @@ else:
             if audio_data is not None:
                 if isinstance(audio_data, (list, tuple)) and len(audio_data) == 2:
                     sound_type, timestamp_id = audio_data
-                    # Pastikan nama file dan foldernya sesuai (case-sensitive)
                     local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
                     
                     import base64
@@ -549,6 +548,9 @@ else:
                         audio_base64 = base64.b64encode(audio_bytes).decode()
                         unique_audio_id = f"audio_{timestamp_id}"
                         
+                        # --- GUNAKAN st.components.v1.html AGAR SCRIPT JS & AUDIO EKSEKUSI SEMPURNA ---
+                        import streamlit.components.v1 as components
+                        
                         audio_html = f'''
                             <audio id="{unique_audio_id}" preload="auto">
                                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
@@ -557,17 +559,21 @@ else:
                                 var audio = document.getElementById("{unique_audio_id}");
                                 if (audio) {{
                                     audio.volume = 1.0;
-                                    audio.play().catch(function(error) {{
-                                        console.log("Autoplay dicegah browser: ", error);
-                                    }});
+                                    var playPromise = audio.play();
+                                    if (playPromise !== undefined) {{
+                                        playPromise.catch(function(error) {{
+                                            console.log("Autoplay dicegah browser: ", error);
+                                        }});
+                                    }}
                                 }}
                             </script>
                         '''
-                        st.markdown(audio_html, unsafe_allow_html=True)
-                    except Exception as e:
-                        # Ini akan memunculkan peringatan di layar jika file mp3 gagal dimuat/tidak ketemu
-                        st.error(f"⚠️ Gagal memuat file audio dari `{local_audio_path}`. Error: {e}")
+                        components.html(audio_html, height=0, width=0)
                         
+                    except Exception as e:
+                        st.error(f"⚠️ Gagal memuat file audio: {e}")
+                        
+                # Hapus state setelah komponen dipanggil agar tidak berulang terus-menerus
                 del st.session_state[sound_effect_key]
         
             # --- 2. LIST ID BARU DISCAN DAN PENGATURAN ZONA MEZZANINE ---
