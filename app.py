@@ -466,7 +466,7 @@ else:
                 submit_input = st.form_submit_button("⚡ Proses Preload", type="primary", use_container_width=True)
         
             if submit_input:
-                target_id = input_id_val.strip().split('.')[0]
+                target_id = input_id_val.strip().split('.')[0] if input_id_val else ""
                 
                 import time, random
                 current_ts = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
@@ -487,8 +487,8 @@ else:
                         row = df_lokal.loc[idx]
                         
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
-                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
-                            st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** sudah berstatus **On Delivery**.")
+                            st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
                         else:
                             try:
@@ -516,7 +516,6 @@ else:
                                 df_lokal.at[idx, "Loader"] = str(st.session_state.get("user_nama", "Admin"))
                                 df_lokal.at[idx, "Waktu Preload"] = now_str
                                 
-                                # --- PERBAIKAN PENTING: TAMBAHKAN ID KE DRAFT SCAN AKTIF ---
                                 if target_id not in st.session_state[scanned_ids_key]:
                                     st.session_state[scanned_ids_key].append(target_id)
                                 
@@ -542,14 +541,12 @@ else:
                     local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
                     
                     import base64
+                    import streamlit.components.v1 as components
                     try:
                         with open(local_audio_path, "rb") as f:
                             audio_bytes = f.read()
                         audio_base64 = base64.b64encode(audio_bytes).decode()
                         unique_audio_id = f"audio_{timestamp_id}"
-                        
-                        # --- GUNAKAN st.components.v1.html AGAR SCRIPT JS & AUDIO EKSEKUSI SEMPURNA ---
-                        import streamlit.components.v1 as components
                         
                         audio_html = f'''
                             <audio id="{unique_audio_id}" preload="auto">
@@ -573,10 +570,8 @@ else:
                     except Exception as e:
                         st.error(f"⚠️ Gagal memuat file audio: {e}")
                         
-                # Hapus state setelah komponen dipanggil agar tidak berulang terus-menerus
                 del st.session_state[sound_effect_key]
         
-            # --- 2. LIST ID BARU DISCAN DAN PENGATURAN ZONA MEZZANINE ---
             # --- 2. LIST ID BARU DISCAN DAN PENGATURAN ZONA MEZZANINE ---
             st.markdown("---")
             if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
@@ -587,8 +582,6 @@ else:
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
-                    
-                    # --- AMBIL NILAI SEMENTARA DARI MULTISELECT SESSION STATE ---
                     zona_box_counts = {}
                     for _, r_item in df_aktif.iterrows():
                         c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
@@ -605,7 +598,6 @@ else:
                             if z_name:
                                 zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
         
-                    # --- KOTAK INFORMASI RINGKASAN ZONA ---
                     summary_zona_html = ""
                     if zona_box_counts:
                         summary_items = [f"• <b>({z_name}) {total_b} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
@@ -624,8 +616,7 @@ else:
         
                     st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
                     
-                    # --- RENDER BARIS ID DENGAN TOMBOL HAPUS DI SEBELAH KANAN ---
-                    ids_to_remove = None # Penampung ID yang akan dihapus jika tombol klik ditekan
+                    ids_to_remove = None
                     
                     for idx_row, row_item in df_aktif.iterrows():
                         current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
@@ -638,7 +629,6 @@ else:
                         else:
                             current_zona_db = [z.strip() for z in current_zona_db.split(",") if z.strip()]
         
-                        # Menggunakan 4 kolom: [ID, Box, Multiselect Zona, Tombol Hapus]
                         cols_row = st.columns([2, 1.5, 4, 1])
                         
                         with cols_row[0]:
@@ -659,24 +649,19 @@ else:
                                 df_lokal.at[idx_row, "Zona Mezzanine"] = ""
                                 
                         with cols_row[3]:
-                            # Tombol hapus per baris ID
                             if st.button("🗑️", key=f"del_scan_{wilayah}_{current_id_str}", help=f"Hapus ID {current_id_str} dari list"):
                                 ids_to_remove = current_id_str
         
-                    # Proses penghapusan jika tombol sampah diklik
                     if ids_to_remove:
-                        # 1. Hapus dari list sesi scanned_ids
                         if ids_to_remove in st.session_state[scanned_ids_key]:
                             st.session_state[scanned_ids_key].remove(ids_to_remove)
                         
-                        # 2. Kembalikan/Kurangi progress atau reset status lokal baris tersebut jika perlu
                         for idx_r, r_it in df_lokal.iterrows():
                             r_id_chk = str(r_it.get(id_col_name)).split('.')[0].strip()
                             if r_id_chk == ids_to_remove:
-                                # Opsional: Jika ingin mereset progress saat item dihapus dari list draft
                                 df_lokal.at[idx_r, "Progress"] = max(0, int(r_it.get("Progress", 1)) - 1)
                                 if df_lokal.at[idx_r, "Progress"] == 0:
-                                    df_lokal.at[idx_r, "Status"] = "Pending" # atau kembalikan ke status semula
+                                    df_lokal.at[idx_r, "Status"] = "Pending"
                                 df_lokal.at[idx_r, "Zona Mezzanine"] = ""
                                 break
                         
@@ -685,7 +670,6 @@ else:
         
                     st.markdown("")
                     
-                    # Tombol Simpan Perubahan ke Database
                     if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
                         try:
                             with st.spinner("⏳ Menyimpan data preload & zona mezzanine ke database..."):
@@ -698,6 +682,7 @@ else:
                                 records_main = ws.get_all_records()
                                 header_main = ws.row_values(1)
         
+                                prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
                                 loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
                                 waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
                                 zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
@@ -716,7 +701,7 @@ else:
                                         for r_idx, r_val in enumerate(records_main, start=2):
                                             sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                             if sheet_id_str == r_id:
-                                                
+                                                cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
                                                 cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
                                                 cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
                                                 cell_updates.append(gspread.Cell(r_idx, zona_col_i, str(z_val)))
@@ -738,7 +723,7 @@ else:
                         except Exception as e:
                             st.error(f"❌ Gagal menyimpan ke database: {e}")
         
-            # --- 3. TABEL DATA PRELOAD CABANG ---
+            # --- 3. TABEL DATA PRELOAD CABANG (EDITABLE ZONA MEZZANINE) ---
             st.markdown("---")
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             if not df_lokal.empty:
@@ -771,7 +756,68 @@ else:
                     "Status"
                 ]
                 cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
-                st.dataframe(df_preload_display[cols_tersedia], use_container_width=True, hide_index=True)
+                id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
+                
+                edited_preload_df = st.data_editor(
+                    df_preload_display[cols_tersedia],
+                    column_config={
+                        "Zona Mezzanine": st.column_config.SelectboxColumn(
+                            "Zona Mezzanine",
+                            help="Klik untuk memilih atau mengubah zona mezzanine",
+                            options=daftar_zona_mezzanine,
+                            required=False,
+                        ),
+                    },
+                    disabled=[c for c in cols_tersedia if c != "Zona Mezzanine"],
+                    use_container_width=True,
+                    hide_index=True,
+                    key=f"editor_preload_table_{wilayah}"
+                )
+                
+                if st.button("💾 Simpan Perubahan Zona Mezzanine", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
+                    try:
+                        with st.spinner("⏳ Menyimpan perubahan zona ke database..."):
+                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                            gc = gspread.service_account_from_dict(creds_dict)
+                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                            ws = sh.worksheet("Database log")
+
+                            records_main = ws.get_all_records()
+                            header_main = ws.row_values(1)
+
+                            zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
+
+                            cell_updates = []
+                            for _, row_edited in edited_preload_df.iterrows():
+                                e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
+                                e_zona = str(row_edited.get("Zona Mezzanine", ""))
+                                if e_zona in ["nan", "None"]:
+                                    e_zona = ""
+
+                                for r_idx, r_val in enumerate(records_main, start=2):
+                                    sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                    if sheet_id_str == e_id:
+                                        old_zona = str(r_val.get("Zona Mezzanine", ""))
+                                        if old_zona != e_zona:
+                                            cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
+                                        break
+
+                            if cell_updates:
+                                ws.update_cells(cell_updates)
+                                st.cache_data.clear()
+                                
+                                if local_df_key in st.session_state:
+                                    del st.session_state[local_df_key]
+                                st.session_state[changes_key] = False
+                                        
+                                st.success("✅ Zona Mezzanine pada data preload berhasil diperbarui!")
+                                st.rerun()
+                            else:
+                                st.info("ℹ️ Tidak ada perubahan zona yang dideteksi.")
+
+                    except Exception as e:
+                        st.error(f"❌ Gagal menyimpan zona: {e}")
             else:
                 st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
