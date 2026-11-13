@@ -466,8 +466,8 @@ else:
                 submit_input = st.form_submit_button("⚡ Proses Preload", type="primary", use_container_width=True)
         
             if submit_input:
-                target_id = input_id_val.strip().split('.')[0]
-                current_ts = str(datetime.datetime.now().timestamp()) + "_" + str(datetime.datetime.now().microsecond)
+                import time, random
+                current_ts = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
                 
                 if not target_id:
                     st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Masukkan atau scan ID terlebih dahulu.")
@@ -485,8 +485,8 @@ else:
                         row = df_lokal.loc[idx]
                         
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"ID **{target_id}** berstatus On Delivery. Input ditolak.")
-                            st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                            st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
+                            st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                             st.rerun()
                         else:
                             try:
