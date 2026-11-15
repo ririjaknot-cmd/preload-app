@@ -123,7 +123,6 @@ if "user_email" not in st.session_state:
 if "user_nama" not in st.session_state:
     st.session_state.user_nama = ""
 
-# --- 2. FUNGSI HALAMAN LOGIN ---
 def tampilkan_halaman_login():
     st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan Username terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
@@ -140,7 +139,6 @@ def tampilkan_halaman_login():
                 st.warning("⚠️ Masukkan Username dan PIN terlebih dahulu.")
             else:
                 try:
-                    # Koneksi ke Google Sheets
                     creds_dict = dict(st.secrets["connections"]["gsheets"])
                     gc = gspread.service_account_from_dict(creds_dict)
                     spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -152,7 +150,6 @@ def tampilkan_halaman_login():
                     login_berhasil = False
                     nama_user = ""
                     
-                    # Cek pencocokan username dan pin dari Google Sheets
                     for row in records:
                         db_user = str(row.get("Username", "")).strip().lower()
                         db_pin = str(row.get("Pin / Password", "")).strip() or str(row.get("Pin", "")).strip() or str(row.get("Password", "")).strip()
@@ -174,7 +171,6 @@ def tampilkan_halaman_login():
                 except Exception as e:
                     st.error(f"❌ Gagal memuat data login dari database: {e}")
 
-# --- 3. KONEKSI & LOAD DATABASE LOG ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 st.sidebar.markdown("---")
@@ -211,7 +207,6 @@ def format_status_dengan_ikon(progress_val, jumlah_box_db):
     else:
         return "🟢 Completed"
 
-# --- 4. ALUR UTAMA APLIKASI (ROUTING LOGIN) ---
 if not st.session_state.logged_in:
     tampilkan_halaman_login()
 else:
@@ -219,7 +214,6 @@ else:
     with col_head1:
         st.markdown("### Pre Load Shipment Cabang ")
     with col_head2:
-        # 1. Tampilkan Nama User & Jam menggunakan components.html yang aman
         st.markdown(f"""
             <div style="text-align: right; font-family: sans-serif; line-height: 1.4; margin-bottom: 8px;">
                 <span style="font-size: 14px; font-weight: bold; color: #FFFFFF;">👨🏻‍💼 {st.session_state.user_nama}</span><br>
@@ -254,7 +248,6 @@ else:
         </script>
         """, height=25)
 
-        # 2. Tombol Aksi Berdampingan (Sandi & Keluar)
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
@@ -421,12 +414,10 @@ else:
         with tab_preload:
             st.subheader(f"Proses Preload & Zona Mezzanine - {wilayah}")
         
-            # --- DEFINISIKAN KEY SESSION STATE ---
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
             scanned_ids_key = f"session_scanned_ids_{wilayah}"
         
-            # Inisialisasi session state jika belum ada
             if scanned_ids_key not in st.session_state:
                 st.session_state[scanned_ids_key] = []
         
@@ -454,7 +445,6 @@ else:
                 "SC 1", "SC 2"
             ]
         
-            # --- 1. FORM SCAN PRELOAD UTAMA ---
             form_input_key = f"form_input_preload_{wilayah}"
             with st.form(key=form_input_key, clear_on_submit=True):
                 col_f1, col_f2 = st.columns([3, 1])
@@ -463,7 +453,7 @@ else:
                 with col_f2:
                     jumlah_box_val = st.number_input("Jumlah Box:", min_value=1, value=1, step=1)
                 
-                submit_input = st.form_submit_button("⚡ Proses Preload", type="primary", use_container_width=True)
+                submit_input = st.form_submit_button("Proses Preload", type="primary", use_container_width=True)
         
             if submit_input:
                 target_id = input_id_val.strip().split('.')[0] if input_id_val else ""
@@ -503,7 +493,7 @@ else:
                                 st.rerun()
                             elif (current_prog + int(jumlah_box_val)) > max_box:
                                 sisa_box = max_box - current_prog
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi sisa kuota (Sisa kuota: {sisa_box} box).")
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi batas kuota (batas kuota: {sisa_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             else:
@@ -572,10 +562,9 @@ else:
                         
                 del st.session_state[sound_effect_key]
         
-            # --- 2. LIST ID BARU DISCAN DAN PENGATURAN ZONA MEZZANINE ---
             st.markdown("---")
             if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
-                st.markdown("##### 📋 List ID Baru Discan & Pengaturan Zona Mezzanine (Belum Disimpan)")
+                st.markdown("List ID & Zona Mezzanine (New)")
         
                 df_aktif = df_lokal.copy()
                 df_aktif["_id_clean"] = df_aktif[id_col_name].astype(str).str.split('.').str[0].str.strip()
@@ -614,7 +603,7 @@ else:
                         unsafe_allow_html=True
                     )
         
-                    st.write("Atur zona mezzanine untuk ID yang baru saja Anda scan:")
+                    st.write("Pilih Zona Mezzanine untuk ID yang di input:")
                     
                     ids_to_remove = None
                     
@@ -670,9 +659,9 @@ else:
         
                     st.markdown("")
                     
-                    if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
+                    if st.button("💾 Simpan Perubahan", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
                         try:
-                            with st.spinner("⏳ Menyimpan data preload & zona mezzanine ke database..."):
+                            with st.spinner("⏳ Menyimpan data ke database..."):
                                 creds_dict = dict(st.secrets["connections"]["gsheets"])
                                 gc = gspread.service_account_from_dict(creds_dict)
                                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -717,7 +706,7 @@ else:
                                         del st.session_state[local_df_key]
                                         
                                     st.cache_data.clear()
-                                    st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
+                                    st.success("✅ Data berhasil disimpan ke database!")
                                     st.rerun()
         
                         except Exception as e:
@@ -757,7 +746,6 @@ else:
                 cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
                 id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
                 
-                # Render tabel editor
                 edited_preload_df = st.data_editor(
                     df_preload_display[cols_tersedia],
                     column_config={
@@ -778,28 +766,24 @@ else:
                 for idx, row_edited in edited_preload_df.iterrows():
                     orig_row = df_preload_display.iloc[idx]
                     
-                    # Ambil nilai awal dan ubah jadi string bersih
                     orig_zona = str(orig_row.get("Zona Mezzanine", ""))
                     if orig_zona.lower() in ["nan", "none", "nat"]:
                         orig_zona = ""
                     orig_zona = orig_zona.strip()
                     
-                    # Ambil nilai hasil edit di tabel
                     ed_zona = str(row_edited.get("Zona Mezzanine", ""))
                     if ed_zona.lower() in ["nan", "none", "nat"]:
                         ed_zona = ""
                     ed_zona = ed_zona.strip()
                     
-                    # Jika ada perbedaan, tandai bahwa ada perubahan
                     if orig_zona != ed_zona:
                         has_zone_changes = True
                         break
 
-                # --- TOMBOL SIMPAN HANYA MUNCUL JIKA BENAR-BENAR ADA PERUBAHAN ---
                 if has_zone_changes:
-                    if st.button("💾 Simpan Perubahan Zona Mezzanine", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
+                    if st.button("💾 Simpan Perubahan", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
                         try:
-                            with st.spinner("⏳ Menyimpan perubahan zona ke database..."):
+                            with st.spinner("⏳ Menyimpan perubahan ke database..."):
                                 creds_dict = dict(st.secrets["connections"]["gsheets"])
                                 gc = gspread.service_account_from_dict(creds_dict)
                                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -837,7 +821,7 @@ else:
                                         del st.session_state[local_df_key]
                                     st.session_state[changes_key] = False
                                             
-                                    st.success("✅ Zona Mezzanine pada data preload berhasil diperbarui!")
+                                    st.success("✅ Data berhasil diperbarui!")
                                     st.rerun()
 
                         except Exception as e:
@@ -1081,8 +1065,7 @@ else:
                       </div>
                     </div>
                     """
-                
-                    # Proporsi kolom disesuaikan agar muat 3 tombol aksi dengan rapi
+              
                     col_info, col_action = st.columns([2.6, 1.4])
                     
                     with col_info:
@@ -1159,9 +1142,9 @@ else:
                 
                         with c_btn3:
                             btn_del_key = f"del_mnf_{wilayah}_{mnf_num}_{idx}"
-                            if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} & kembalikan status item", use_container_width=True):
+                            if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} ", use_container_width=True):
                                 try:
-                                    with st.spinner(f"⏳ Menghapus manifest {mnf_num} dan mengembalikan status item..."):
+                                    with st.spinner(f"⏳ Menghapus manifest {mnf_num} "):
                                         creds_dict = dict(st.secrets["connections"]["gsheets"])
                                         gc = gspread.service_account_from_dict(creds_dict)
                                         spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -1187,11 +1170,8 @@ else:
                                                 break
                                         
                                         if row_idx_m:
-                                            # 1. Hapus baris manifest di Manifest log
                                             ws_m.delete_rows(row_idx_m)
                                             
-                                            # 2. Kembalikan item di Database log TANPA mereset progress/status ke 0/Pending
-                                            # Kita hanya perlu melepas ikatan atau mengubah statusnya kembali ke "Completed" (atau status sebelum di-manifest-kan)
                                             records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
                                             
@@ -1202,14 +1182,12 @@ else:
                                                 for r_i, r_v in enumerate(records_main, start=2):
                                                     r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
                                                     if r_id_str in ids_to_restore:
-                                                        # Kembalikan status ke "Completed" (atau status terakhir sebelum dimasukkan manifest)
-                                                        # Progress TIDAK diubah/dihapus agar jumlah box tetap utuh
+                                                      
                                                         batch_restore_updates.append(gspread.Cell(r_i, status_col_i, "Completed"))
                                                 
                                                 if batch_restore_updates:
                                                     ws_main.update_cells(batch_restore_updates)
                                             
-                                            # Tutup panel detail jika manifest yang dihapus sedang dibuka
                                             if st.session_state.get(f"active_detail_manifest_{wilayah}") == mnf_num:
                                                 del st.session_state[f"active_detail_manifest_{wilayah}"]
                                                 
@@ -1218,7 +1196,7 @@ else:
                                                 if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                     del st.session_state[k]
                                                     
-                                            st.success(f"✅ Manifest `{mnf_num}` berhasil dihapus dan status item dikembalikan ke **Completed**!")
+                                            st.success(f"✅ Manifest `{mnf_num}` berhasil dihapus dan status **Completed**!")
                                             st.rerun()
                                 except Exception as e:
                                     st.error(f"❌ Gagal menghapus manifest: {e}")
