@@ -1252,15 +1252,21 @@ else:
                                                 header_main = ws_main.row_values(1)
                                                 
                                                 id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
+                                                prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                                status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
                                                 
-                                                
+                                                actual_added = 0
                                                 if id_col_i and prog_col_i:
                                                     for r_idx, r_val in enumerate(records_main, start=2):
                                                         r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                                         if r_id_str == clean_new_id:
                                                             old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
                                                             new_p = min(max_b, old_p + int(added_box_input))
-                                                        
+                                                            actual_added = new_p - old_p
+                                                            
+                                                            ws_main.update_cell(r_idx, prog_col_i, new_p)
+                                                            if status_col_i:
+                                                                ws_main.update_cell(r_idx, status_col_i, "Manifested")
                                                             break
                                                 
                                                 ws_m = sh.worksheet("Manifest log")
@@ -1328,7 +1334,8 @@ else:
                                             header_main = ws_main.row_values(1)
                                             
                                             id_col_i = header_main.index("ID") + 1 if "ID" in header_main else (header_main.index("id request") + 1 if "id request" in header_main else None)
-                                           
+                                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
+                                            status_col_i = header_main.index("Status") + 1 if "Status" in header_main else (header_main.index("status") + 1 if "status" in header_main else None)
                                             
                                             sisa_progress = 0
                                             if id_col_i and prog_col_i:
@@ -1338,6 +1345,10 @@ else:
                                                         old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
                                                         sisa_progress = max(0, old_p - int(removed_box_input))
                                                         
+                                                        # Update sisa Progress di Database log
+                                                        ws_main.update_cell(r_idx, prog_col_i, sisa_progress)
+                                                        if sisa_progress == 0 and status_col_i:
+                                                            ws_main.update_cell(r_idx, status_col_i, "Completed")
                                                         break
                                             
                                             ws_m = sh.worksheet("Manifest log")
