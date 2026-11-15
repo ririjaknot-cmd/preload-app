@@ -728,11 +728,11 @@ else:
                         status_formatted_list.append("🔴 Pending")
                 
                 df_preload_display["Status"] = status_formatted_list
-        
+            
                 for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
                     if col in df_preload_display.columns:
                         df_preload_display = df_preload_display.drop(columns=[col])
-        
+            
                 cols_tampil = [
                     "ID" if "ID" in df_preload_display.columns else "id request", 
                     "Tujuan Pengiriman", 
@@ -746,8 +746,11 @@ else:
                 cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
                 id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
                 
+                # Reset index agar urutan baris bersih (0, 1, 2, ...) dan tidak out-of-bounds
+                df_editor_clean = df_preload_display[cols_tersedia].reset_index(drop=True)
+                
                 edited_preload_df = st.data_editor(
-                    df_preload_display[cols_tersedia],
+                    df_editor_clean,
                     column_config={
                         "Zona Mezzanine": st.column_config.SelectboxColumn(
                             "Zona Mezzanine",
@@ -761,28 +764,30 @@ else:
                     hide_index=True,
                     key=f"editor_preload_table_{wilayah}"
                 )
-               
+            
+                # Fungsi normalisasi teks agar nilai kosong/None/nan dianggap sama
+                def normalize_zone(val):
+                    if val is None:
+                        return ""
+                    s = str(val).strip()
+                    return "" if s.lower() in ["nan", "none", "nat", ""] else s
+            
+                # Buat dictionary mapping ID -> Zona awal agar perbandingan kebal terhadap pergeseran index
+                orig_zone_map = {
+                    str(r[id_col_key]).split('.')[0].strip(): normalize_zone(r.get("Zona Mezzanine", ""))
+                    for _, r in df_editor_clean.iterrows()
+                }
+            
                 has_zone_changes = False
-                for idx, row_edited in edited_preload_df.iterrows():
-                    orig_row = df_preload_display.iloc[idx]
-                    
-                    
-                    orig_zona = str(orig_row.get("Zona Mezzanine", ""))
-                    if orig_zona.lower() in ["nan", "none", "nat"]:
-                        orig_zona = ""
-                    orig_zona = orig_zona.strip()
-                    
-                    
-                    ed_zona = str(row_edited.get("Zona Mezzanine", ""))
-                    if ed_zona.lower() in ["nan", "none", "nat"]:
-                        ed_zona = ""
-                    ed_zona = ed_zona.strip()
-                    
+                for _, row_edited in edited_preload_df.iterrows():
+                    curr_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
+                    ed_zona = normalize_zone(row_edited.get("Zona Mezzanine", ""))
+                    orig_zona = orig_zone_map.get(curr_id, "")
                     
                     if orig_zona != ed_zona:
                         has_zone_changes = True
                         break
-
+            
                 if has_zone_changes:
                     if st.button("💾 Simpan Perubahan", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
                         try:
@@ -792,30 +797,26 @@ else:
                                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                 sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                 ws = sh.worksheet("Database log")
-
+            
                                 records_main = ws.get_all_records()
                                 header_main = ws.row_values(1)
-
+            
                                 zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
-
+            
                                 cell_updates = []
                                 for _, row_edited in edited_preload_df.iterrows():
                                     e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
-                                    e_zona = str(row_edited.get("Zona Mezzanine", ""))
-                                    if e_zona.lower() in ["nan", "none"]:
-                                        e_zona = ""
-
+                                    e_zona = normalize_zone(row_edited.get("Zona Mezzanine", ""))
+            
                                     for r_idx, r_val in enumerate(records_main, start=2):
                                         sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                         if sheet_id_str == e_id:
-                                            old_zona = str(r_val.get("Zona Mezzanine", ""))
-                                            if old_zona.lower() in ["nan", "none"]:
-                                                old_zona = ""
+                                            old_zona = normalize_zone(r_val.get("Zona Mezzanine", ""))
                                                 
-                                            if old_zona.strip() != e_zona.strip():
+                                            if old_zona != e_zona:
                                                 cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
                                             break
-
+            
                                 if cell_updates:
                                     ws.update_cells(cell_updates)
                                     st.cache_data.clear()
@@ -826,7 +827,7 @@ else:
                                             
                                     st.success("✅ Data berhasil diperbarui!")
                                     st.rerun()
-
+            
                         except Exception as e:
                             st.error(f"❌ Gagal menyimpan zona: {e}")
             else:
