@@ -746,7 +746,7 @@ else:
                 cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
                 id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
                 
-                # Reset index agar urutan baris bersih (0, 1, 2, ...) dan tidak out-of-bounds
+                
                 df_editor_clean = df_preload_display[cols_tersedia].reset_index(drop=True)
                 
                 edited_preload_df = st.data_editor(
@@ -765,14 +765,14 @@ else:
                     key=f"editor_preload_table_{wilayah}"
                 )
             
-                # Fungsi normalisasi teks agar nilai kosong/None/nan dianggap sama
+                
                 def normalize_zone(val):
                     if val is None:
                         return ""
                     s = str(val).strip()
                     return "" if s.lower() in ["nan", "none", "nat", ""] else s
             
-                # Buat dictionary mapping ID -> Zona awal agar perbandingan kebal terhadap pergeseran index
+                
                 orig_zone_map = {
                     str(r[id_col_key]).split('.')[0].strip(): normalize_zone(r.get("Zona Mezzanine", ""))
                     for _, r in df_editor_clean.iterrows()
