@@ -1345,7 +1345,7 @@ else:
                                                         old_p = int(float(r_val.get("Progress", 0))) if r_val.get("Progress") not in [None, "", "nan"] else 0
                                                         sisa_progress = max(0, old_p - int(removed_box_input))
                                                         
-                                                        # Update sisa Progress di Database log
+                                                        
                                                         ws_main.update_cell(r_idx, prog_col_i, sisa_progress)
                                                         if sisa_progress == 0 and status_col_i:
                                                             ws_main.update_cell(r_idx, status_col_i, "Completed")
