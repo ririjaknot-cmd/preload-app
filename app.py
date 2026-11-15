@@ -764,18 +764,20 @@ else:
                
                 has_zone_changes = False
                 for idx, row_edited in edited_preload_df.iterrows():
-                    
                     orig_row = df_preload_display.iloc[idx]
+                    
                     
                     orig_zona = str(orig_row.get("Zona Mezzanine", ""))
                     if orig_zona.lower() in ["nan", "none", "nat"]:
                         orig_zona = ""
                     orig_zona = orig_zona.strip()
                     
+                    
                     ed_zona = str(row_edited.get("Zona Mezzanine", ""))
                     if ed_zona.lower() in ["nan", "none", "nat"]:
                         ed_zona = ""
                     ed_zona = ed_zona.strip()
+                    
                     
                     if orig_zona != ed_zona:
                         has_zone_changes = True
