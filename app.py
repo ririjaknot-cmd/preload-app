@@ -764,7 +764,9 @@ else:
                
                 has_zone_changes = False
                 for idx, row_edited in edited_preload_df.iterrows():
+                    
                     orig_row = df_preload_display.iloc[idx]
+                    
                     orig_zona = str(orig_row.get("Zona Mezzanine", ""))
                     if orig_zona.lower() in ["nan", "none", "nat"]:
                         orig_zona = ""
