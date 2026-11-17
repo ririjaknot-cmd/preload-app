@@ -571,29 +571,34 @@ else:
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
+                    
+                    selected_batch_zona = st.selectbox(
+                        "Pilih Zona Mezzanine untuk ID di List Ini:",
+                        options=daftar_zona_mezzanine,
+                        key=f"batch_zona_select_{wilayah}"
+                    )
+                    if selected_batch_zona != "-- Pilih Zona --":
+                                    for idx_l, r_l in df_lokal.iterrows():
+                                        r_id_check = str(r_l.get(id_col_name)).split('.')[0].strip()
+                                        if r_id_check in st.session_state[scanned_ids_key]:
+                                            df_lokal.at[idx_l, "Zona Mezzanine"] = selected_batch_zona
+                                    
+                                    # Perbarui df_aktif agar langsung mengenali zona yang baru dipilih
+                                    df_aktif["Zona Mezzanine"] = selected_batch_zona
                     zona_box_counts = {}
                     for _, r_item in df_aktif.iterrows():
-                        c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
                         raw_prog = r_item.get("Progress", 0)
                         try:
                             b_count = int(float(str(raw_prog).split('.')[0]))
                         except (ValueError, TypeError):
                             b_count = 0
                         
-                        widget_key = f"mz_row_{wilayah}_{c_id_str}"
-                        if widget_key in st.session_state:
-                            selected_zones = st.session_state[widget_key]
-                        else:
-                            db_z = str(r_item.get("Zona Mezzanine", ""))
-                            selected_zones = [z.strip() for z in db_z.split(",") if z.strip()] if db_z not in ["nan", "None", ""] else []
-        
-                        for z_name in selected_zones:
-                            if z_name:
-                                zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
+                        z_name = str(r_item.get("Zona Mezzanine", "")).strip()
+                        if z_name and z_name.lower() not in ["nan", "none", ""]:
+                            zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
         
                     summary_zona_html = ""
                     if zona_box_counts:
-                        # Tampilkan total box bersih tanpa desimal
                         summary_items = [f"• <b>({z_name}) {int(total_b)} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
                         summary_zona_html = "<br>".join(summary_items)
                     else:
@@ -606,12 +611,6 @@ else:
                         </div>
                         """,
                         unsafe_allow_html=True
-                    )
-                    
-                    selected_batch_zona = st.selectbox(
-                        "Pilih Zona Mezzanine untuk ID di List Ini:",
-                        options=daftar_zona_mezzanine,
-                        key=f"batch_zona_select_{wilayah}"
                     )
         
                     ids_to_remove = None
