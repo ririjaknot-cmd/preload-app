@@ -572,6 +572,28 @@ else:
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
+                    zona_box_counts = {}
+                    for _, r_item in df_aktif.iterrows():
+                        c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
+                        b_count = int(r_item.get("Progress") or 0)
+                        
+                        widget_key = f"mz_row_{wilayah}_{c_id_str}"
+                        if widget_key in st.session_state:
+                            selected_zones = st.session_state[widget_key]
+                        else:
+                            db_z = str(r_item.get("Zona Mezzanine", ""))
+                            selected_zones = [z.strip() for z in db_z.split(",") if z.strip()] if db_z not in ["nan", "None", ""] else []
+        
+                        for z_name in selected_zones:
+                            if z_name:
+                                zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
+        
+                    summary_zona_html = ""
+                    if zona_box_counts:
+                        summary_items = [f"• <b>({z_name}) {total_b} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
+                        summary_zona_html = "<br>".join(summary_items)
+                    else:
+                        summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
                     # Pilih Zona Sekaligus untuk Semua ID yang Sedang Discan di Sesi Ini
                     selected_batch_zona = st.selectbox(
                         "📍 Pilih Zona Mezzanine untuk Semua ID di List Ini:",
