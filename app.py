@@ -574,7 +574,11 @@ else:
                     zona_box_counts = {}
                     for _, r_item in df_aktif.iterrows():
                         c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
-                        b_count = int(r_item.get("Progress") or 0)
+                        raw_prog = r_item.get("Progress", 0)
+                        try:
+                            b_count = int(float(str(raw_prog).split('.')[0]))
+                        except (ValueError, TypeError):
+                            b_count = 0
                         
                         widget_key = f"mz_row_{wilayah}_{c_id_str}"
                         if widget_key in st.session_state:
@@ -589,7 +593,8 @@ else:
         
                     summary_zona_html = ""
                     if zona_box_counts:
-                        summary_items = [f"• <b>({z_name}) {total_b} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
+                        # Tampilkan total box bersih tanpa desimal
+                        summary_items = [f"• <b>({z_name}) {int(total_b)} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
                         summary_zona_html = "<br>".join(summary_items)
                     else:
                         summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
@@ -602,12 +607,13 @@ else:
                         """,
                         unsafe_allow_html=True
                     )
+                    
                     selected_batch_zona = st.selectbox(
                         "Pilih Zona Mezzanine untuk ID di List Ini:",
-                        options= daftar_zona_mezzanine,
+                        options=daftar_zona_mezzanine,
                         key=f"batch_zona_select_{wilayah}"
                     )
-                
+        
                     ids_to_remove = None
                     
                     for idx_row, row_item in df_aktif.iterrows():
