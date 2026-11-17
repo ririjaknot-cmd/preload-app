@@ -579,33 +579,31 @@ else:
         
                 if not df_aktif.empty:
                     
+                    multi_zone_key = f"session_multi_zone_{wilayah}"
+                    if multi_zone_key not in st.session_state:
+                        st.session_state[multi_zone_key] = {} # Format: {id_str: {zona_name: jumlah_box}}
+                        
                     selected_batch_zona = st.selectbox(
                         "Pilih Zona Mezzanine untuk ID di List Ini:",
                         options=daftar_zona_mezzanine,
                         key=f"batch_zona_select_{wilayah}"
                     )
                     if selected_batch_zona != "-- Pilih Zona --":
-                        for idx_l, r_l in df_lokal.iterrows():
-                            r_id_check = str(r_l.get(id_col_name)).split('.')[0].strip()
-                            if r_id_check in st.session_state[scanned_ids_key]:
-                                df_lokal.at[idx_l, "Zona Mezzanine"] = selected_batch_zona
-                        df_aktif["Zona Mezzanine"] = selected_batch_zona
+                        for c_id in st.session_state[scanned_ids_key]:
+                            if c_id not in st.session_state[multi_zone_key]:
+                                st.session_state[multi_zone_key][c_id] = {}
 
                     # 3. HITUNG RINGKASAN HANYA DARI PROGRESS SESI SCAN AKTIF
+                    zona_box_counts = {}
                     session_boxes_key = f"session_box_added_{wilayah}"
                     session_box_dict = st.session_state.get(session_boxes_key, {})
+                    multi_zone_dict = st.session_state.get(multi_zone_key, {})
                     
-                    zona_box_counts = {}
-                    for _, r_item in df_aktif.iterrows():
-                        c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
-                        
-                        # Pastikan hanya menghitung ID yang benar-benar ada di sesi scanned_ids_key saat ini
-                        if c_id_str in st.session_state[scanned_ids_key]:
-                            b_count = session_box_dict.get(c_id_str, 0)
-                            
-                            z_name = str(r_item.get("Zona Mezzanine", "")).strip()
-                            if z_name and z_name.lower() not in ["nan", "none", "", "-- pilih zona --"]:
-                                zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
+                    aggregated_zone_counts = {}
+                    for cid, z_map in multi_zone_dict.items():
+                        if cid in st.session_state[scanned_ids_key]:
+                            for z_name, b_qty in z_map.items():
+                                aggregated_zone_counts[z_name] = aggregated_zone_counts.get(z_name, 0) + b_qty
         
                     summary_zona_html = ""
                     if zona_box_counts:
@@ -627,18 +625,35 @@ else:
                     
                     for idx_row, row_item in df_aktif.iterrows():
                         current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
-                        
-                        # Pastikan format box integer bersih dari .0
-                        current_prog = int(float(str(row_item.get("Progress", 0)).split('.')[0]))
+                        total_id_prog = int(float(str(row_item.get("Progress", 0)).split('.')[0]))
                         max_b = int(float(str(row_item.get("Jumlah Box", 0)).split('.')[0]))
-        
-                        cols_row = st.columns([2, 2, 1])
+
+                        # Tentukan zona untuk ID ini
+                        # Jika user memilih zona batch, kita pastikan terikat ke ID ini
+                        active_z = selected_batch_zona if selected_batch_zona != "-- Pilih Zona --" else "A1" # Default fallback
+                        
+                        if current_id_str not in multi_zone_dict:
+                            multi_zone_dict[current_id_str] = {}
+                        
+                        # Simpan/update alokasi berdasarkan progress saat ini
+                        multi_zone_dict[current_id_str][active_z] = total_id_prog
+
+                        # Buat teks tampilan web, contoh: "A1(1 Box), A2(1 Box)"
+                        formatted_zone_display = ", ".join([f"{z.strip()}({b} Box)" for z, b in multi_zone_dict[current_id_str].items() if b > 0])
+                        
+                        # Update sementara di dataframe lokal untuk tampilan web saja (tidak langsung merusak database bawah sebelum disimpan)
+                        df_lokal.at[idx_row, "Zona Mezzanine"] = formatted_zone_display
+
+                        # Render baris di web
+                        cols_row = st.columns([2, 2, 3, 1])
                         with cols_row[0]:
                             st.markdown(f"**ID:** `{current_id_str}`")
                         with cols_row[1]:
-                            st.markdown(f"Box: **{current_prog}/{max_b}**")
+                            st.markdown(f"Box: **{total_id_prog}/{max_b}**")
                         with cols_row[2]:
-                            if st.button("🗑️ Hapus", key=f"del_scan_{wilayah}_{current_id_str}ंत्रिक"): # atau key unik
+                            st.markdown(f"Zona: `{formatted_zone_display}`")
+                        with cols_row[3]:
+                            if st.button("🗑️ Hapus", key=f"del_scan_{wilayah}_{current_id_str}", use_container_width=True):
                                 ids_to_remove = current_id_str
 
                         # Update zona di dataframe lokal jika user memilih zona batch
