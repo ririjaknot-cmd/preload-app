@@ -604,9 +604,9 @@ else:
                         unsafe_allow_html=True
                     )
         
-                    st.write("Pilih Zona Mezzanine untuk ID yang di input:")
-                    # Pilih Zona Sekaligus untuk Semua ID yang Sedang Discan di Sesi Ini
+                  
                     selected_batch_zona = st.selectbox(
+                        "Pilih Zona Mezzanine untuk ID di List Ini:",
                         options=["-- Pilih Zona Mezzanine --"] + daftar_zona_mezzanine,
                         key=f"batch_zona_select_{wilayah}"
                     )
