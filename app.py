@@ -598,7 +598,7 @@ else:
                     st.markdown(
                         f"""
                         <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
-                            <b>Ringkasan Zona Mezzanine:</b><br>{summary_zona_html}
+                            <b>Jumlah Box:</b><br>{summary_zona_html}
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -606,7 +606,6 @@ else:
         
                   
                     selected_batch_zona = st.selectbox(
-                        "Pilih Zona Mezzanine untuk ID di List Ini:",
                         options= daftar_zona_mezzanine,
                         key=f"batch_zona_select_{wilayah}"
                     )
