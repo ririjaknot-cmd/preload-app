@@ -607,7 +607,7 @@ else:
                   
                     selected_batch_zona = st.selectbox(
                         "Pilih Zona Mezzanine untuk ID di List Ini:",
-                        options=["-- Pilih Zona Mezzanine --"] + daftar_zona_mezzanine,
+                        options= daftar_zona_mezzanine,
                         key=f"batch_zona_select_{wilayah}"
                     )
                     
