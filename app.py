@@ -572,12 +572,6 @@ else:
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
-                    # Pilih Zona Sekaligus untuk Semua ID yang Sedang Discan di Sesi Ini
-                    selected_batch_zona = st.selectbox(
-                        "📍 Pilih Zona Mezzanine untuk Semua ID di List Ini:",
-                        options=["-- Pilih Zona Mezzanine --"] + daftar_zona_mezzanine,
-                        key=f"batch_zona_select_{wilayah}"
-                    )
                     zona_box_counts = {}
                     for _, r_item in df_aktif.iterrows():
                         c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
@@ -611,6 +605,13 @@ else:
                     )
         
                     st.write("Pilih Zona Mezzanine untuk ID yang di input:")
+                    # Pilih Zona Sekaligus untuk Semua ID yang Sedang Discan di Sesi Ini
+                    selected_batch_zona = st.selectbox(
+                        "📍 Pilih Zona Mezzanine untuk Semua ID di List Ini:",
+                        options=["-- Pilih Zona Mezzanine --"] + daftar_zona_mezzanine,
+                        key=f"batch_zona_select_{wilayah}"
+                    )
+                    
                     ids_to_remove = None
                     
                     for idx_row, row_item in df_aktif.iterrows():
