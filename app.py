@@ -418,7 +418,7 @@ else:
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
             scanned_ids_key = f"session_scanned_ids_{wilayah}"
-            
+        
             if scanned_ids_key not in st.session_state:
                 st.session_state[scanned_ids_key] = []
         
@@ -446,7 +446,6 @@ else:
                 "SC 1", "SC 2"
             ]
         
-            # --- FORM SCAN PRELOAD (TANPA VALIDASI ZONA DULU) ---
             form_input_key = f"form_input_preload_{wilayah}"
             with st.form(key=form_input_key, clear_on_submit=True):
                 col_f1, col_f2 = st.columns([3, 1])
@@ -455,7 +454,7 @@ else:
                 with col_f2:
                     jumlah_box_val = st.number_input("Jumlah Box:", min_value=1, value=1, step=1)
                 
-                submit_input = st.form_submit_button("⚡ Proses Preload", type="primary", use_container_width=True)
+                submit_input = st.form_submit_button("Proses Preload", type="primary", use_container_width=True)
         
             if submit_input:
                 target_id = input_id_val.strip().split('.')[0] if input_id_val else ""
@@ -484,9 +483,8 @@ else:
                             st.rerun()
                         else:
                             try:
-                                # Hilangkan potensi desimal pada pembacaan angka box
-                                max_box = int(float(str(row.get("Jumlah Box", 0)).split('.')[0]))
-                                current_prog = int(float(str(row.get("Progress", 0)).split('.')[0])) if pd.notna(row.get("Progress")) else 0
+                                max_box = int(float(str(row.get("Jumlah Box", 0))))
+                                current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
                             except:
                                 max_box, current_prog = 0, 0
         
@@ -496,7 +494,7 @@ else:
                                 st.rerun()
                             elif (current_prog + int(jumlah_box_val)) > max_box:
                                 sisa_box = max_box - current_prog
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi batas kuota (sisa: {sisa_box} box).")
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi batas kuota (batas kuota: {sisa_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             else:
@@ -513,14 +511,61 @@ else:
                                     st.session_state[scanned_ids_key].append(target_id)
                                 
                                 st.session_state[changes_key] = True
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{int(jumlah_box_val)} Box). Progress: **{new_prog}/{max_box}**")
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
         
-            # --- LIST ID YANG SUDAH DI-SCAN & PEMILIHAN ZONA SETELAH SCAN ---
+            if f"last_msg_{wilayah}" in st.session_state:
+                m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
+                if m_type == "success":
+                    st.success(m_text)
+                else:
+                    st.error(m_text)
+                del st.session_state[f"last_msg_{wilayah}"]
+                
+            sound_effect_key = f"sound_effect_{wilayah}"
+            audio_data = st.session_state.get(sound_effect_key)
+            
+            if audio_data is not None:
+                if isinstance(audio_data, (list, tuple)) and len(audio_data) == 2:
+                    sound_type, timestamp_id = audio_data
+                    local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
+                    
+                    import base64
+                    import streamlit.components.v1 as components
+                    try:
+                        with open(local_audio_path, "rb") as f:
+                            audio_bytes = f.read()
+                        audio_base64 = base64.b64encode(audio_bytes).decode()
+                        unique_audio_id = f"audio_{timestamp_id}"
+                        
+                        audio_html = f'''
+                            <audio id="{unique_audio_id}" preload="auto">
+                                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
+                            </audio>
+                            <script>
+                                var audio = document.getElementById("{unique_audio_id}");
+                                if (audio) {{
+                                    audio.volume = 1.0;
+                                    var playPromise = audio.play();
+                                    if (playPromise !== undefined) {{
+                                        playPromise.catch(function(error) {{
+                                            console.log("Autoplay dicegah browser: ", error);
+                                        }});
+                                    }}
+                                }}
+                            </script>
+                        '''
+                        components.html(audio_html, height=0, width=0)
+                        
+                    except Exception as e:
+                        st.error(f"⚠️ Gagal memuat file audio: {e}")
+                        
+                del st.session_state[sound_effect_key]
+        
+            st.markdown("---")
             if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
-                st.markdown("---")
-                st.markdown("##### 📋 List ID & Penentuan Zona Mezzanine (Setelah Scan)")
+                st.markdown("List ID & Zona Mezzanine (New)")
         
                 df_aktif = df_lokal.copy()
                 df_aktif["_id_clean"] = df_aktif[id_col_name].astype(str).str.split('.').str[0].str.strip()
