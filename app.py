@@ -578,11 +578,11 @@ else:
                         key=f"batch_zona_select_{wilayah}"
                     )
                     if selected_batch_zona != "-- Pilih Zona --":
-                    for idx_l, r_l in df_lokal.iterrows():
-                        r_id_check = str(r_l.get(id_col_name)).split('.')[0].strip()
-                        if r_id_check in st.session_state[scanned_ids_key]:
-                            df_lokal.at[idx_l, "Zona Mezzanine"] = selected_batch_zona
-                    df_aktif["Zona Mezzanine"] = selected_batch_zona
+                        for idx_l, r_l in df_lokal.iterrows():
+                            r_id_check = str(r_l.get(id_col_name)).split('.')[0].strip()
+                            if r_id_check in st.session_state[scanned_ids_key]:
+                                df_lokal.at[idx_l, "Zona Mezzanine"] = selected_batch_zona
+                        df_aktif["Zona Mezzanine"] = selected_batch_zona
 
                     # 3. HITUNG RINGKASAN HANYA DARI PROGRESS SESI SCAN AKTIF
                     zona_box_counts = {}
