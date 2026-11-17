@@ -743,7 +743,8 @@ else:
                         return ", ".join(formatted_parts)
                     
                     return z_raw
-                if "Zona Mezzanine" in df_preload_display.columns:
+                    
+                    if "Zona Mezzanine" in df_preload_display.columns:
                     df_preload_display["Zona Mezzanine"] = df_preload_display.apply(format_display_zona, axis=1)
                     zones = [z.strip() for z in z_raw.split(",") if z.strip()]
                     
