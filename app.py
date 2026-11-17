@@ -717,6 +717,39 @@ else:
             if not df_lokal.empty:
                 df_preload_display = df_lokal.copy()
                 
+                branch_zona_counts = {}
+                for _, r_item in df_preload_display.iterrows():
+                    z_val = str(r_item.get("Zona Mezzanine", "")).strip()
+                    if z_val and z_val.lower() not in ["nan", "none", "nat", ""]:
+                        # Ambil nilai progress atau jumlah box untuk dihitung
+                        try:
+                            b_val = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
+                        except:
+                            b_val = 0
+                        
+                        # Tangani jika dalam 1 cell ada banyak zona (dipisah koma)
+                        sub_zones = [sz.strip() for sz in z_val.split(",") if sz.strip()]
+                        for sz in sub_zones:
+                            branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + (b_val if b_val > 0 else 1)
+
+                # Render HTML Ringkasan Zona di Atas Tabel
+                summary_branch_html = ""
+                if branch_zona_counts:
+                    branch_summary_items = [f"• <b>({z})</b> {cnt} Box" for z, cnt in sorted(branch_zona_counts.items())]
+                    summary_branch_html = " | ".join(branch_summary_items)
+                else:
+                    summary_branch_html = "<i>Belum ada zona mezzanine yang tercatat pada data cabang ini.</i>"
+
+                st.markdown(
+                    f"""
+                    <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 13px; color: #fff;'>
+                        <b>📍 Ringkasan Zona & Total Box Cabang:</b> {summary_branch_html}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                # ------------------------------------------------------------------
+
                 status_formatted_list = []
                 for idx, row in df_preload_display.iterrows():
                     try:
@@ -746,7 +779,6 @@ else:
                 cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
                 id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
                 
-                
                 df_editor_clean = df_preload_display[cols_tersedia].reset_index(drop=True)
                 
                 edited_preload_df = st.data_editor(
@@ -764,20 +796,18 @@ else:
                     hide_index=True,
                     key=f"editor_preload_table_{wilayah}"
                 )
-            
                 
                 def normalize_zone(val):
                     if val is None:
                         return ""
                     s = str(val).strip()
                     return "" if s.lower() in ["nan", "none", "nat", ""] else s
-            
                 
                 orig_zone_map = {
                     str(r[id_col_key]).split('.')[0].strip(): normalize_zone(r.get("Zona Mezzanine", ""))
                     for _, r in df_editor_clean.iterrows()
                 }
-            
+                
                 has_zone_changes = False
                 for _, row_edited in edited_preload_df.iterrows():
                     curr_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
@@ -787,7 +817,7 @@ else:
                     if orig_zona != ed_zona:
                         has_zone_changes = True
                         break
-            
+                
                 if has_zone_changes:
                     if st.button("💾 Simpan Perubahan", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
                         try:
