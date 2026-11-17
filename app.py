@@ -728,22 +728,37 @@ else:
                 df_preload_display = df_lokal.copy()
 
                 def format_display_zona(row):
-                    z_raw = str(row.get("Zona Mezzanine", "")).strip()
-                    if not z_raw or z_raw.lower() in ["nan", "none", "nat", ""]:
-                        return "-"
                     try:
-                        prog_val = int(float(str(row.get("Progress", 0) or 0).split('.')[0]))
-                    except:
-                        prog_val = 1
-                    if len(zones) == 1:
-                        return f"{zones[0]} ({prog_val} Box)"
-                    elif len(zones) > 1:
-                        box_per_zone = max(1, prog_val // len(zones))
-                        formatted_parts = [f"{z}({box_per_zone} Box)" for z in zones]
-                        return ", ".join(formatted_parts)
-                    
-                    return z_raw
-                    
+                        z_raw = row.get("Zona Mezzanine", "")
+                        if z_raw is None:
+                            return "-"
+                        
+                        z_str = str(z_raw).strip()
+                        if not z_str or z_str.lower() in ["nan", "none", "nat", ""]:
+                            return "-"
+                        
+                        # Ambil jumlah progress atau box saat ini untuk ID tersebut
+                        try:
+                            prog_val = int(float(str(row.get("Progress", 0) or 0).split('.')[0]))
+                        except Exception:
+                            prog_val = 1
+                        
+                        # Pecah jika ada beberapa zona (misal: "A1, A2")
+                        zones = [z.strip() for z in z_str.split(",") if z.strip()]
+                        
+                        if not zones:
+                            return "-"
+                        
+                        if len(zones) == 1:
+                            return f"{zones[0]} ({prog_val} Box)"
+                        else:
+                            box_per_zone = max(1, prog_val // len(zones))
+                            formatted_parts = [f"{z}({box_per_zone} Box)" for z in zones]
+                            return ", ".join(formatted_parts)
+                    except Exception:
+                        return str(row.get("Zona Mezzanine", "-"))
+
+                # Terapkan fungsi format khusus untuk tampilan tabel web di bawah
                 if "Zona Mezzanine" in df_preload_display.columns:
                     df_preload_display["Zona Mezzanine"] = df_preload_display.apply(format_display_zona, axis=1)
                     
