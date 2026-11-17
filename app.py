@@ -744,30 +744,26 @@ else:
                     
                     return z_raw
                     
-                    if "Zona Mezzanine" in df_preload_display.columns:
+                if "Zona Mezzanine" in df_preload_display.columns:
                     df_preload_display["Zona Mezzanine"] = df_preload_display.apply(format_display_zona, axis=1)
-                    zones = [z.strip() for z in z_raw.split(",") if z.strip()]
                     
                 branch_zona_counts = {}
-                for _, r_item in df_preload_display.iterrows():
+                for _, r_item in df_lokal.iterrows(): # Gunakan df_lokal asli agar datanya akurat
                     z_val = str(r_item.get("Zona Mezzanine", "")).strip()
                     if z_val and z_val.lower() not in ["nan", "none", "nat", ""]:
-                        # Ambil nilai progress atau jumlah box untuk dihitung
                         try:
                             b_val = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
                         except:
                             b_val = 0
                         
-                        # Tangani jika dalam 1 cell ada banyak zona (dipisah koma)
                         sub_zones = [sz.strip() for sz in z_val.split(",") if sz.strip()]
                         for sz in sub_zones:
                             branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + (b_val if b_val > 0 else 1)
 
-                # Render HTML Ringkasan Zona di Atas Tabel
                 summary_branch_html = ""
                 if branch_zona_counts:
                     branch_summary_items = [f"• <b>({z})</b> {cnt} Box" for z, cnt in sorted(branch_zona_counts.items())]
-                    summary_branch_html = " | ".join(branch_summary_items)
+                    summary_branch_html = " &nbsp;|&nbsp; ".join(branch_summary_items)
                 else:
                     summary_branch_html = "<i>Belum ada zona mezzanine yang tercatat pada data cabang ini.</i>"
 
