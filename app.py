@@ -415,9 +415,11 @@ else:
         with tab_preload:
             st.subheader(f"Proses Preload & Zona Mezzanine - {wilayah}")
         
+            # --- DEFINISIKAN KEY SESSION STATE ---
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
             scanned_ids_key = f"session_scanned_ids_{wilayah}"
+            global_zona_key = f"global_zona_pilih_{wilayah}" # Key untuk zona global
         
             if scanned_ids_key not in st.session_state:
                 st.session_state[scanned_ids_key] = []
@@ -446,6 +448,17 @@ else:
                 "SC 1", "SC 2"
             ]
         
+            # --- 1. PILIH ZONA UTAMA (1 KALI UNTUK SEMUA SCAN) ---
+            st.markdown("##### 📍 Tentukan Zona Mezzanine Aktif")
+            selected_global_zona = st.selectbox(
+                "Pilih Zona Mezzanine untuk Proses Scan Ini:",
+                options=["-- Pilih Zona --"] + daftar_zona_mezzanine,
+                key=global_zona_key
+            )
+            
+            st.markdown("---")
+
+            # --- 2. FORM SCAN PRELOAD UTAMA ---
             form_input_key = f"form_input_preload_{wilayah}"
             with st.form(key=form_input_key, clear_on_submit=True):
                 col_f1, col_f2 = st.columns([3, 1])
@@ -454,7 +467,7 @@ else:
                 with col_f2:
                     jumlah_box_val = st.number_input("Jumlah Box:", min_value=1, value=1, step=1)
                 
-                submit_input = st.form_submit_button("Proses Preload", type="primary", use_container_width=True)
+                submit_input = st.form_submit_button("⚡ Proses Preload", type="primary", use_container_width=True)
         
             if submit_input:
                 target_id = input_id_val.strip().split('.')[0] if input_id_val else ""
@@ -462,7 +475,11 @@ else:
                 import time, random
                 current_ts = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
                 
-                if not target_id:
+                if selected_global_zona == "-- Pilih Zona --":
+                    st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Harap pilih **Zona Mezzanine Aktif** terlebih dahulu di atas sebelum melakukan scan.")
+                    st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                    st.rerun()
+                elif not target_id:
                     st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Masukkan atau scan ID terlebih dahulu.")
                     st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                     st.rerun()
@@ -494,7 +511,7 @@ else:
                                 st.rerun()
                             elif (current_prog + int(jumlah_box_val)) > max_box:
                                 sisa_box = max_box - current_prog
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi batas kuota (batas kuota: {sisa_box} box).")
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi batas kuota (sisa: {sisa_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             else:
@@ -502,16 +519,18 @@ else:
                                 new_status = "Not Completed" if new_prog < max_box else "Completed"
                                 now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
                                 
+                                # --- OTOMATIS ISI ZONA SESUAI PILIHAN GLOBAL ---
                                 df_lokal.at[idx, "Progress"] = new_prog
                                 df_lokal.at[idx, "Status"] = new_status
                                 df_lokal.at[idx, "Loader"] = str(st.session_state.get("user_nama", "Admin"))
                                 df_lokal.at[idx, "Waktu Preload"] = now_str
+                                df_lokal.at[idx, "Zona Mezzanine"] = selected_global_zona
                                 
                                 if target_id not in st.session_state[scanned_ids_key]:
                                     st.session_state[scanned_ids_key].append(target_id)
                                 
                                 st.session_state[changes_key] = True
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan ke Zona **{selected_global_zona}** (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
         
@@ -572,39 +591,17 @@ else:
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
-                    zona_box_counts = {}
-                    for _, r_item in df_aktif.iterrows():
-                        c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
-                        b_count = int(r_item.get("Progress") or 0)
-                        
-                        widget_key = f"mz_row_{wilayah}_{c_id_str}"
-                        if widget_key in st.session_state:
-                            selected_zones = st.session_state[widget_key]
-                        else:
-                            db_z = str(r_item.get("Zona Mezzanine", ""))
-                            selected_zones = [z.strip() for z in db_z.split(",") if z.strip()] if db_z not in ["nan", "None", ""] else []
-        
-                        for z_name in selected_zones:
-                            if z_name:
-                                zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
-        
-                    summary_zona_html = ""
-                    if zona_box_counts:
-                        summary_items = [f"• <b>({z_name}) {total_b} Box</b>" for z_name, total_b in sorted(zona_box_counts.items())]
-                        summary_zona_html = "<br>".join(summary_items)
-                    else:
-                        summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
-        
+                    # Hitung ringkasan zona otomatis
+                    total_box_aktif = df_aktif["Progress"].sum()
+                    
                     st.markdown(
                         f"""
                         <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
-                            <b>Ringkasan Zona Mezzanine:</b><br>{summary_zona_html}
+                            <b>Ringkasan Sesi Ini: Zona <b>{selected_global_zona}</b> — Total: <b>{total_box_aktif} Box</b> ({len(df_aktif)} ID)</b>
                         </div>
                         """,
                         unsafe_allow_html=True
                     )
-        
-                    st.write("Pilih Zona Mezzanine untuk ID yang di input:")
                     
                     ids_to_remove = None
                     
@@ -612,32 +609,15 @@ else:
                         current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
                         current_prog = int(row_item["Progress"])
                         max_b = int(float(str(row_item.get("Jumlah Box", 0))))
-                        current_zona_db = str(row_item.get("Zona Mezzanine", ""))
-                        
-                        if current_zona_db in ["nan", "None", ""]:
-                            current_zona_db = []
-                        else:
-                            current_zona_db = [z.strip() for z in current_zona_db.split(",") if z.strip()]
         
-                        cols_row = st.columns([2, 1.5, 4, 1])
+                        cols_row = st.columns([2, 1.5, 3, 1])
                         
                         with cols_row[0]:
                             st.markdown(f"**ID:** `{current_id_str}`")
                         with cols_row[1]:
                             st.markdown(f"Box: **{current_prog}/{max_b}**")
                         with cols_row[2]:
-                            selected_z = st.multiselect(
-                                f"Zona Mezzanine {current_id_str}",
-                                options=daftar_zona_mezzanine,
-                                default=[z for z in current_zona_db if z in daftar_zona_mezzanine],
-                                key=f"mz_row_{wilayah}_{current_id_str}",
-                                label_visibility="collapsed"
-                            )
-                            if selected_z:
-                                df_lokal.at[idx_row, "Zona Mezzanine"] = ", ".join(selected_z)
-                            else:
-                                df_lokal.at[idx_row, "Zona Mezzanine"] = ""
-                                
+                            st.markdown(f"Zona: **{selected_global_zona}**")
                         with cols_row[3]:
                             if st.button("🗑️", key=f"del_scan_{wilayah}_{current_id_str}", help=f"Hapus ID {current_id_str} dari list"):
                                 ids_to_remove = current_id_str
@@ -660,9 +640,9 @@ else:
         
                     st.markdown("")
                     
-                    if st.button("💾 Simpan Perubahan", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
+                    if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
                         try:
-                            with st.spinner("⏳ Menyimpan data ke database..."):
+                            with st.spinner("⏳ Menyimpan data preload & zona ke database..."):
                                 creds_dict = dict(st.secrets["connections"]["gsheets"])
                                 gc = gspread.service_account_from_dict(creds_dict)
                                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
@@ -707,7 +687,7 @@ else:
                                         del st.session_state[local_df_key]
                                         
                                     st.cache_data.clear()
-                                    st.success("✅ Data berhasil disimpan ke database!")
+                                    st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
                                     st.rerun()
         
                         except Exception as e:
