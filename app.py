@@ -415,12 +415,10 @@ else:
         with tab_preload:
             st.subheader(f"Proses Preload & Zona Mezzanine - {wilayah}")
         
-            # --- DEFINISIKAN KEY SESSION STATE ---
             local_df_key = f"local_df_preload_{wilayah}"
             changes_key = f"has_unsaved_changes_{wilayah}"
             scanned_ids_key = f"session_scanned_ids_{wilayah}"
-            global_zona_key = f"global_zona_pilih_{wilayah}" # Key untuk zona global
-        
+            
             if scanned_ids_key not in st.session_state:
                 st.session_state[scanned_ids_key] = []
         
@@ -448,17 +446,7 @@ else:
                 "SC 1", "SC 2"
             ]
         
-            # --- 1. PILIH ZONA UTAMA (1 KALI UNTUK SEMUA SCAN) ---
-            st.markdown("##### 📍 Tentukan Zona Mezzanine Aktif")
-            selected_global_zona = st.selectbox(
-                "Pilih Zona Mezzanine untuk Proses Scan Ini:",
-                options=["-- Pilih Zona --"] + daftar_zona_mezzanine,
-                key=global_zona_key
-            )
-            
-            st.markdown("---")
-
-            # --- 2. FORM SCAN PRELOAD UTAMA ---
+            # --- FORM SCAN PRELOAD (TANPA VALIDASI ZONA DULU) ---
             form_input_key = f"form_input_preload_{wilayah}"
             with st.form(key=form_input_key, clear_on_submit=True):
                 col_f1, col_f2 = st.columns([3, 1])
@@ -475,11 +463,7 @@ else:
                 import time, random
                 current_ts = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
                 
-                if selected_global_zona == "-- Pilih Zona --":
-                    st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Harap pilih **Zona Mezzanine Aktif** terlebih dahulu di atas sebelum melakukan scan.")
-                    st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
-                    st.rerun()
-                elif not target_id:
+                if not target_id:
                     st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Masukkan atau scan ID terlebih dahulu.")
                     st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                     st.rerun()
@@ -500,8 +484,9 @@ else:
                             st.rerun()
                         else:
                             try:
-                                max_box = int(float(str(row.get("Jumlah Box", 0))))
-                                current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
+                                # Hilangkan potensi desimal pada pembacaan angka box
+                                max_box = int(float(str(row.get("Jumlah Box", 0)).split('.')[0]))
+                                current_prog = int(float(str(row.get("Progress", 0)).split('.')[0])) if pd.notna(row.get("Progress")) else 0
                             except:
                                 max_box, current_prog = 0, 0
         
@@ -519,108 +504,60 @@ else:
                                 new_status = "Not Completed" if new_prog < max_box else "Completed"
                                 now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
                                 
-                                # --- OTOMATIS ISI ZONA SESUAI PILIHAN GLOBAL ---
                                 df_lokal.at[idx, "Progress"] = new_prog
                                 df_lokal.at[idx, "Status"] = new_status
                                 df_lokal.at[idx, "Loader"] = str(st.session_state.get("user_nama", "Admin"))
                                 df_lokal.at[idx, "Waktu Preload"] = now_str
-                                df_lokal.at[idx, "Zona Mezzanine"] = selected_global_zona
                                 
                                 if target_id not in st.session_state[scanned_ids_key]:
                                     st.session_state[scanned_ids_key].append(target_id)
                                 
                                 st.session_state[changes_key] = True
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan ke Zona **{selected_global_zona}** (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{int(jumlah_box_val)} Box). Progress: **{new_prog}/{max_box}**")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
         
-            if f"last_msg_{wilayah}" in st.session_state:
-                m_type, m_text = st.session_state[f"last_msg_{wilayah}"]
-                if m_type == "success":
-                    st.success(m_text)
-                else:
-                    st.error(m_text)
-                del st.session_state[f"last_msg_{wilayah}"]
-                
-            sound_effect_key = f"sound_effect_{wilayah}"
-            audio_data = st.session_state.get(sound_effect_key)
-            
-            if audio_data is not None:
-                if isinstance(audio_data, (list, tuple)) and len(audio_data) == 2:
-                    sound_type, timestamp_id = audio_data
-                    local_audio_path = "assets/Sukses.mp3" if sound_type == "success" else "assets/Gagal.mp3"
-                    
-                    import base64
-                    import streamlit.components.v1 as components
-                    try:
-                        with open(local_audio_path, "rb") as f:
-                            audio_bytes = f.read()
-                        audio_base64 = base64.b64encode(audio_bytes).decode()
-                        unique_audio_id = f"audio_{timestamp_id}"
-                        
-                        audio_html = f'''
-                            <audio id="{unique_audio_id}" preload="auto">
-                                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
-                            </audio>
-                            <script>
-                                var audio = document.getElementById("{unique_audio_id}");
-                                if (audio) {{
-                                    audio.volume = 1.0;
-                                    var playPromise = audio.play();
-                                    if (playPromise !== undefined) {{
-                                        playPromise.catch(function(error) {{
-                                            console.log("Autoplay dicegah browser: ", error);
-                                        }});
-                                    }}
-                                }}
-                            </script>
-                        '''
-                        components.html(audio_html, height=0, width=0)
-                        
-                    except Exception as e:
-                        st.error(f"⚠️ Gagal memuat file audio: {e}")
-                        
-                del st.session_state[sound_effect_key]
-        
-            st.markdown("---")
+            # --- LIST ID YANG SUDAH DI-SCAN & PEMILIHAN ZONA SETELAH SCAN ---
             if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
-                st.markdown("List ID & Zona Mezzanine (New)")
+                st.markdown("---")
+                st.markdown("##### 📋 List ID & Penentuan Zona Mezzanine (Setelah Scan)")
         
                 df_aktif = df_lokal.copy()
                 df_aktif["_id_clean"] = df_aktif[id_col_name].astype(str).str.split('.').str[0].str.strip()
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
-                    # Hitung ringkasan zona otomatis
-                    total_box_aktif = df_aktif["Progress"].sum()
-                    
-                    st.markdown(
-                        f"""
-                        <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
-                            <b>Ringkasan Sesi Ini: Zona <b>{selected_global_zona}</b> — Total: <b>{total_box_aktif} Box</b> ({len(df_aktif)} ID)</b>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
+                    # Pilih Zona Sekaligus untuk Semua ID yang Sedang Discan di Sesi Ini
+                    selected_batch_zona = st.selectbox(
+                        "📍 Pilih Zona Mezzanine untuk Semua ID di List Ini:",
+                        options=["-- Pilih Zona Mezzanine --"] + daftar_zona_mezzanine,
+                        key=f"batch_zona_select_{wilayah}"
                     )
                     
                     ids_to_remove = None
                     
                     for idx_row, row_item in df_aktif.iterrows():
                         current_id_str = str(row_item[id_col_name]).split('.')[0].strip()
-                        current_prog = int(row_item["Progress"])
-                        max_b = int(float(str(row_item.get("Jumlah Box", 0))))
-        
-                        cols_row = st.columns([2, 1.5, 3, 1])
                         
+                        # Pastikan format box integer bersih dari .0
+                        current_prog = int(float(str(row_item.get("Progress", 0)).split('.')[0]))
+                        max_b = int(float(str(row_item.get("Jumlah Box", 0)).split('.')[0]))
+        
+                        cols_row = st.columns([2, 2, 1])
                         with cols_row[0]:
                             st.markdown(f"**ID:** `{current_id_str}`")
                         with cols_row[1]:
                             st.markdown(f"Box: **{current_prog}/{max_b}**")
                         with cols_row[2]:
-                            st.markdown(f"Zona: **{selected_global_zona}**")
-                        with cols_row[3]:
-                            if st.button("🗑️", key=f"del_scan_{wilayah}_{current_id_str}", help=f"Hapus ID {current_id_str} dari list"):
+                            if st.button("🗑️ Hapus", key=f"del_scan_{wilayah}_{current_id_str}ंत्रिक"): # atau key unik
                                 ids_to_remove = current_id_str
+
+                        # Update zona di dataframe lokal jika user memilih zona batch
+                        if selected_batch_zona != "-- Pilih Zona Mezzanine --":
+                            for idx_l, r_l in df_lokal.iterrows():
+                                if str(r_l.get(id_col_name)).split('.')[0].strip() == current_id_str:
+                                    df_lokal.at[idx_l, "Zona Mezzanine"] = selected_batch_zona
+                                    break
         
                     if ids_to_remove:
                         if ids_to_remove in st.session_state[scanned_ids_key]:
@@ -629,7 +566,7 @@ else:
                         for idx_r, r_it in df_lokal.iterrows():
                             r_id_chk = str(r_it.get(id_col_name)).split('.')[0].strip()
                             if r_id_chk == ids_to_remove:
-                                df_lokal.at[idx_r, "Progress"] = max(0, int(r_it.get("Progress", 1)) - 1)
+                                df_lokal.at[idx_r, "Progress"] = max(0, int(float(str(r_it.get("Progress", 1)).split('.')[0])) - 1)
                                 if df_lokal.at[idx_r, "Progress"] == 0:
                                     df_lokal.at[idx_r, "Status"] = "Pending"
                                 df_lokal.at[idx_r, "Zona Mezzanine"] = ""
@@ -641,57 +578,60 @@ else:
                     st.markdown("")
                     
                     if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
-                        try:
-                            with st.spinner("⏳ Menyimpan data preload & zona ke database..."):
-                                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                gc = gspread.service_account_from_dict(creds_dict)
-                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                ws = sh.worksheet("Database log")
+                        if selected_batch_zona == "-- Pilih Zona Mezzanine --":
+                            st.warning("⚠️ Harap tentukan **Zona Mezzanine** terlebih dahulu sebelum menyimpan!")
+                        else:
+                            try:
+                                with st.spinner("⏳ Menyimpan data preload & zona ke database..."):
+                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
+                                    gc = gspread.service_account_from_dict(creds_dict)
+                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                    ws = sh.worksheet("Database log")
         
-                                records_main = ws.get_all_records()
-                                header_main = ws.row_values(1)
+                                    records_main = ws.get_all_records()
+                                    header_main = ws.row_values(1)
         
-                                prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
-                                loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
-                                waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
-                                zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
-                                status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
+                                    prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
+                                    loader_col_i = header_main.index("Loader") + 1 if "Loader" in header_main else 7
+                                    waktu_col_i = header_main.index("Waktu Preload") + 1 if "Waktu Preload" in header_main else 8
+                                    zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
+                                    status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
         
-                                cell_updates = []
-                                for _, row in df_lokal.iterrows():
-                                    r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
-                                    p_val = row.get("Progress")
-                                    l_val = row.get("Loader")
-                                    w_val = row.get("Waktu Preload")
-                                    z_val = row.get("Zona Mezzanine")
-                                    s_val = row.get("Status")
+                                    cell_updates = []
+                                    for _, row in df_lokal.iterrows():
+                                        r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
+                                        p_val = row.get("Progress")
+                                        l_val = row.get("Loader")
+                                        w_val = row.get("Waktu Preload")
+                                        z_val = row.get("Zona Mezzanine")
+                                        s_val = row.get("Status")
         
-                                    if r_id in st.session_state[scanned_ids_key]:
-                                        for r_idx, r_val in enumerate(records_main, start=2):
-                                            sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
-                                            if sheet_id_str == r_id:
-                                                cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(p_val) if pd.notna(p_val) else 0))
-                                                cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
-                                                cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
-                                                cell_updates.append(gspread.Cell(r_idx, zona_col_i, str(z_val)))
-                                                cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
-                                                break
+                                        if r_id in st.session_state[scanned_ids_key]:
+                                            for r_idx, r_val in enumerate(records_main, start=2):
+                                                sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
+                                                if sheet_id_str == r_id:
+                                                    cell_updates.append(gspread.Cell(r_idx, prog_col_i, int(float(str(p_val).split('.')[0])) if pd.notna(p_val) else 0))
+                                                    cell_updates.append(gspread.Cell(r_idx, loader_col_i, str(l_val)))
+                                                    cell_updates.append(gspread.Cell(r_idx, waktu_col_i, str(w_val)))
+                                                    cell_updates.append(gspread.Cell(r_idx, zona_col_i, str(z_val)))
+                                                    cell_updates.append(gspread.Cell(r_idx, status_col_i, str(s_val)))
+                                                    break
         
-                                if cell_updates:
-                                    ws.update_cells(cell_updates)
-                                    
-                                    st.session_state[scanned_ids_key] = []
-                                    st.session_state[changes_key] = False
-                                    if local_df_key in st.session_state:
-                                        del st.session_state[local_df_key]
+                                    if cell_updates:
+                                        ws.update_cells(cell_updates)
                                         
-                                    st.cache_data.clear()
-                                    st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
-                                    st.rerun()
+                                        st.session_state[scanned_ids_key] = []
+                                        st.session_state[changes_key] = False
+                                        if local_df_key in st.session_state:
+                                            del st.session_state[local_df_key]
+                                            
+                                        st.cache_data.clear()
+                                        st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
+                                        st.rerun()
         
-                        except Exception as e:
-                            st.error(f"❌ Gagal menyimpan ke database: {e}")
+                            except Exception as e:
+                                st.error(f"❌ Gagal menyimpan ke database: {e}")
         
             st.markdown("---")
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
