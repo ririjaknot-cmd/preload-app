@@ -726,7 +726,27 @@ else:
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             if not df_lokal.empty:
                 df_preload_display = df_lokal.copy()
-                
+
+                def format_display_zona(row):
+                    z_raw = str(row.get("Zona Mezzanine", "")).strip()
+                    if not z_raw or z_raw.lower() in ["nan", "none", "nat", ""]:
+                        return "-"
+                    try:
+                        prog_val = int(float(str(row.get("Progress", 0) or 0).split('.')[0]))
+                    except:
+                        prog_val = 1
+                    if len(zones) == 1:
+                        return f"{zones[0]} ({prog_val} Box)"
+                    elif len(zones) > 1:
+                        box_per_zone = max(1, prog_val // len(zones))
+                        formatted_parts = [f"{z}({box_per_zone} Box)" for z in zones]
+                        return ", ".join(formatted_parts)
+                    
+                    return z_raw
+                if "Zona Mezzanine" in df_preload_display.columns:
+                    df_preload_display["Zona Mezzanine"] = df_preload_display.apply(format_display_zona, axis=1)
+                    zones = [z.strip() for z in z_raw.split(",") if z.strip()]
+                    
                 branch_zona_counts = {}
                 for _, r_item in df_preload_display.iterrows():
                     z_val = str(r_item.get("Zona Mezzanine", "")).strip()
