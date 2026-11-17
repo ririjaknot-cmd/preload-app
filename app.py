@@ -578,24 +578,29 @@ else:
                         key=f"batch_zona_select_{wilayah}"
                     )
                     if selected_batch_zona != "-- Pilih Zona --":
-                                    for idx_l, r_l in df_lokal.iterrows():
-                                        r_id_check = str(r_l.get(id_col_name)).split('.')[0].strip()
-                                        if r_id_check in st.session_state[scanned_ids_key]:
-                                            df_lokal.at[idx_l, "Zona Mezzanine"] = selected_batch_zona
-                                    
-                                    # Perbarui df_aktif agar langsung mengenali zona yang baru dipilih
-                                    df_aktif["Zona Mezzanine"] = selected_batch_zona
+                    for idx_l, r_l in df_lokal.iterrows():
+                        r_id_check = str(r_l.get(id_col_name)).split('.')[0].strip()
+                        if r_id_check in st.session_state[scanned_ids_key]:
+                            df_lokal.at[idx_l, "Zona Mezzanine"] = selected_batch_zona
+                    df_aktif["Zona Mezzanine"] = selected_batch_zona
+
+                    # 3. HITUNG RINGKASAN HANYA DARI PROGRESS SESI SCAN AKTIF
                     zona_box_counts = {}
                     for _, r_item in df_aktif.iterrows():
-                        raw_prog = r_item.get("Progress", 0)
-                        try:
-                            b_count = int(float(str(raw_prog).split('.')[0]))
-                        except (ValueError, TypeError):
-                            b_count = 0
+                        c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
                         
-                        z_name = str(r_item.get("Zona Mezzanine", "")).strip()
-                        if z_name and z_name.lower() not in ["nan", "none", ""]:
-                            zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
+                        # Pastikan hanya menghitung ID yang benar-benar ada di sesi scanned_ids_key saat ini
+                        if c_id_str in st.session_state[scanned_ids_key]:
+                            raw_prog = r_item.get("Progress", 0)
+                            try:
+                                # Ambil nilai progress saat sesi ini
+                                b_count = int(float(str(raw_prog).split('.')[0]))
+                            except (ValueError, TypeError):
+                                b_count = 0
+                            
+                            z_name = str(r_item.get("Zona Mezzanine", "")).strip()
+                            if z_name and z_name.lower() not in ["nan", "none", "", "-- pilih zona --"]:
+                                zona_box_counts[z_name] = zona_box_counts.get(z_name, 0) + b_count
         
                     summary_zona_html = ""
                     if zona_box_counts:
@@ -607,7 +612,7 @@ else:
                     st.markdown(
                         f"""
                         <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
-                            <b>Jumlah Box:</b><br>{summary_zona_html}
+                            <b>Jumlah Box (Sesi Ini):</b><br>{summary_zona_html}
                         </div>
                         """,
                         unsafe_allow_html=True
