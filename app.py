@@ -572,6 +572,12 @@ else:
                 df_aktif = df_aktif[df_aktif["_id_clean"].isin(st.session_state[scanned_ids_key])]
         
                 if not df_aktif.empty:
+                    # Pilih Zona Sekaligus untuk Semua ID yang Sedang Discan di Sesi Ini
+                    selected_batch_zona = st.selectbox(
+                        "📍 Pilih Zona Mezzanine untuk Semua ID di List Ini:",
+                        options=["-- Pilih Zona Mezzanine --"] + daftar_zona_mezzanine,
+                        key=f"batch_zona_select_{wilayah}"
+                    )
                     zona_box_counts = {}
                     for _, r_item in df_aktif.iterrows():
                         c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
@@ -594,13 +600,17 @@ else:
                         summary_zona_html = "<br>".join(summary_items)
                     else:
                         summary_zona_html = "<i>Belum ada zona mezzanine yang dipilih.</i>"
-                    # Pilih Zona Sekaligus untuk Semua ID yang Sedang Discan di Sesi Ini
-                    selected_batch_zona = st.selectbox(
-                        "📍 Pilih Zona Mezzanine untuk Semua ID di List Ini:",
-                        options=["-- Pilih Zona Mezzanine --"] + daftar_zona_mezzanine,
-                        key=f"batch_zona_select_{wilayah}"
+        
+                    st.markdown(
+                        f"""
+                        <div style='background-color: #1e1e2e; padding: 10px 14px; border-radius: 8px; border: 1px solid #313244; margin-bottom: 12px; font-size: 14px;'>
+                            <b>Ringkasan Zona Mezzanine:</b><br>{summary_zona_html}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
                     )
-                    
+        
+                    st.write("Pilih Zona Mezzanine untuk ID yang di input:")
                     ids_to_remove = None
                     
                     for idx_row, row_item in df_aktif.iterrows():
