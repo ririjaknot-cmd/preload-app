@@ -565,7 +565,6 @@ else:
         
             st.markdown("---")
             if not df_lokal.empty and st.session_state.get(scanned_ids_key, []):
-                st.markdown("List ID & Zona Mezzanine (New)")
         
                 df_aktif = df_lokal.copy()
                 df_aktif["_id_clean"] = df_aktif[id_col_name].astype(str).str.split('.').str[0].str.strip()
