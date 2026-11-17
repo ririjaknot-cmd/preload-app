@@ -630,6 +630,21 @@ else:
                         with cols_row[2]:
                             if st.button("🗑️ Hapus", key=f"del_scan_{wilayah}_{current_id_str}ंत्रिक"): # atau key unik
                                 ids_to_remove = current_id_str
+                        
+                        zone_key = f"zones_id_{wilayah}_{current_id_str}"
+                        
+                        existing_zone_str = str(row_item.get("Zona Mezzanine", ""))
+                        default_selected_zones = []
+                        for z in daftar_zona_mezzanine:
+                            if z in existing_zone_str:
+                                default_selected_zones.append(z)
+                                
+                        selected_zones_for_id = st.multiselect(
+                            f"Pilih Zona Mezzanine untuk ID {current_id_str}:",
+                            options=daftar_zona_mezzanine,
+                            default=default_selected_zones,
+                            key=zone_key
+                        )
 
                         # Update zona di dataframe lokal jika user memilih zona batch
                         if selected_batch_zona != "-- Pilih Zona Mezzanine --":
