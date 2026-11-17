@@ -510,8 +510,15 @@ else:
                                 if target_id not in st.session_state[scanned_ids_key]:
                                     st.session_state[scanned_ids_key].append(target_id)
                                 
+                                session_boxes_key = f"session_box_added_{wilayah}"
+                                if session_boxes_key not in st.session_state:
+                                    st.session_state[session_boxes_key] = {}
+                                
+                                st.session_state[session_boxes_key][target_id] = st.session_state[session_boxes_key].get(target_id, 0) + int(jumlah_box_val)
+                                # ---------------------------------------------------------
+                                
                                 st.session_state[changes_key] = True
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{jumlah_box_val} Box). Progress: **{new_prog}/{max_box}**")
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{int(jumlah_box_val)} Box). Progress: **{new_prog}/{max_box}**")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
         
@@ -585,18 +592,16 @@ else:
                         df_aktif["Zona Mezzanine"] = selected_batch_zona
 
                     # 3. HITUNG RINGKASAN HANYA DARI PROGRESS SESI SCAN AKTIF
+                    session_boxes_key = f"session_box_added_{wilayah}"
+                    session_box_dict = st.session_state.get(session_boxes_key, {})
+                    
                     zona_box_counts = {}
                     for _, r_item in df_aktif.iterrows():
                         c_id_str = str(r_item[id_col_name]).split('.')[0].strip()
                         
                         # Pastikan hanya menghitung ID yang benar-benar ada di sesi scanned_ids_key saat ini
                         if c_id_str in st.session_state[scanned_ids_key]:
-                            raw_prog = r_item.get("Progress", 0)
-                            try:
-                                # Ambil nilai progress saat sesi ini
-                                b_count = int(float(str(raw_prog).split('.')[0]))
-                            except (ValueError, TypeError):
-                                b_count = 0
+                            b_count = session_box_dict.get(c_id_str, 0)
                             
                             z_name = str(r_item.get("Zona Mezzanine", "")).strip()
                             if z_name and z_name.lower() not in ["nan", "none", "", "-- pilih zona --"]:
@@ -854,13 +859,16 @@ else:
             
                                 if cell_updates:
                                     ws.update_cells(cell_updates)
-                                    st.cache_data.clear()
-                                    
+                                    st.session_state[scanned_ids_key] = []
+                                    if f"session_box_added_{wilayah}" in st.session_state:
+                                        st.session_state[f"session_box_added_{wilayah}"] = {}
+                                        
+                                    st.session_state[changes_key] = False
                                     if local_df_key in st.session_state:
                                         del st.session_state[local_df_key]
-                                    st.session_state[changes_key] = False
                                             
-                                    st.success("✅ Data berhasil diperbarui!")
+                                    st.cache_data.clear()
+                                    st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
                                     st.rerun()
             
                         except Exception as e:
