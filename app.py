@@ -5,6 +5,7 @@ import streamlit.components.v1 as components
 import datetime
 import gspread
 import io
+import re
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
@@ -1016,7 +1017,7 @@ else:
                     else:
                         tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
                 
-                    clean_css_id = mnf_num.replace("-", "_") if mnf_num else str(idx)
+                    clean_css_id = re.sub(r'[^a-zA-Z0-9_-]', '_', str(mnf_num)) if mnf_num else str(idx)
                     
                     manifest_info_html = f"""
                     <style>
