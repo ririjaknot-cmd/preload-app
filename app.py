@@ -630,61 +630,6 @@ else:
                         with cols_row[2]:
                             if st.button("🗑️ Hapus", key=f"del_scan_{wilayah}_{current_id_str}ंत्रिक"): # atau key unik
                                 ids_to_remove = current_id_str
-                        
-                        zone_key = f"zones_id_{wilayah}_{current_id_str}"
-                        
-                        existing_zone_str = str(row_item.get("Zona Mezzanine", ""))
-                        default_selected_zones = []
-                        for z in daftar_zona_mezzanine:
-                            if z in existing_zone_str:
-                                default_selected_zones.append(z)
-                                
-                        selected_zones_for_id = st.multiselect(
-                            f"Pilih Zona Mezzanine untuk ID {current_id_str}:",
-                            options=daftar_zona_mezzanine,
-                            default=default_selected_zones,
-                            key=zone_key
-                        )
-                        zone_allocation_str = ""
-                        if selected_zones_for_id and current_prog > 0:
-                            st.markdown(f"<small style='color: #a0a0a0;'>Atur jumlah box untuk setiap zona (Total harus = {current_prog} Box):</small>", unsafe_allow_html=True)
-                            
-                            # Alokasikan sisa box secara otomatis atau gunakan number input/slider
-                            alloc_cols = st.columns(len(selected_zones_for_id))
-                            zone_box_map = {}
-                            remaining_boxes = current_prog
-
-                            for i, z_name in enumerate(selected_zones_for_id):
-                                with alloc_cols[i]:
-                                    # Jika zona terakhir, berikan sisa box secara otomatis agar pas
-                                    if i == len(selected_zones_for_id) - 1:
-                                        allocated_val = max(1, remaining_boxes)
-                                    else:
-                                        allocated_val = min(1, remaining_boxes) # Default awal
-                                    
-                                    box_allocated = st.number_input(
-                                        f"Zona {z_name}",
-                                        min_value=1,
-                                        max_value=current_prog,
-                                        value=allocated_val,
-                                        step=1,
-                                        key=f"alloc_{wilayah}_{current_id_str}_{z_name}"
-                                    )
-                                    zone_box_map[z_name] = box_allocated
-                                    remaining_boxes -= box_allocated
-
-                            # Format string untuk disimpan (Contoh: "A2(18), A3(2)")
-                            formatted_parts = [f"{z}({b} Box)" for z, b in zone_box_map.items() if b > 0]
-                            zone_allocation_str = ", ".join(formatted_parts)
-                            
-                            st.markdown(f"📌 **Format Tersimpan:** `{zone_allocation_str}`")
-                        elif len(selected_zones_for_id) == 1:
-                            # Jika hanya 1 zona, otomatis seluruh progress masuk ke zona tersebut
-                            z_name = selected_zones_for_id[0]
-                            zone_allocation_str = f"{z_name}({current_prog} Box)"
-                        
-                        # Simpan hasil alokasi ke DataFrame lokal
-                        df_lokal.at[idx_row, "Zona Mezzanine"] = zone_allocation_str
 
                         # Update zona di dataframe lokal jika user memilih zona batch
                         if selected_batch_zona != "-- Pilih Zona Mezzanine --":
