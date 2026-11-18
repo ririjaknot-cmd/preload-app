@@ -1648,12 +1648,52 @@ else:
                         )
                 
                     st.markdown("##### List ID Request Manifest :")
-                    if not df_detail_manifest.empty:
-                        st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
+                    if ids_in_manifest:
+                        # Coba ambil data dari df_filtered, jika kosong ambil langsung dari pembacaan database log secara menyeluruh
+                        df_source_detail = pd.DataFrame()
+                        try:
+                            df_source_detail = conn.read(worksheet="Database log", ttl=0)
+                            df_source_detail.columns = [str(c).strip() for c in df_source_detail.columns]
+                        except:
+                            df_source_detail = df_filtered.copy() if not df_filtered.empty else pd.DataFrame()
+
+                        if not df_source_detail.empty:
+                            col_id_key = "ID" if "ID" in df_source_detail.columns else ("id request" if "id request" in df_source_detail.columns else "id")
+                            
+                            # Filter ID yang sesuai dengan manifest ini
+                            df_detail_items = df_source_detail[
+                                df_source_detail[col_id_key].astype(str).str.split('.').str[0].str.strip().isin(ids_in_manifest)
+                            ].copy()
+                            
+                            if not df_detail_items.empty:
+                                # Format status dengan ikon jika fungsi tersedia
+                                if 'format_status_dengan_ikon' in globals():
+                                    status_formatted = []
+                                    for _, d_row in df_detail_items.iterrows():
+                                        jb_d = d_row.get("Jumlah Box") or d_row.get("jumlah box") or 0
+                                        pr_d = d_row.get("Progress") or d_row.get("progress") or 0
+                                        st_val = d_row.get("Status") or d_row.get("status") or m_status_detail
+                                        status_formatted.append(format_status_dengan_ikon(pr_d, jb_d, st_val))
+                                    df_detail_items["Status"] = status_formatted
+                                
+                                cols_tampil_detail = [
+                                    col_id_key, "Tujuan Pengiriman", "Jam Proses Scan", "Tanggal Proses Scan", 
+                                    "Jumlah Box", "Progress", "Loader", "Waktu Preload", "Zona Mezzanine", "Status"
+                                ]
+                                cols_tersedia_detail = [c for c in cols_tampil_detail if c in df_detail_items.columns]
+                                
+                                st.dataframe(
+                                    df_detail_items[cols_tersedia_detail].reset_index(drop=True),
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+                            else:
+                                st.warning(f"⚠️ ID dalam manifest ({', '.join(ids_in_manifest)}) belum ditemukan di lembar Database log.")
+                        else:
+                            st.info(f"Daftar ID: {', '.join([f'`{i}`' for i in ids_in_manifest])}")
                     else:
-                        st.info("ℹ️ ID Terdaftar:")
-                        st.write(ids_in_manifest)
-                
-                    if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
-                        st.session_state[f"active_detail_manifest_{wilayah}"] = None
+                        st.info("Belum ada ID terdaftar dalam manifest ini.")
+                        
+                    if st.button("❌ Tutup Detail", key=f"tutup_det_{active_mnf}"):
+                        del st.session_state[f"active_detail_manifest_{wilayah}"]
                         st.rerun()
