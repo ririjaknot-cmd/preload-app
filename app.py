@@ -10,18 +10,46 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
+def parse_zona_mezzanine(zona_str, total_progress=0):
+    """
+    Fungsi universal untuk membaca berbagai format Zona Mezzanine dari database.
+    """
+    if not zona_str or str(zona_str).lower() in ["nan", "none", "nat", "", "-"]:
+        return {}
+    
+    zona_str = str(zona_str).strip()
+    result = {}
+    
+    # Deteksi pola dengan kurung, misal: A1(2 Box) atau A1(2)
+    pattern = r'([A-Za-z0-9\s]+?)\s*\(\s*(\d+)(?:\s*[Bb]ox)?\s*\)'
+    matches = re.findall(pattern, zona_str)
+    
+    if matches:
+        for z_name, count in matches:
+            z_clean = z_name.strip()
+            result[z_clean] = result.get(z_clean, 0) + int(count)
+    else:
+        # Jika formatnya masih polos (misal: "A1" atau "A1, A2")
+        zones = [z.strip() for z in zona_str.split(",") if z.strip()]
+        if zones:
+            per_zone_box = max(1, total_progress // len(zones)) if total_progress > 0 else 1
+            for z in zones:
+                result[z] = result.get(z, 0) + per_zone_box
+                
+    return result
+
 def merge_zona_mezzanine(existing_str, new_zona, new_box):
     """
     Menggabungkan rincian zona lama dengan zona dan box baru secara akumulatif.
     Contoh: existing_str="A1(2 Box)", new_zona="A2", new_box=3
     Hasil: "A1(2 Box), A2(3 Box)"
     """
-    # 1. Parse zona yang sudah ada menggunakan parser
-    parsed_existing = parse_zona_mezzanine(existing_str)
+    # 1. Parse zona yang sudah ada menggunakan parser (berikan nilai default progress jika kosong)
+    parsed_existing = parse_zona_mezzanine(existing_str, total_progress=int(new_box))
     
     # 2. Tambahkan/akumulasikan box ke zona baru yang di-input
-    if new_zona and new_zona.strip() and new_zona != "-- Pilih Zona --":
-        z_clean = new_zona.strip()
+    if new_zona and str(new_zona).strip() and str(new_zona) != "-- Pilih Zona --":
+        z_clean = str(new_zona).strip()
         parsed_existing[z_clean] = parsed_existing.get(z_clean, 0) + int(new_box)
         
     # 3. Susun kembali menjadi string rincian yang rapi
@@ -31,7 +59,7 @@ def merge_zona_mezzanine(existing_str, new_zona, new_box):
             parts.append(f"{z}({b} Box)")
             
     if not parts:
-        return new_zona if new_zona != "-- Pilih Zona --" else ""
+        return str(new_zona) if str(new_zona) != "-- Pilih Zona --" else ""
         
     return ", ".join(parts)
 
