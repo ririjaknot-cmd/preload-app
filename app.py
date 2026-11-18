@@ -10,34 +10,6 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-def merge_zona_mezzanine(existing_str, new_zona, new_box):
-    """
-    Menggabungkan zona lama dengan zona dan box baru secara rapi.
-    Contoh: existing_str="A1(2 Box)", new_zona="A2", new_box=3 
-    Hasil: "A1(2 Box), A2(3 Box)"
-    """
-    # 1. Parse zona yang sudah ada sebelumnya menggunakan parser yang sudah ada
-    parsed_existing = parse_zona_mezzanine(existing_str)
-    
-    # 2. Tambahkan atau update zona yang baru di-input
-    if new_zona and new_zona.strip():
-        z_clean = new_zona.strip()
-        parsed_existing[z_clean] = parsed_existing.get(z_clean, 0) + int(new_box)
-        
-    # 3. Format kembali menjadi string rapi
-    parts = []
-    for z, b in parsed_existing.items():
-        if b > 0:
-            parts.append(f"{z}({b} Box)")
-            
-    if len(parts) == 1:
-        # Jika setelah digabung hanya ada 1 zona, boleh disimpan murni zonanya saja atau dengan format box
-        # Sesuai preferensi: jika ingin murni zona tunggal saat 1 zona, gunakan format di bawah:
-        # (Tetapi untuk konsistensi rincian box, format A1(2 Box) juga sangat aman)
-        return parts[0]
-    
-    return ", ".join(parts)
-
 def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -529,13 +501,6 @@ else:
                                 new_prog = current_prog + int(jumlah_box_val)
                                 new_status = "Not Completed" if new_prog < max_box else "Completed"
                                 now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
-
-                                current_db_zona = str(df_lokal.at[idx, "Zona Mezzanine"] or "")
-                                
-                                # Tentukan zona yang dipilih dari selectbox aktif saat scan
-                                selected_active_zona = st.session_state.get(f"batch_zona_select_{wilayah}", "")
-                                if not selected_active_zona or selected_active_zona == "-- Pilih Zona --":
-                                    selected_active_zona = "A1" # Default fallback jika belum dipilih
                                 
                                 df_lokal.at[idx, "Progress"] = new_prog
                                 df_lokal.at[idx, "Status"] = new_status
@@ -881,15 +846,14 @@ else:
                                 cell_updates = []
                                 for _, row_edited in edited_preload_df.iterrows():
                                     e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
-                                    e_zona = str(row_edited.get("Zona Mezzanine", "")).strip()
+                                    e_zona = normalize_zone(row_edited.get("Zona Mezzanine", ""))
             
                                     for r_idx, r_val in enumerate(records_main, start=2):
                                         sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                         if sheet_id_str == e_id:
-                                            old_zona = str(r_val.get("Zona Mezzanine", "")).strip()
+                                            old_zona = normalize_zone(r_val.get("Zona Mezzanine", ""))
                                                 
                                             if old_zona != e_zona:
-                                                # Kirim string rincian zona gabungan ke Google Sheets
                                                 cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
                                             break
             
