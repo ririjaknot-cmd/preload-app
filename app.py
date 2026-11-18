@@ -1372,7 +1372,32 @@ else:
                     m_status_detail = str(row_info.get('Status Manifest', 'On Delivery'))
                     
                     st.info(f"**Status:** {m_status_detail} | **Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Jumlah Box:** {box_tampilkan} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
-
+                    df_detail_manifest = pd.DataFrame()
+                    source_df = pd.DataFrame()
+                            if 'df_lokal' in locals() and not df_lokal.empty:
+                                source_df = df_lokal.copy()
+                            elif not df_filtered.empty:
+                                source_df = df_filtered.copy()
+                            
+                            if not source_df.empty and ids_in_manifest:
+                                col_id_key = None
+                                for possible_col in ["ID", "id request", "id"]:
+                                    if possible_col in source_df.columns:
+                                        col_id_key = possible_col
+                                        break
+                                
+                                if col_id_key:
+                                    source_df["_clean_id"] = source_df[col_id_key].astype(str).str.split('.').str[0].str.strip()
+                                    df_detail_manifest = source_df[source_df["_clean_id"].isin(ids_in_manifest)].copy()
+                                    if not df_detail_manifest.empty and 'format_status_dengan_ikon' in globals():
+                                        status_formatted = []
+                                        for _, d_row in df_detail_manifest.iterrows():
+                                            jb_d = d_row.get("Jumlah Box") or d_row.get("jumlah box") or 0
+                                            pr_d = d_row.get("Progress") or d_row.get("progress") or 0
+                                            st_val = d_row.get("Status") or d_row.get("status") or m_status_detail
+                                            status_formatted.append(format_status_dengan_ikon(pr_d, jb_d, st_val))
+                                        df_detail_manifest["Status"] = status_formatted
+                                        
                     col_scan_in, col_scan_out = st.columns(2)
                     
                     with col_scan_in:
@@ -1648,60 +1673,12 @@ else:
                         )
                 
                     st.markdown("##### List ID Request Manifest :")
-                    if ids_in_manifest:
-                        # GUNAKAN DATA LOKAL YANG SUDAH ADA (df_filtered atau df_lokal) TANPA MEMANGGIL KONEKSI ULANG
-                        df_source_detail = pd.DataFrame()
-                        
-                        if 'df_lokal' in locals() and not df_lokal.empty:
-                            df_source_detail = df_lokal.copy()
-                        elif not df_filtered.empty:
-                            df_source_detail = df_filtered.copy()
-                        else:
-                            # Fallback terakhir jika data lokal kosong
-                            df_source_detail = df_manifest_wilayah.copy()
-
-                        if not df_source_detail.empty:
-                            # Deteksi nama kolom ID secara otomatis
-                            col_id_key = None
-                            for possible_col in ["ID", "id request", "id"]:
-                                if possible_col in df_source_detail.columns:
-                                    col_id_key = possible_col
-                                    break
-                            
-                            if col_id_key:
-                                # Filter baris yang ID-nya ada di dalam manifest ini secara lokal (sangat cepat & hemat kuota)
-                                df_source_detail["_clean_id"] = df_source_detail[col_id_key].astype(str).str.split('.').str[0].str.strip()
-                                df_detail_items = df_source_detail[df_source_detail["_clean_id"].isin(ids_in_manifest)].copy()
-                                
-                                if not df_detail_items.empty:
-                                    # Format status dengan ikon agar seragam
-                                    if 'format_status_dengan_ikon' in globals():
-                                        status_formatted = []
-                                        for _, d_row in df_detail_items.iterrows():
-                                            jb_d = d_row.get("Jumlah Box") or d_row.get("jumlah box") or 0
-                                            pr_d = d_row.get("Progress") or d_row.get("progress") or 0
-                                            st_val = d_row.get("Status") or d_row.get("status") or m_status_detail
-                                            status_formatted.append(format_status_dengan_ikon(pr_d, jb_d, st_val))
-                                        df_detail_items["Status"] = status_formatted
-                                    
-                                    cols_tampil_detail = [
-                                        col_id_key, "Tujuan Pengiriman", "Jam Proses Scan", "Tanggal Proses Scan", 
-                                        "Jumlah Box", "Progress", "Loader", "Waktu Preload", "Zona Mezzanine", "Status"
-                                    ]
-                                    cols_tersedia_detail = [c for c in cols_tampil_detail if c in df_detail_items.columns]
-                                    
-                                    # Tampilkan dalam bentuk tabel rapi (sama seperti Delivered)
-                                    st.dataframe(
-                                        df_detail_items[cols_tersedia_detail].reset_index(drop=True),
-                                        use_container_width=True,
-                                        hide_index=True
-                                    )
-                                else:
-                                    # Jika ID belum ada di df_lokal, tampilkan daftar ID mentahnya sebagai pengaman
-                                    st.info(f"Daftar ID dalam Manifest ini: {', '.join([f'`{i}`' for i in ids_in_manifest])}")
-                            else:
-                                st.info(f"Daftar ID: {', '.join([f'`{i}`' for i in ids_in_manifest])}")
-                        else:
-                            st.info(f"Daftar ID: {', '.join([f'`{i}`' for i in ids_in_manifest])}")
+                    if not df_detail_manifest.empty:
+                        st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
                     else:
-                        st.info("Belum ada ID terdaftar dalam manifest ini.")
+                        st.info("ℹ️ ID Terdaftar:")
+                        st.write(ids_in_manifest)
+                
+                    if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
+                        st.session_state[f"active_detail_manifest_{wilayah}"] = None
+                        st.rerun()
