@@ -1370,24 +1370,7 @@ else:
                     
                     box_tampilkan = str(row_info.get('Jumlah Box', '0')).split('.')[0]
                     st.info(f"**Status:** {row_info.get('Status Manifest', 'On Delivery')} | **Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Jumlah Box:** {box_tampilkan} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
-                    if ids_in_manifest:
-                        st.markdown("##### 📦 Daftar ID Request dalam Manifest Ini:")
-                        if not df_filtered.empty:
-                            col_id_key = "ID" if "ID" in df_filtered.columns else "id request"
-                            df_detail_items = df_filtered[
-                                df_filtered[col_id_key].astype(str).str.split('.').str[0].str.strip().isin(ids_in_manifest)
-                            ].copy()
-                            
-                            if not df_detail_items.empty:
-                                cols_detail = [c for c in [col_id_key, "Tujuan Pengiriman", "Jumlah Box", "Progress", "Zona Mezzanine", "Status"] if c in df_detail_items.columns]
-                                st.dataframe(df_detail_items[cols_detail], use_container_width=True, hide_index=True)
-                            else:
-                                # Fallback jika data ID sudah ter-filter dari df_filtered, tetap tampilkan list ID-nya
-                                st.write(", ".join([f"`{i}`" for i in ids_in_manifest]))
-                        else:
-                            st.write(", ".join([f"`{i}`" for i in ids_in_manifest]))
-                    else:
-                        st.caption("Belum ada ID di dalam manifest ini.")
+
                     col_scan_in, col_scan_out = st.columns(2)
                     
                     with col_scan_in:
