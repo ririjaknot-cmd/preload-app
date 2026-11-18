@@ -537,9 +537,6 @@ else:
                                 if not selected_active_zona or selected_active_zona == "-- Pilih Zona --":
                                     selected_active_zona = "A1" # Default fallback jika belum dipilih
                                 
-                                # Gabungkan zona lama dan baru beserta jumlah box-nya
-                                updated_zona_str = parse_zona_mezzanine(current_db_zona, selected_active_zona, jumlah_box_val)
-                                
                                 df_lokal.at[idx, "Progress"] = new_prog
                                 df_lokal.at[idx, "Status"] = new_status
                                 df_lokal.at[idx, "Loader"] = str(st.session_state.get("user_nama", "Admin"))
