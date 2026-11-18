@@ -1116,6 +1116,17 @@ else:
                     zona_raw = str(m_row.get("Zona Mezzanine", ""))
                     box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
                     m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
+
+                    m_creator = str(
+                        m_row.get("Dibuat Oleh") or  
+                        "-"
+                    )
+                    if m_creator.lower() in ["nan", "none", ""]:
+                        m_creator = "-"
+                
+                    m_time = str(m_row.get("Waktu Buat", "") or m_row.get("Timestamp", ""))
+
+                    list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
                     manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
                     
                     # 3. Tooltip rincian zona akurat menggunakan parser
