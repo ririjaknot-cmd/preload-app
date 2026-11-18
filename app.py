@@ -10,6 +10,49 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
+def tentukan_status_id(progress_preload, jumlah_box, status_manifest_saat_ini=""):
+    """
+    Menentukan status ID secara cerdas:
+    - Jika belum ada progress/preload sama sekali: "Pending" atau "Not Completed"
+    - Jika progress preload belum penuh: "Not Completed"
+    - Jika progress preload sudah penuh (Completed):
+        - Jika baru dikirim sebagian lewat manifest: "On Delivery"
+        - Jika semua box sudah dikirim lengkap / selesai: "Delivered"
+    """
+    try:
+        p = int(float(str(progress_preload or 0).split('.')[0]))
+        max_b = int(float(str(jumlah_box or 0).split('.')[0]))
+    except:
+        p, max_b = 0, 0
+
+    if p <= 0:
+        return "Pending"
+    elif p < max_b:
+        return "Not Completed"
+    else:
+        # Jika progress sudah penuh (p >= max_b)
+        status_lower = str(status_manifest_saat_ini).strip().lower()
+        if status_lower == "delivered":
+            return "Delivered"
+        elif status_lower == "on delivery":
+            return "On Delivery"
+        else:
+            return "Completed" # Default saat selesai preload tapi belum dimanifest
+
+def format_status_dengan_ikon(progress, jumlah_box, status_manifest=""):
+    """Memformat ikon dan teks status agar konsisten di tabel web"""
+    st_text = tentukan_status_id(progress, jumlah_box, status_manifest)
+    if "Delivered" in st_text:
+        return "🟢 Delivered"
+    elif "On Delivery" in st_text:
+        return "🔵 On Delivery"
+    elif "Completed" in st_text:
+        return "🟢 Completed"
+    elif "Not Completed" in st_text:
+        return "🟡 Not Completed"
+    else:
+        return "🔴 Pending"
+
 def parse_zona_mezzanine(zona_str, total_progress=0):
     """Membaca format tunggal ('A1'), koma ('A1, A2'), maupun rincian ('A1(2 Box), A2(3 Box)')"""
     if not zona_str or str(zona_str).strip().lower() in ["nan", "none", "nat", "", "-"]:
@@ -522,6 +565,7 @@ else:
                         row = df_lokal.loc[idx]
                         
                         if str(row.get("Status", "")).strip().lower() == "on delivery":
+                            pass
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** sudah berstatus **On Delivery**.")
                             st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
