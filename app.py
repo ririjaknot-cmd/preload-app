@@ -10,6 +10,40 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
+def parse_zona_mezzanine(zona_str, total_progress=0):
+    """
+    Fungsi universal untuk membaca berbagai format Zona Mezzanine dari database:
+    - Format tunggal: "A1"
+    - Format koma: "A1, A2"
+    - Format rincian: "A1(1 Box), A2(1 Box)" atau "A1(1), A2(2)"
+    Mengembalikan dictionary: { 'A1': 1, 'A2': 1 }
+    """
+    if not zona_str or str(zona_str).lower() in ["nan", "none", "nat", "", "-"]:
+        return {}
+    
+    zona_str = str(zona_str).strip()
+    result = {}
+    
+    # Deteksi pola dengan kurung, misal: A1(1 Box) atau A1(1)
+    pattern = r'([A-Za-z0-9\s]+?)\s*\(\s*(\d+)(?:\s*[Bb]ox)?\s*\)'
+    matches = re.findall(pattern, zona_str)
+    
+    if matches:
+        # Jika formatnya rincian (ada angka di dalam kurung)
+        for z_name, count in matches:
+            z_clean = z_name.strip()
+            result[z_clean] = result.get(z_clean, 0) + int(count)
+    else:
+        # Jika formatnya masih polos (misal: "A1" atau "A1, A2")
+        zones = [z.strip() for z in zona_str.split(",") if z.strip()]
+        if zones:
+            # Distribusikan total progress secara merata atau beri default 1 jika progress 0
+            per_zone_box = max(1, total_progress // len(zones)) if total_progress > 0 else 1
+            for z in zones:
+                result[z] = result.get(z, 0) + per_zone_box
+                
+    return result
+
 def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -727,26 +761,26 @@ else:
             if not df_lokal.empty:
                 df_preload_display = df_lokal.copy()
                 
+                # --- HITUNG RINGKASAN ZONA & TOTAL BOX CABANG (AMAN DENGAN PARSER) ---
                 branch_zona_counts = {}
-                for _, r_item in df_preload_display.iterrows():
-                    z_val = str(r_item.get("Zona Mezzanine", "")).strip()
-                    if z_val and z_val.lower() not in ["nan", "none", "nat", ""]:
-                        # Ambil nilai progress atau jumlah box untuk dihitung
-                        try:
-                            b_val = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
-                        except:
-                            b_val = 0
-                        
-                        # Tangani jika dalam 1 cell ada banyak zona (dipisah koma)
-                        sub_zones = [sz.strip() for sz in z_val.split(",") if sz.strip()]
-                        for sz in sub_zones:
-                            branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + (b_val if b_val > 0 else 1)
+                for _, r_item in df_lokal.iterrows():
+                    z_val = str(r_item.get("Zona Mezzanine", ""))
+                    try:
+                        b_val = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
+                    except:
+                        b_val = 0
+                    
+                    # Panggil fungsi parser universal
+                    parsed_zones = parse_zona_mezzanine(z_val, total_progress=b_val)
+                    
+                    for sz, cnt in parsed_zones.items():
+                        branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + cnt
 
-                # Render HTML Ringkasan Zona di Atas Tabel
+                # Render HTML Summary
                 summary_branch_html = ""
                 if branch_zona_counts:
                     branch_summary_items = [f"• <b>({z})</b> {cnt} Box" for z, cnt in sorted(branch_zona_counts.items())]
-                    summary_branch_html = " | ".join(branch_summary_items)
+                    summary_branch_html = " &nbsp;|&nbsp; ".join(branch_summary_items)
                 else:
                     summary_branch_html = "<i>Belum ada zona mezzanine yang tercatat pada data cabang ini.</i>"
 
