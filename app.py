@@ -958,13 +958,14 @@ else:
             with st.expander("➕ New Manifest", expanded=False):
                 with st.form(key=f"form_buat_manifest_zona_{wilayah}", clear_on_submit=True):
                     
+                    # 1. Ekstrak nama zona bersih (misal: "A1", "A2") menggunakan parser
                     list_zona_tersedia = []
                     if not df_filtered.empty and "Zona Mezzanine" in df_filtered.columns:
-                        for z_val in df_filtered["Zona Mezzanine"].dropna():
-                            z_str = str(z_val).strip()
+                        for _, r_z in df_filtered.iterrows():
+                            z_str = str(r_z.get("Zona Mezzanine", "")).strip()
                             if z_str and z_str.lower() not in ["none", "", "nan"]:
-                                for sub_z in z_str.split(","):
-                                    clean_z = sub_z.strip()
+                                parsed_z_map = parse_zona_mezzanine(z_str)
+                                for clean_z in parsed_z_map.keys():
                                     if clean_z and clean_z not in list_zona_tersedia:
                                         list_zona_tersedia.append(clean_z)
                     
@@ -987,19 +988,25 @@ else:
                             total_box_manifest = 0
                             id_box_added_map = {}
         
+                            # 2. Hitung box secara presisi sesuai zona yang dipilih pada manifest
                             for idx, row in df_filtered.iterrows():
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
-                                if any(z.lower() in row_zona.lower() for z in selected_zones_manifest):
-                                    r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
-                                    
-                                    if r_id and r_id not in matched_ids:
-                                        curr_p = id_current_progress.get(r_id, 0)
-                                        box_to_manifest = curr_p if curr_p > 0 else 1 
-                                        
-                                        if box_to_manifest > 0:
-                                            matched_ids.append(r_id)
-                                            id_box_added_map[r_id] = box_to_manifest
-                                            total_box_manifest += box_to_manifest
+                                r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
+                                curr_p = id_current_progress.get(r_id, 0)
+                                
+                                parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
+                                
+                                # Jumlahkan hanya box yang berada di zona yang dipilih user
+                                box_in_selected_zones = 0
+                                for sel_z in selected_zones_manifest:
+                                    for p_z, p_cnt in parsed_row_zones.items():
+                                        if sel_z.strip().lower() == p_z.strip().lower():
+                                            box_in_selected_zones += p_cnt
+        
+                                if box_in_selected_zones > 0 and r_id and r_id not in matched_ids:
+                                    matched_ids.append(r_id)
+                                    id_box_added_map[r_id] = box_in_selected_zones
+                                    total_box_manifest += box_in_selected_zones
         
                             if not matched_ids:
                                 st.warning("⚠️ Tidak ada ID Request atau progress box pada zona mezzanine yang dipilih.")
@@ -1034,7 +1041,7 @@ else:
                                     status_manifest
                                 ])
         
-                                st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)})!")
+                                st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** dari Zona **{zona_str}** (Total ID: {len(matched_ids)}, Total Box: {total_box_manifest})!")
                                 st.session_state[f"sound_effect_{wilayah}"] = "success"
                                 st.rerun()
                         except Exception as e:
@@ -1059,7 +1066,7 @@ else:
                 st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
             else:
                 for idx, m_row in df_manifest_wilayah.iterrows():
-    
+        
                     mnf_num = str(m_row.get("Nomor Manifest", ""))
                     zona_raw = str(m_row.get("Zona Mezzanine", ""))
                     box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
@@ -1077,6 +1084,7 @@ else:
                     list_zona_split = [z.strip() for z in zona_raw.split(",") if z.strip()]
                     manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
                 
+                    # 3. Tooltip rincian zona akurat menggunakan parser
                     tooltip_lines = []
                     if list_zona_split and not df_filtered.empty:
                         col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
@@ -1087,18 +1095,18 @@ else:
                             df_mnf_items = df_temp[df_temp["clean_id"].isin(manifest_id_list)]
                             
                             for z in list_zona_split:
-                                zone_matched = df_mnf_items[df_mnf_items["Zona Mezzanine"].astype(str).str.contains(z, case=False, na=False)]
-                                
                                 box_count = 0
-                                if not zone_matched.empty:
-                                    for _, row_item in zone_matched.iterrows():
-                                        val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
-                                        try:
-                                            box_count += int(float(str(val_p).split('.')[0]))
-                                        except:
-                                            box_count += 1
-                                else:
-                                    box_count = 1
+                                for _, row_item in df_mnf_items.iterrows():
+                                    val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
+                                    try:
+                                        p_int = int(float(str(val_p).split('.')[0]))
+                                    except:
+                                        p_int = 1
+                                    
+                                    parsed_item_z = parse_zona_mezzanine(str(row_item.get("Zona Mezzanine", "")), total_progress=p_int)
+                                    for pz_name, pz_qty in parsed_item_z.items():
+                                        if z.strip().lower() == pz_name.strip().lower():
+                                            box_count += pz_qty
                                     
                                 tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
                             
@@ -1278,7 +1286,6 @@ else:
                                                 for r_i, r_v in enumerate(records_main, start=2):
                                                     r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
                                                     if r_id_str in ids_to_restore:
-                                                      
                                                         batch_restore_updates.append(gspread.Cell(r_i, status_col_i, "Completed"))
                                                 
                                                 if batch_restore_updates:
