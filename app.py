@@ -10,59 +10,6 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-def parse_zona_mezzanine(zona_str, total_progress=0):
-    """
-    Fungsi universal untuk membaca berbagai format Zona Mezzanine dari database.
-    """
-    if not zona_str or str(zona_str).lower() in ["nan", "none", "nat", "", "-"]:
-        return {}
-    
-    zona_str = str(zona_str).strip()
-    result = {}
-    
-    # Deteksi pola dengan kurung, misal: A1(2 Box) atau A1(2)
-    pattern = r'([A-Za-z0-9\s]+?)\s*\(\s*(\d+)(?:\s*[Bb]ox)?\s*\)'
-    matches = re.findall(pattern, zona_str)
-    
-    if matches:
-        for z_name, count in matches:
-            z_clean = z_name.strip()
-            result[z_clean] = result.get(z_clean, 0) + int(count)
-    else:
-        # Jika formatnya masih polos (misal: "A1" atau "A1, A2")
-        zones = [z.strip() for z in zona_str.split(",") if z.strip()]
-        if zones:
-            per_zone_box = max(1, total_progress // len(zones)) if total_progress > 0 else 1
-            for z in zones:
-                result[z] = result.get(z, 0) + per_zone_box
-                
-    return result
-
-def merge_zona_mezzanine(existing_str, new_zona, new_box):
-    """
-    Menggabungkan rincian zona lama dengan zona dan box baru secara akumulatif.
-    Contoh: existing_str="A1(2 Box)", new_zona="A2", new_box=3
-    Hasil: "A1(2 Box), A2(3 Box)"
-    """
-    # 1. Parse zona yang sudah ada menggunakan parser (berikan nilai default progress jika kosong)
-    parsed_existing = parse_zona_mezzanine(existing_str, total_progress=int(new_box))
-    
-    # 2. Tambahkan/akumulasikan box ke zona baru yang di-input
-    if new_zona and str(new_zona).strip() and str(new_zona) != "-- Pilih Zona --":
-        z_clean = str(new_zona).strip()
-        parsed_existing[z_clean] = parsed_existing.get(z_clean, 0) + int(new_box)
-        
-    # 3. Susun kembali menjadi string rincian yang rapi
-    parts = []
-    for z, b in parsed_existing.items():
-        if b > 0:
-            parts.append(f"{z}({b} Box)")
-            
-    if not parts:
-        return str(new_zona) if str(new_zona) != "-- Pilih Zona --" else ""
-        
-    return ", ".join(parts)
-
 def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -551,36 +498,27 @@ else:
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             else:
-                                old_prog = int(float(str(df_lokal.at[idx, "Progress"] or 0).split('.')[0]))
-                                new_prog = old_prog + int(jumlah_box_val)
+                                new_prog = current_prog + int(jumlah_box_val)
                                 new_status = "Not Completed" if new_prog < max_box else "Completed"
                                 now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
                                 
-                                # --- AMBIL ZONA SEBELUMNYA DAN GABUNGKAN DENGAN ZONA BARU ---
-                                current_db_zona = str(df_lokal.at[idx, "Zona Mezzanine"] or "")
-                                
-                                # Ambil zona yang dipilih dari selectbox saat scan ini
-                                selected_active_zona = st.session_state.get(f"batch_zona_select_{wilayah}", "")
-                                if not selected_active_zona or selected_active_zona == "-- Pilih Zona --":
-                                    selected_active_zona = "A1" # Fallback jika belum dipilih
-                                
-                                # Panggil fungsi merge untuk menggabungkan zona lama (misal: A1(2 Box)) 
-                                # dengan zona & box baru (misal: A2 dengan 3 Box)
-                                updated_zona_str = merge_zona_mezzanine(current_db_zona, selected_active_zona, jumlah_box_val)
-                                # -----------------------------------------------------------
-
-                                # Terapkan nilai baru ke DataFrame lokal
                                 df_lokal.at[idx, "Progress"] = new_prog
                                 df_lokal.at[idx, "Status"] = new_status
                                 df_lokal.at[idx, "Loader"] = str(st.session_state.get("user_nama", "Admin"))
                                 df_lokal.at[idx, "Waktu Preload"] = now_str
-                                df_lokal.at[idx, "Zona Mezzanine"] = updated_zona_str # Simpan hasil gabungan!
                                 
                                 if target_id not in st.session_state[scanned_ids_key]:
                                     st.session_state[scanned_ids_key].append(target_id)
                                 
+                                session_boxes_key = f"session_box_added_{wilayah}"
+                                if session_boxes_key not in st.session_state:
+                                    st.session_state[session_boxes_key] = {}
+                                
+                                st.session_state[session_boxes_key][target_id] = st.session_state[session_boxes_key].get(target_id, 0) + int(jumlah_box_val)
+                                # ---------------------------------------------------------
+                                
                                 st.session_state[changes_key] = True
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{int(jumlah_box_val)} Box di {selected_active_zona}). Progress: **{new_prog}/{max_box}**")
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{int(jumlah_box_val)} Box). Progress: **{new_prog}/{max_box}**")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
         
@@ -908,15 +846,14 @@ else:
                                 cell_updates = []
                                 for _, row_edited in edited_preload_df.iterrows():
                                     e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
-                                    e_zona = str(row_edited.get("Zona Mezzanine", "")).strip()
+                                    e_zona = normalize_zone(row_edited.get("Zona Mezzanine", ""))
             
                                     for r_idx, r_val in enumerate(records_main, start=2):
                                         sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                         if sheet_id_str == e_id:
-                                            old_zona = str(r_val.get("Zona Mezzanine", "")).strip()
+                                            old_zona = normalize_zone(r_val.get("Zona Mezzanine", ""))
                                                 
                                             if old_zona != e_zona:
-                                                # Kirim string rincian zona gabungan ke Google Sheets
                                                 cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
                                             break
             
