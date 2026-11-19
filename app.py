@@ -576,8 +576,9 @@ else:
                     else:
                         idx = matched.index[0]
                         row = df_lokal.loc[idx]
-                       
-                        if str(row.get("Status", "")).strip().lower() == "delivered":
+                        row_status = str(row.get("Status", "")).strip().lower()
+                        
+                        if row_status == "delivered":
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** sudah berstatus **Delivered**.")
                             st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
@@ -587,7 +588,7 @@ else:
                                 current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
                             except:
                                 max_box, current_prog = 0, 0
-        
+                        
                             if current_prog >= max_box and max_box > 0 and row_status != "on delivery":
                                 st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah selesai diproses.")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
@@ -601,7 +602,7 @@ else:
                                 if target_id not in st.session_state[base_zona_key]:
                                     existing_z = str(row.get("Zona Mezzanine", "")).strip()
                                     st.session_state[base_zona_key][target_id] = parse_zona_mezzanine(existing_z, total_progress=current_prog)
-        
+                        
                                 new_prog = current_prog + int(jumlah_box_val)
                                 new_status = tentukan_status_id(new_prog, max_box, row_status)
                                 now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
