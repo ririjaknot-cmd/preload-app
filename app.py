@@ -445,7 +445,7 @@ else:
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
             df_filtered = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy()
             if "Status" in df_filtered.columns:
-                df_filtered = df_filtered[df_filtered["Status"].astype(str).str.strip().str.lower() != "on delivery"]
+                df_filtered = df_filtered[df_filtered["Status"].astype(str).str.strip().str.lower() != "Delivered"]
         else:
             df_filtered = pd.DataFrame()
 
