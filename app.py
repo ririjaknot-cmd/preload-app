@@ -1120,7 +1120,7 @@ else:
                                 if str(m_rec.get("Tujuan Pengiriman", "")).strip().lower() != wilayah.strip().lower():
                                     continue
                                 m_st = str(m_rec.get("Status Manifest") or m_rec.get("Status") or "").strip().lower()
-                                if m_st in ["on delivery", "delivered", "manifested"]:
+                                if m_st in ["manifested", "delivered"]:
                                     m_ids_str = str(m_rec.get("ID List") or m_rec.get("ID Request") or "")
                                     try:
                                         m_box_total = int(float(str(m_rec.get("Jumlah Box") or 0).split('.')[0]))
@@ -1195,7 +1195,7 @@ else:
 
                                 dibuat_oleh = str(st.session_state.user_nama)
                                 waktu_buat = now.strftime("%Y-%m-%d %H:%M:%S")
-                                status_manifest = "On Delivery"
+                                status_manifest = "Manifested"  # Status manifest baru selalu 'Manifested'
                                 zona_str = ", ".join(selected_zones_manifest)
 
                                 ws_manifest.append_row([
@@ -1217,9 +1217,21 @@ else:
                                 for r_idx, r_val in enumerate(records_main, start=2):
                                     r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                     if r_id_str in matched_ids:
-                                        p_val = r_val.get("Progress", 0)
-                                        m_val = r_val.get("Jumlah Box", 0)
-                                        final_st = tentukan_status_id(p_val, m_val, status_manifest_saat_ini="On Delivery")
+                                        try:
+                                            p_val = int(float(str(r_val.get("Progress") or 0).split('.')[0]))
+                                        except Exception:
+                                            p_val = 0
+                                        try:
+                                            m_val = int(float(str(r_val.get("Jumlah Box") or 0).split('.')[0]))
+                                        except Exception:
+                                            m_val = 0
+
+                                        # Status ID: 'Delivered' jika sudah mencapai kuota penuh, selain itu 'On Delivery'
+                                        if m_val > 0 and p_val >= m_val:
+                                            final_st = "Delivered"
+                                        else:
+                                            final_st = "On Delivery"
+
                                         batch_updates.append(gspread.Cell(r_idx, status_col_i, final_st))
 
                                 if batch_updates:
