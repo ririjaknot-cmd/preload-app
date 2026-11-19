@@ -901,7 +901,7 @@ else:
                                         zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + tambahan
             
                 if zona_sisa_map:
-                    summary_items = [f"({z}) {cnt} Box" for z, cnt in sorted(zona_sisa_map.items())]
+                    summary_parts = [f"• ({z}) {cnt} Box" for z, cnt in sorted(zona_sisa_map.items())]
                 
                 # Hitung Summary Zona Cabang menggunakan parser universal (aman untuk format tunggal & multi-zona)
                 branch_zona_counts = {}
@@ -1112,48 +1112,88 @@ else:
                         st.warning("⚠️ Pilih minimal satu Zona Mezzanine terlebih dahulu.")
                     else:
                         try:
+                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                            gc = gspread.service_account_from_dict(creds_dict)
+                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                
+                            ws_manifest = sh.worksheet("Manifest log")
+                            ws_main = sh.worksheet("Database log")
+                
+                            # Hitung total box yang sudah pernah dimanifestkan per ID (agar tidak double-count saat On Delivery)
+                            records_mnf_existing = ws_manifest.get_all_records()
+                            id_sudah_dimanifest = {}
+                            for m_rec in records_mnf_existing:
+                                m_st = str(m_rec.get("Status") or m_rec.get("status") or "").strip().lower()
+                                if m_st in ["on delivery", "delivered"]:
+                                    m_ids_str = str(m_rec.get("ID Request") or m_rec.get("List ID") or m_rec.get("ID") or "")
+                                    m_box_total = int(float(str(m_rec.get("Total Box") or m_rec.get("Jumlah Box") or 0).split('.')[0]))
+                                    m_ids_list = [x.split('.')[0].strip() for x in m_ids_str.split(",") if x.strip()]
+                                    if len(m_ids_list) == 1 and m_ids_list[0]:
+                                        id_sudah_dimanifest[m_ids_list[0]] = id_sudah_dimanifest.get(m_ids_list[0], 0) + m_box_total
+                
                             matched_ids = []
                             total_box_manifest = 0
                             id_box_added_map = {}
-        
+                
                             for idx, row in df_filtered.iterrows():
-                                if str(row.get("Status", "")).strip().lower() == "delivered":
+                                st_clean = (
+                                    str(row.get("Status", ""))
+                                    .replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "")
+                                    .strip()
+                                    .lower()
+                                )
+                                if st_clean == "delivered":
                                     continue
+                
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
                                 r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                 curr_p = id_current_progress.get(r_id, 0)
-                                
+                
+                                try:
+                                    max_b = int(float(str(row.get("Jumlah Box") or 0).split('.')[0]))
+                                except Exception:
+                                    max_b = 0
+                
+                                # Jika status 'on delivery', kurangi box yang sudah terkirim/masuk manifest sebelumnya
+                                if st_clean == "on delivery":
+                                    sudah_kirim = id_sudah_dimanifest.get(r_id, curr_p)
+                                    # Box baru yang siap dimanifestkan = progress saat ini dikurangi yang sudah dikirim sebelumnya
+                                    box_siap_kirim = max(0, curr_p - sudah_kirim)
+                                    sisa_kuota_id = max(0, max_b - sudah_kirim)
+                                    box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
+                                else:
+                                    box_siap_kirim = curr_p
+                
+                                if box_siap_kirim <= 0:
+                                    continue
+                
                                 parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
                                 box_in_selected_zones = 0
                                 for sel_z in selected_zones_manifest:
                                     for p_z, p_cnt in parsed_row_zones.items():
                                         if sel_z.strip().lower() == p_z.strip().lower():
                                             box_in_selected_zones += p_cnt
-        
-                                if box_in_selected_zones > 0 and r_id and r_id not in matched_ids:
+                
+                                # Batasi box yang diambil pada manifest baru maksimal sebesar box_siap_kirim
+                                box_final_untuk_manifest = min(box_in_selected_zones, box_siap_kirim)
+                
+                                if box_final_untuk_manifest > 0 and r_id and r_id not in matched_ids:
                                     matched_ids.append(r_id)
-                                    id_box_added_map[r_id] = box_in_selected_zones
-                                    total_box_manifest += box_in_selected_zones
-        
+                                    id_box_added_map[r_id] = box_final_untuk_manifest
+                                    total_box_manifest += box_final_untuk_manifest
+                
                             if not matched_ids:
-                                st.warning("⚠️ Tidak ada ID Request atau progress box pada zona mezzanine yang dipilih.")
+                                st.warning("⚠️ Tidak ada box baru yang siap dimanifestkan pada zona mezzanine yang dipilih.")
                             else:
                                 now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                                 nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
-                                
-                                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                gc = gspread.service_account_from_dict(creds_dict)
-                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                
-                                ws_manifest = sh.worksheet("Manifest log")
-                                ws_main = sh.worksheet("Database log")
-        
+                
                                 dibuat_oleh = str(st.session_state.user_nama)
                                 waktu_buat = now.strftime("%Y-%m-%d %H:%M:%S")
-                                status_manifest = "On Delivery" # Status awal manifest baru dibuat
+                                status_manifest = "On Delivery"
                                 zona_str = ", ".join(selected_zones_manifest)
-        
+                
                                 ws_manifest.append_row([
                                     nomor_manifest,
                                     wilayah,
