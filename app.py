@@ -740,12 +740,12 @@ else:
         
                     st.markdown(
                         f"""
-                        <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 12px; color: #fff;'>
-                        <b>Summary Zona & Total Box Cabang:</b> {summary_zona_html}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                        <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 13px; color: #fff;'>
+                            <b>Summary Zona & Total Box Cabang:</b> {summary_branch_html}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
         
                     ids_to_remove = None
                     
