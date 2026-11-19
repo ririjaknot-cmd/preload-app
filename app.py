@@ -1182,10 +1182,10 @@ else:
                                             box_in_selected_zones += p_cnt
                             
                             box_final = min(box_in_selected_zones, box_siap_kirim)
-                                    if box_final > 0:
-                                        matched_ids.append(r_id)
-                                        id_box_added_map[r_id] = box_final
-                                        total_box_manifest += box_final
+                            if box_final > 0:
+                                matched_ids.append(r_id)
+                                id_box_added_map[r_id] = box_final
+                                total_box_manifest += box_final
 
                             if not matched_ids:
                                 st.warning("⚠️ Tidak ada box baru yang siap dimanifestkan pada zona mezzanine yang dipilih.")
