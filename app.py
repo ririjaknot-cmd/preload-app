@@ -895,31 +895,25 @@ else:
                     except Exception:
                         b_prog = 0
 
-                    # Kurangi box yang sudah masuk manifest sebelumnya (status On Delivery)
-                    zona_sudah_pernah_manifest = id_zona_terpakai.get(r_id, set())
-                    zona_tokens = [p.split("(")[0].strip() for p in row_zona.split(",") if p.strip()]
-                    box_in_selected_zones = 0
-                    if st_clean == "on delivery":
-                        if sudah_dimanifest > 0 and curr_p <= sudah_dimanifest:
-                            continue
-                    
-                        # Jika ada zona baru (zona yang belum pernah masuk manifest untuk ID ini)
-                        zona_baru_tersedia = [z for z in zona_tokens if z.strip().lower() not in zona_sudah_pernah_manifest]
-                    
-                        for sel_z in selected_zones_manifest:
-                            sel_low = sel_z.strip().lower()
-                            # Tolak zona yang sudah pernah masuk manifest untuk ID 'On Delivery' ini
-                            if sel_low in zona_sudah_pernah_manifest:
-                                continue
-                            # Jika zona tersebut memang bagian dari zona ID ini (atau zona baru yang ditambahkan)
-                            if sel_low in [z.strip().lower() for z in zona_baru_tersedia] or (not zona_baru_tersedia and sel_low not in zona_sudah_pernah_manifest):
-                                box_in_selected_zones += box_siap_kirim
-                    else:
-                        parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
-                        for sel_z in selected_zones_manifest:
-                            for p_z, p_cnt in parsed_row_zones.items():
-                                if sel_z.strip().lower() == p_z.strip().lower():
-                                    box_in_selected_zones += p_cnt
+                    # Kurangi box yang sudah masuk manifest sebelumnya
+                    sudah_dimanifest = id_box_termanifest.get(r_id_clean, 0)
+                    if st_clean == "on delivery" and sudah_dimanifest == 0:
+                        sudah_dimanifest = b_prog
+
+                    box_aktif_belum_kirim = max(0, b_prog - sudah_dimanifest)
+
+                    if box_aktif_belum_kirim > 0:
+                        zona_parts = [p.split("(")[0].strip() for p in z_val.split(",") if p.strip()]
+                        if len(zona_parts) == 1:
+                            branch_zona_counts[zona_parts[0]] = branch_zona_counts.get(zona_parts[0], 0) + box_aktif_belum_kirim
+                        else:
+                            parsed_all = parse_zona_mezzanine(z_val, total_progress=b_prog)
+                            if box_aktif_belum_kirim < b_prog and zona_parts:
+                                last_z = zona_parts[-1]
+                                branch_zona_counts[last_z] = branch_zona_counts.get(last_z, 0) + box_aktif_belum_kirim
+                            else:
+                                for sz, cnt in parsed_all.items():
+                                    branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + cnt
 
                 summary_branch_html = ""
                 if branch_zona_counts:
