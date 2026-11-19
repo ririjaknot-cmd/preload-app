@@ -1005,7 +1005,7 @@ else:
                     disabled=[c for c in cols_tersedia if c != "Zona Mezzanine"],
                     use_container_width=True,
                     hide_index=True,
-                    key=f"editor_preload_table_{wilayah}"
+                    key=f"editor_preload_{wilayah}"
                 )
                 
                 def normalize_zone(val):
