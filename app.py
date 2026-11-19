@@ -10,6 +10,21 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
+def hitung_sisa_box(row):
+    try:
+        jb = int(float(str(row.get("Jumlah Box") or 0).split('.')[0]))
+    except:
+        jb = 0
+    try:
+        pr = int(float(str(row.get("Progress") or 0).split('.')[0]))
+    except:
+        pr = 0
+    return max(0, jb - pr)
+
+if not df_lokal.empty:
+    df_lokal = df_lokal.copy()
+    df_lokal["Sisa Box"] = df_lokal.apply(hitung_sisa_box, axis=1)
+
 def parse_zona_mezzanine(zona_str, total_progress=0):
     """Membaca format tunggal ('A1'), koma ('A1, A2'), maupun rincian ('A1(2 Box), A2(3 Box)')"""
     if not zona_str or str(zona_str).strip().lower() in ["nan", "none", "nat", "", "-"]:
@@ -486,12 +501,12 @@ else:
                             
                             if not df_display.empty:
                                 status_formatted_list = []
-                                for idx, row in df_display.iterrows():
+                                for _, row in df_preload_display.iterrows():
                                     try:
                                         jb = row.get("Jumlah Box") or 0
                                         pr = row.get("Progress") or 0
                                         raw_st = str(row.get("Status", "")).strip().lower()
-            
+                            
                                         st_formatted = format_status_dengan_ikon(pr, jb)
                                         if raw_st == "on delivery":
                                             st_formatted = "🔵 On Delivery"
@@ -500,16 +515,36 @@ else:
                                         status_formatted_list.append(st_formatted)
                                     except Exception:
                                         status_formatted_list.append("🔴 Pending")
-            
-                                # Pastikan panjang list persis sama dengan jumlah baris df_display
-                                if len(status_formatted_list) == len(df_display):
-                                    df_display = df_display.copy()
-                                    df_display["Status"] = status_formatted_list
-
-            if not df_display.empty:
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
-            else:
-                st.info("Tidak ada data preload yang cocok atau tersedia untuk cabang ini.")
+                            
+                                if len(status_formatted_list) == len(df_preload_display):
+                                    df_preload_display["Status"] = status_formatted_list
+                            
+                                for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
+                                    if col in df_preload_display.columns:
+                                        df_preload_display = df_preload_display.drop(columns=[col])
+                            
+                                id_col_tampil = "ID" if "ID" in df_preload_display.columns else "id request"
+                                cols_tampil = [
+                                    id_col_tampil,
+                                    "Tujuan Pengiriman",
+                                    "Jumlah Box",
+                                    "Progress",
+                                    "Sisa Box",
+                                    "Zona Mezzanine",
+                                    "Loader",
+                                    "Waktu Preload",
+                                    "Status",
+                                ]
+                                kolom_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
+                                sisa_kolom = [c for c in df_preload_display.columns if c not in kolom_tersedia]
+                            
+                                st.dataframe(
+                                    df_preload_display[kolom_tersedia + sisa_kolom],
+                                    use_container_width=True,
+                                    hide_index=True,
+                                )
+                            else:
+                                st.info("Belum ada data preload aktif pada cabang ini.")
         
         with tab_preload:
             st.subheader(f"Proses Preload & Zona Mezzanine - {wilayah}")
@@ -857,7 +892,44 @@ else:
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             if not df_lokal.empty:
                 df_preload_display = df_lokal.copy()
+                def _hitung_sisa(r):
+                    try:
+                        jb = int(float(str(r.get("Jumlah Box") or 0).split('.')[0]))
+                    except:
+                        jb = 0
+                    try:
+                        pr = int(float(str(r.get("Progress") or 0).split('.')[0]))
+                    except:
+                        pr = 0
+                    return max(0, jb - pr)
+            
+                df_preload_display["Sisa Box"] = df_preload_display.apply(_hitung_sisa, axis=1)
                 
+                zona_sisa_map = {}
+                for _, r in df_tampil_preload.iterrows():
+                    st_row = str(r.get("Status", "")).strip().lower()
+                    if st_row == "delivered":
+                        continue
+            
+                    sisa_b = int(r.get("Sisa Box") or 0)
+                    if sisa_b > 0:
+                        z_text = str(r.get("Zona Mezzanine", "")).strip()
+                        zona_list = [part.split("(")[0].strip() for part in z_text.split(",") if part.strip()]
+                        if zona_list:
+                            if len(zona_list) == 1:
+                                z_name = zona_list[0]
+                                zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + sisa_b
+                            else:
+                                for idx_z, z_name in enumerate(zona_list):
+                                    tambahan = sisa_b // len(zona_list) + (1 if idx_z < (sisa_b % len(zona_list)) else 0)
+                                    if tambahan > 0:
+                                        zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + tambahan
+            
+                if zona_sisa_map:
+                    summary_items = [f"({z}) {cnt} Box" for z, cnt in sorted(zona_sisa_map.items())]
+                    st.info(f"**Summary Zona & Total Box Cabang:** • {' • '.join(summary_items)}")
+                else:
+                    st.info("**Summary Zona & Total Box Cabang:** • Tidak ada sisa box aktif")
                 # Hitung Summary Zona Cabang menggunakan parser universal (aman untuk format tunggal & multi-zona)
                 branch_zona_counts = {}
                 for _, r_item in df_preload_display.iterrows():
@@ -908,16 +980,16 @@ else:
                     "ID" if "ID" in df_preload_display.columns else "id request", 
                     "Tujuan Pengiriman", 
                     "Jumlah Box", 
-                    "Progress", 
+                    "Progress",
+                    "Sisa Box",
                     "Zona Mezzanine", 
                     "Loader", 
                     "Waktu Preload", 
                     "Status"
                 ]
-                cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
-                id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
-                
-                df_editor_clean = df_preload_display[cols_tersedia].reset_index(drop=True)
+                kolom_tersedia = [c for c in kolom_prioritas if c in df_tampil_preload.columns]
+                sisa_kolom = [c for c in df_tampil_preload.columns if c not in kolom_tersedia]
+                st.dataframe(df_tampil_preload[kolom_tersedia + sisa_kolom], use_container_width=True, hide_index=True)
                 
                 # Menggunakan TextColumn agar format gabungan seperti "A1(2 Box), A2(3 Box)" bisa tampil & diedit dengan bebas
                 edited_preload_df = st.data_editor(
