@@ -983,9 +983,14 @@ else:
                     "Waktu Preload", 
                     "Status"
                 ]
-                kolom_tersedia = [c for c in kolom_prioritas if c in df_preload_display.columns]
+                kolom_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
                 sisa_kolom = [c for c in df_preload_display.columns if c not in kolom_tersedia]
-                st.dataframe(df_preload_display[kolom_tersedia + sisa_kolom], use_container_width=True, hide_index=True)
+            
+                st.dataframe(
+                    df_preload_display[kolom_tersedia + sisa_kolom],
+                    use_container_width=True,
+                    hide_index=True,
+                )
                 
                 # Menggunakan TextColumn agar format gabungan seperti "A1(2 Box), A2(3 Box)" bisa tampil & diedit dengan bebas
                 edited_preload_df = st.data_editor(
