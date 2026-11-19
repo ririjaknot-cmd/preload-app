@@ -871,7 +871,7 @@ else:
             
                 df_lokal["Sisa Box"] = df_lokal.apply(_hitung_sisa_aktif, axis=1)
             
-                zona_sisa_map = {}
+                branch_zona_counts = {}
                 for _, r in df_lokal.iterrows():
                     st_clean = str(r.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
                     if st_clean == "delivered":
@@ -893,12 +893,12 @@ else:
                         if zona_list:
                             if len(zona_list) == 1:
                                 z_name = zona_list[0]
-                                zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + sisa_b
+                                branch_zona_counts[z_name] = branch_zona_counts.get(z_name, 0) + sisa_b
                             else:
                                 for idx_z, z_name in enumerate(zona_list):
                                     tambahan = sisa_b // len(zona_list) + (1 if idx_z < (sisa_b % len(zona_list)) else 0)
                                     if tambahan > 0:
-                                        zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + tambahan
+                                        branch_zona_counts[z_name] = branch_zona_counts.get(z_name, 0) + tambahan
             
                 if branch_zona_counts:
                     branch_summary_items = [f"• <b>({z})</b> {cnt} Box" for z, cnt in sorted(branch_zona_counts.items())]
