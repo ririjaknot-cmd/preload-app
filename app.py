@@ -991,7 +991,7 @@ else:
                     use_container_width=True,
                     hide_index=True,
                 )
-                
+                df_editor_clean = df_preload_display.drop(columns=["Sisa Box"], errors="ignore").copy()
                 # Menggunakan TextColumn agar format gabungan seperti "A1(2 Box), A2(3 Box)" bisa tampil & diedit dengan bebas
                 edited_preload_df = st.data_editor(
                     df_editor_clean,
