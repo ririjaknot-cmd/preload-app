@@ -603,14 +603,18 @@ else:
                                 current_prog = int(float(row.get("Progress", 0))) if pd.notna(row.get("Progress")) else 0
                             except:
                                 max_box, current_prog = 0, 0
-                        
+                            sisa_kuota = max(0, max_box - current_prog)
+
                             if current_prog >= max_box and max_box > 0 and row_status != "on delivery":
                                 st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah selesai diproses.")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
-                            elif (current_prog + int(jumlah_box_val)) > max_box:
-                                sisa_box = max_box - current_prog
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi batas kuota (Sisa kuota: {sisa_box} box).")
+                            elif sisa_kuota <= 0:
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah mencapai batas kuota ({max_box} box).")
+                                st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
+                                st.rerun()
+                            elif int(jumlah_box_val) > sisa_kuota:
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi sisa kuota (Sisa: {sisa_kuota} dari {max_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             else:
@@ -1310,12 +1314,9 @@ else:
                                                         m_val = 0
                                                     
                                                     if m_val > 0 and 0 < p_val < m_val:
-                                                        sisa_box = m_val - p_val
+    
                                                         batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "On Delivery"))
-                                                        if box_col_i:
-                                                            batch_cell_updates.append(gspread.Cell(r_i, box_col_i, sisa_box))
-                                                        if prog_col_i:
-                                                            batch_cell_updates.append(gspread.Cell(r_i, prog_col_i, 0))
+                                                        
                                                     else:
                                                         # Sudah lengkap / penuh
                                                         batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "Delivered"))
