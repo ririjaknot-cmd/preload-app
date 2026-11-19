@@ -21,10 +21,6 @@ def hitung_sisa_box(row):
         pr = 0
     return max(0, jb - pr)
 
-if not df_lokal.empty:
-    df_lokal = df_lokal.copy()
-    df_lokal["Sisa Box"] = df_lokal.apply(hitung_sisa_box, axis=1)
-
 def parse_zona_mezzanine(zona_str, total_progress=0):
     """Membaca format tunggal ('A1'), koma ('A1, A2'), maupun rincian ('A1(2 Box), A2(3 Box)')"""
     if not zona_str or str(zona_str).strip().lower() in ["nan", "none", "nat", "", "-"]:
