@@ -42,15 +42,18 @@ def format_zona_output(zone_dict):
         return list(valid_zones.keys())[0]
     return ", ".join([f"{z}({b} Box)" for z, b in valid_zones.items()])
 
-def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini=""):
+def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini="", status_saat_ini=""):
     """
-    Menentukan status ID secara cerdas:
-    - 0 Box -> Pending
-    - Progress < Max Box -> Not Completed
-    - Progress >= Max Box:
-        - Jika manifest 'Delivered' atau selesai penuh -> Delivered
-        - Jika baru dikirim sebagian (parsial / On Delivery) -> On Delivery
-        - Default selesai preload -> Completed
+    Aturan status ID:
+    - Jika sudah 'Delivered' penuh dan kuota terpenuhi -> 'Delivered'
+    - Jika progress <= 0 -> 'Pending'
+    - Jika progress < max_box:
+        - Jika sudah pernah masuk manifest / berstatus 'On Delivery' -> 'On Delivery'
+        - Jika masih tahap preload -> 'Not Completed'
+    - Jika progress >= max_box (max_box > 0):
+        - Jika manifest sudah 'Delivered' -> 'Delivered'
+        - Jika manifest masih 'On Delivery' -> 'On Delivery' (menunggu konfirmasi/kelengkapan)
+        - Default selesai preload -> 'Completed'
     """
     try:
         p = int(float(str(current_prog or 0).split('.')[0]))
@@ -58,18 +61,27 @@ def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini=""):
     except:
         p, max_b = 0, 0
 
+    st_curr_lower = str(status_saat_ini).strip().lower()
+    st_mnf_lower = str(status_manifest_saat_ini).strip().lower()
+
+    if st_curr_lower == "delivered" and max_b > 0 and p >= max_b:
+        return "Delivered"
+
     if p <= 0:
         return "Pending"
-    elif p < max_b:
-        return "Not Completed"
-    else:
-        status_lower = str(status_manifest_saat_ini).strip().lower()
-        if "delivered" in status_lower:
-            return "Delivered"
-        elif "on delivery" in status_lower:
+
+    if max_b > 0 and p < max_b:
+        if "on delivery" in st_curr_lower or "on delivery" in st_mnf_lower or "delivered" in st_mnf_lower:
             return "On Delivery"
-        else:
-            return "Completed"
+        return "Not Completed"
+
+    # p >= max_b (atau max_b <= 0)
+    if "delivered" in st_mnf_lower:
+        return "Delivered"
+    elif "on delivery" in st_mnf_lower:
+        return "On Delivery"
+    else:
+        return "Completed"
 
 def format_status_dengan_ikon(progress, jumlah_box, status_manifest=""):
     st_text = tentukan_status_id(progress, jumlah_box, status_manifest)
@@ -464,20 +476,26 @@ else:
                                 m_id = str(m_row.get(target_col, "")).split('.')[0].strip()
                                 m_status = str(m_row.get("Status", "")).strip().lower()
                                 if m_status == "on delivery":
-                                    st.warning(f"**Status ID {m_id} : On Delivery** (ID sudah dalam proses pengiriman).")
-
-            if not df_display.empty:
-                status_formatted_list = []
-                for idx, row in df_display.iterrows():
-                    try:
-                        jb = row.get("Jumlah Box") or 0
-                        pr = row.get("Progress")
-                        st_formatted = format_status_dengan_ikon(pr, jb)
-                        if str(row.get("Status", "")).strip().lower() == "on delivery":
-                            st_formatted = "On Delivery"
-                        status_formatted_list.append(st_formatted)
-                    except Exception:
-                        status_formatted_list.append("🔴 Pending")
+                                    st.warning(f"**Status ID {m_id} : On Delivery** (Terkirim sebagian / dalam proses pengiriman).")
+                                elif m_status == "delivered":
+                                    st.success(f"**Status ID {m_id} : Delivered** (Seluruh box sudah terkirim lengkap).")
+                            
+                            if not df_display.empty:
+                                status_formatted_list = []
+                                for idx, row in df_display.iterrows():
+                                    try:
+                                        jb = row.get("Jumlah Box") or 0
+                                        pr = row.get("Progress") or 0
+                                        raw_st = str(row.get("Status", "")).strip().lower()
+                                        
+                                        st_formatted = format_status_dengan_ikon(pr, jb)
+                                        if raw_st == "on delivery":
+                                            st_formatted = "🔵 On Delivery"
+                                        elif raw_st == "delivered":
+                                            st_formatted = "🟢 Delivered"
+                                        status_formatted_list.append(st_formatted)
+                                    except Exception:
+                                        status_formatted_list.append("🔴 Pending")
                 
                 df_display["Status"] = status_formatted_list
 
@@ -558,9 +576,8 @@ else:
                     else:
                         idx = matched.index[0]
                         row = df_lokal.loc[idx]
-                        
-                        row_status = str(row.get("Status", "")).strip().lower()
-                        if row_status == "delivered":
+                       
+                        if str(row.get("Status", "")).strip().lower() == "delivered":
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** sudah berstatus **Delivered**.")
                             st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
@@ -1019,6 +1036,8 @@ else:
                             id_box_added_map = {}
         
                             for idx, row in df_filtered.iterrows():
+                                if str(row.get("Status", "")).strip().lower() == "delivered":
+                                    continue
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
                                 r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                 curr_p = id_current_progress.get(r_id, 0)
@@ -1087,9 +1106,6 @@ else:
                                 if batch_updates:
                                     ws_main.update_cells(batch_updates)
         
-                                st.success(f"✅ Berhasil membuat Manifest **{nomor_manifest}** (Status: On Delivery)!")
-                                st.session_state[f"sound_effect_{wilayah}"] = "success"
-                                st.rerun()
                         except Exception as e:
                             st.error(f"❌ Gagal membuat manifest: {e}")
         
@@ -1266,14 +1282,33 @@ else:
                                             for r_i, r_v in enumerate(records_main, start=2):
                                                 r_id_str = str(r_v.get("ID") or r_v.get("id request") or "").split('.')[0].strip()
                                                 if r_id_str in manifest_id_list:
-                                                    # Ubah status ID di database menjadi Delivered penuh
-                                                    batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "Delivered"))
+                                                    try:
+                                                        p_val = int(float(str(r_v.get("Progress") or 0).split('.')[0]))
+                                                    except:
+                                                        p_val = 0
+                                                    try:
+                                                        m_val = int(float(str(r_v.get("Jumlah Box") or 0).split('.')[0]))
+                                                    except:
+                                                        m_val = 0
+                                                    
+                                                    # Jika baru dikirim sebagian (< Jumlah Box), statusnya 'On Delivery'
+                                                    # Jika sudah lengkap (>= Jumlah Box), statusnya 'Delivered'
+                                                    if m_val > 0 and p_val < m_val:
+                                                        status_akhir_id = "On Delivery"
+                                                    else:
+                                                        status_akhir_id = "Delivered"
+                                                        
+                                                    batch_cell_updates.append(gspread.Cell(r_i, status_col_i, status_akhir_id))
                                             
                                             if batch_cell_updates:
                                                 ws_main.update_cells(batch_cell_updates)
                                             
                                             st.cache_data.clear()
-                                            st.success(f"✅ Manifest `{mnf_num}` & ID terkait berhasil diubah menjadi **Delivered**!")
+                                            for k in list(st.session_state.keys()):
+                                                if "local_df_preload" in k or "has_unsaved_changes" in k:
+                                                    del st.session_state[k]
+                                            
+                                            st.success(f"✅ Manifest `{mnf_num}` diproses! ID lengkap menjadi **Delivered**, ID parsial tetap **On Delivery**.")
                                             st.rerun()
                                     except Exception as e:
                                         st.error(f"❌ Gagal merubah status Delivered: {e}")
