@@ -1118,7 +1118,7 @@ else:
                             records_mnf_existing = ws_manifest.get_all_records()
                             id_sudah_dimanifest = {}
                             id_zona_terpakai = {}
-                            
+
                             for m_rec in records_mnf_existing:
                                 if str(m_rec.get("Tujuan Pengiriman", "")).strip().lower() != wilayah.strip().lower():
                                     continue
@@ -1128,19 +1128,19 @@ else:
                                     m_zona_str = str(m_rec.get("Zona Mezzanine") or "")
                                     zona_list_m = [z.strip().lower() for z in m_zona_str.split(",") if z.strip()]
                                     m_ids_list = [x.split('.')[0].strip() for x in m_ids_str.split(",") if x.strip()]
-                            
+
                                     try:
                                         m_box_total = int(float(str(m_rec.get("Jumlah Box") or 0).split('.')[0]))
                                     except Exception:
                                         m_box_total = 0
-                            
+
                                     for m_id_item in m_ids_list:
                                         if not m_id_item:
                                             continue
                                         if m_id_item not in id_zona_terpakai:
                                             id_zona_terpakai[m_id_item] = set()
                                         id_zona_terpakai[m_id_item].update(zona_list_m)
-                            
+
                                     if len(m_ids_list) == 1 and m_ids_list[0]:
                                         id_sudah_dimanifest[m_ids_list[0]] = id_sudah_dimanifest.get(m_ids_list[0], 0) + m_box_total
 
@@ -1157,42 +1157,56 @@ else:
                                 )
                                 if st_clean == "delivered":
                                     continue
-
+                            
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
                                 r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
+                                if not r_id:
+                                    continue
+                            
                                 curr_p = id_current_progress.get(r_id, 0)
                                 max_b = id_max_box.get(r_id, 0)
-
+                            
                                 sudah_dimanifest = id_sudah_dimanifest.get(r_id, 0)
-                                box_siap_kirim = max(0, curr_p - sudah_dimanifest)
-                                sisa_kuota_id = max(0, max_b - sudah_dimanifest)
-                                box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
-
-                                if box_siap_kirim <= 0:
-                                    continue
-
+                                zona_sudah_pernah_manifest = id_zona_terpakai.get(r_id, set())
                                 zona_tokens = [p.split("(")[0].strip() for p in row_zona.split(",") if p.strip()]
+                            
                                 box_in_selected_zones = 0
-
-                                # Jika sudah ada pengiriman sebelumnya, zona lama tidak dihitung ulang
-                                if sudah_dimanifest > 0 and len(zona_tokens) > 1:
-                                    zona_terpakai_lama = {z.strip().lower() for z in zona_tokens[:-1]}
-                                    zona_baru_terakhir = zona_tokens[-1].strip().lower()
+                                box_siap_kirim = 0
+                            
+                                if st_clean == "on delivery":
+                                    # Hitung sisa box baru yang belum dimanifestkan
+                                    box_siap_kirim = max(0, curr_p - sudah_dimanifest)
+                                    sisa_kuota_id = max(0, max_b - sudah_dimanifest)
+                                    box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
+                            
+                                    if box_siap_kirim <= 0:
+                                        continue
+                            
+                                    # Zona yang sudah pernah masuk manifest untuk ID 'On Delivery' ini ditolak
                                     for sel_z in selected_zones_manifest:
                                         sel_low = sel_z.strip().lower()
-                                        if sel_low in zona_terpakai_lama and sel_low != zona_baru_terakhir:
+                                        if sel_low in zona_sudah_pernah_manifest:
                                             continue
-                                        if sel_low == zona_baru_terakhir:
+                                        # Jika zona terpilih memang ada di zona ID ini dan belum pernah dimanifestkan
+                                        if sel_low in [z.strip().lower() for z in zona_tokens]:
                                             box_in_selected_zones += box_siap_kirim
+                            
+                                    box_final = min(box_in_selected_zones, box_siap_kirim)
                                 else:
+                                    # ID lain yang belum pernah masuk manifest (bukan 'on delivery')
+                                    box_siap_kirim = curr_p
+                                    if box_siap_kirim <= 0:
+                                        continue
+                            
                                     parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
                                     for sel_z in selected_zones_manifest:
                                         for p_z, p_cnt in parsed_row_zones.items():
                                             if sel_z.strip().lower() == p_z.strip().lower():
                                                 box_in_selected_zones += p_cnt
-
-                                box_final = min(box_in_selected_zones, box_siap_kirim)
-                                if box_final > 0 and r_id and r_id not in matched_ids:
+                            
+                                    box_final = min(box_in_selected_zones, box_siap_kirim)
+                            
+                                if box_final > 0 and r_id not in matched_ids:
                                     matched_ids.append(r_id)
                                     id_box_added_map[r_id] = box_final
                                     total_box_manifest += box_final
