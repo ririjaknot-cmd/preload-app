@@ -491,7 +491,7 @@ else:
                                         jb = row.get("Jumlah Box") or 0
                                         pr = row.get("Progress") or 0
                                         raw_st = str(row.get("Status", "")).strip().lower()
-                                        
+            
                                         st_formatted = format_status_dengan_ikon(pr, jb)
                                         if raw_st == "on delivery":
                                             st_formatted = "🔵 On Delivery"
@@ -500,8 +500,11 @@ else:
                                         status_formatted_list.append(st_formatted)
                                     except Exception:
                                         status_formatted_list.append("🔴 Pending")
-                
-                df_display["Status"] = status_formatted_list
+            
+                                # Pastikan panjang list persis sama dengan jumlah baris df_display
+                                if len(status_formatted_list) == len(df_display):
+                                    df_display = df_display.copy()
+                                    df_display["Status"] = status_formatted_list
 
             if not df_display.empty:
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
