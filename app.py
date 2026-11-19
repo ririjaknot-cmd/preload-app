@@ -896,7 +896,7 @@ else:
                 
                 # Hitung Summary Zona Cabang menggunakan parser universal (aman untuk format tunggal & multi-zona)
                 branch_zona_counts = {}
-                for _, r_item in df_preload_display.iterrows():
+                for _, r_item in df_lokal.iterrows():
                     z_val = str(r_item.get("Zona Mezzanine", "")).strip()
                     if z_val and z_val.lower() not in ["nan", "none", "nat", ""]:
                         try:
@@ -925,7 +925,7 @@ else:
                 )
         
                 status_formatted_list = []
-                for idx, row in df_preload_display.iterrows():
+                for idx, row in df_lokal.iterrows():
                     try:
                         jb = row.get("Jumlah Box") or 0
                         pr = row.get("Progress")
@@ -934,14 +934,14 @@ else:
                     except Exception:
                         status_formatted_list.append("🔴 Pending")
                 
-                df_preload_display["Status"] = status_formatted_list
+                df_lokal["Status"] = status_formatted_list
             
                 for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
-                    if col in df_preload_display.columns:
-                        df_preload_display = df_preload_display.drop(columns=[col])
+                    if col in df_lokal.columns:
+                        df_lokal = df_lokal.drop(columns=[col])
             
                 cols_tampil = [
-                    "ID" if "ID" in df_preload_display.columns else "id request", 
+                    "ID" if "ID" in df_lokal.columns else "id request", 
                     "Tujuan Pengiriman", 
                     "Jumlah Box", 
                     "Progress", 
@@ -950,10 +950,10 @@ else:
                     "Waktu Preload", 
                     "Status"
                 ]
-                cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
-                id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
+                cols_tersedia = [c for c in cols_tampil if c in df_lokal.columns]
+                id_col_key = "ID" if "ID" in df_lokal.columns else "id request"
                 
-                df_editor_clean = df_preload_display[cols_tersedia].reset_index(drop=True)
+                df_editor_clean = df_lokal[cols_tersedia].reset_index(drop=True)
                 
                 # Menggunakan TextColumn agar format gabungan seperti "A1(2 Box), A2(3 Box)" bisa tampil & diedit dengan bebas
                 edited_preload_df = st.data_editor(
