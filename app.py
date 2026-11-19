@@ -461,7 +461,11 @@ else:
             keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Masukkan ID Request yang ingin dicari...", key="search_id_request")
             
             df_display = df_filtered.copy()
-            
+            if not keyword_cari or not str(keyword_cari).strip():
+                if "Status" in df_display.columns:
+                    df_display = df_display[
+                        df_display["Status"].astype(str).str.strip().str.lower() != "delivered"
+                    ].copy()
             if keyword_cari and not df_database.empty:
                 df_all_branch = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy() if "Tujuan Pengiriman" in df_database.columns else pd.DataFrame()
                 if not df_all_branch.empty:
@@ -526,7 +530,11 @@ else:
                 st.session_state[scanned_ids_key] = []
                 st.session_state[session_boxes_key] = {}
                 st.session_state[base_zona_key] = {}
-        
+                if not df_lokal.empty and "Status" in df_lokal.columns:
+                    df_lokal = df_lokal[
+                        df_lokal["Status"].astype(str).str.strip().str.lower() != "delivered"
+                    ].copy()
+            st.session_state[local_df_key] = df_lokal
             df_lokal = st.session_state[local_df_key]
             id_col_name = 'ID' if 'ID' in df_lokal.columns else 'id request'
         
@@ -576,8 +584,10 @@ else:
                     else:
                         idx = matched.index[0]
                         row = df_lokal.loc[idx]
-                        row_status = str(row.get("Status", "")).strip().lower()
+                
+                        st.session_state[local_df_key] = df_lokal
                         
+                        row_status = str(row.get("Status", "")).strip().lower()
                         if row_status == "delivered":
                             st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** sudah berstatus **Delivered**.")
                             st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
@@ -1278,6 +1288,8 @@ else:
                                             records_main = ws_main.get_all_records()
                                             header_main = ws_main.row_values(1)
                                             status_col_i = header_main.index("Status") + 1 if "Status" in header_main else 10
+                                            box_col_i = header_main.index("Jumlah Box") + 1 if "Jumlah Box" in header_main else None
+                                            prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else None
                                             
                                             batch_cell_updates = []
                                             for r_i, r_v in enumerate(records_main, start=2):
@@ -1292,14 +1304,16 @@ else:
                                                     except:
                                                         m_val = 0
                                                     
-                                                    # Jika baru dikirim sebagian (< Jumlah Box), statusnya 'On Delivery'
-                                                    # Jika sudah lengkap (>= Jumlah Box), statusnya 'Delivered'
-                                                    if m_val > 0 and p_val < m_val:
-                                                        status_akhir_id = "On Delivery"
+                                                    if m_val > 0 and 0 < p_val < m_val:
+                                                        sisa_box = m_val - p_val
+                                                        batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "On Delivery"))
+                                                        if box_col_i:
+                                                            batch_cell_updates.append(gspread.Cell(r_i, box_col_i, sisa_box))
+                                                        if prog_col_i:
+                                                            batch_cell_updates.append(gspread.Cell(r_i, prog_col_i, 0))
                                                     else:
-                                                        status_akhir_id = "Delivered"
-                                                        
-                                                    batch_cell_updates.append(gspread.Cell(r_i, status_col_i, status_akhir_id))
+                                                        # Sudah lengkap / penuh
+                                                        batch_cell_updates.append(gspread.Cell(r_i, status_col_i, "Delivered"))
                                             
                                             if batch_cell_updates:
                                                 ws_main.update_cells(batch_cell_updates)
