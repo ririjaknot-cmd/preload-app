@@ -902,35 +902,17 @@ else:
             
                 if zona_sisa_map:
                     summary_parts = [f"• ({z}) {cnt} Box" for z, cnt in sorted(zona_sisa_map.items())]
-                
-                # Hitung Summary Zona Cabang menggunakan parser universal (aman untuk format tunggal & multi-zona)
-                branch_zona_counts = {}
-                for _, r_item in df_lokal.iterrows():
-                    z_val = str(r_item.get("Zona Mezzanine", "")).strip()
-                    if z_val and z_val.lower() not in ["nan", "none", "nat", ""]:
-                        try:
-                            b_val = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
-                        except:
-                            b_val = 0
-                        
-                        parsed_z = parse_zona_mezzanine(z_val, total_progress=b_val)
-                        for sz, cnt in parsed_z.items():
-                            branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + cnt
-        
-                summary_branch_html = ""
-                if branch_zona_counts:
-                    branch_summary_items = [f"• <b>({z})</b> {cnt} Box" for z, cnt in sorted(branch_zona_counts.items())]
-                    summary_branch_html = " | ".join(branch_summary_items)
+                    summary_text = " | ".join(summary_parts)
                 else:
-                    summary_branch_html = "<i>Belum ada zona mezzanine yang tercatat pada data cabang ini.</i>"
-        
+                    summary_text = "• Tidak ada sisa box aktif"
+                
                 st.markdown(
                     f"""
-                    <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 13px; color: #fff;'>
-                        <b>Summary Zona & Total Box Cabang:</b> {summary_branch_html}
+                    <div style="background-color:#161b2e; padding:12px 16px; border-radius:8px; margin-bottom:10px;">
+                        <b>Summary Zona & Total Box Cabang:</b> {summary_text}
                     </div>
                     """,
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
         
                 status_formatted_list = []
@@ -1131,11 +1113,11 @@ else:
                                     m_ids_list = [x.split('.')[0].strip() for x in m_ids_str.split(",") if x.strip()]
                                     if len(m_ids_list) == 1 and m_ids_list[0]:
                                         id_sudah_dimanifest[m_ids_list[0]] = id_sudah_dimanifest.get(m_ids_list[0], 0) + m_box_total
-                
+                            
                             matched_ids = []
                             total_box_manifest = 0
                             id_box_added_map = {}
-                
+                            
                             for idx, row in df_filtered.iterrows():
                                 st_clean = (
                                     str(row.get("Status", ""))
@@ -1145,39 +1127,44 @@ else:
                                 )
                                 if st_clean == "delivered":
                                     continue
-                
+                            
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
                                 r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                 curr_p = id_current_progress.get(r_id, 0)
-                
+                            
                                 try:
                                     max_b = int(float(str(row.get("Jumlah Box") or 0).split('.')[0]))
                                 except Exception:
                                     max_b = 0
-                
-                                # Jika status 'on delivery', kurangi box yang sudah terkirim/masuk manifest sebelumnya
+                            
                                 if st_clean == "on delivery":
-                                    sudah_kirim = id_sudah_dimanifest.get(r_id, curr_p)
-                                    # Box baru yang siap dimanifestkan = progress saat ini dikurangi yang sudah dikirim sebelumnya
+                                    sudah_kirim = id_sudah_dimanifest.get(r_id, 0)
+                                    # Jika sudah_kirim belum tercatat di Manifest log, anggap yang sudah terkirim adalah progress sebelumnya
+                                    if sudah_kirim == 0 and curr_p > 0:
+                                        sudah_kirim = curr_p
                                     box_siap_kirim = max(0, curr_p - sudah_kirim)
                                     sisa_kuota_id = max(0, max_b - sudah_kirim)
                                     box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
                                 else:
                                     box_siap_kirim = curr_p
-                
+                            
                                 if box_siap_kirim <= 0:
                                     continue
-                
+                            
                                 parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
                                 box_in_selected_zones = 0
                                 for sel_z in selected_zones_manifest:
                                     for p_z, p_cnt in parsed_row_zones.items():
                                         if sel_z.strip().lower() == p_z.strip().lower():
                                             box_in_selected_zones += p_cnt
-                
-                                # Batasi box yang diambil pada manifest baru maksimal sebesar box_siap_kirim
-                                box_final_untuk_manifest = min(box_in_selected_zones, box_siap_kirim)
-                
+                            
+                                # Jika parsed_row_zones tidak memunculkan box baru tapi box_siap_kirim > 0 dan zona dipilih,
+                                # gunakan box_siap_kirim agar sisa box baru di zona yang sama tetap bisa diproses
+                                if box_in_selected_zones <= 0 and box_siap_kirim > 0 and selected_zones_manifest:
+                                    box_final_untuk_manifest = box_siap_kirim
+                                else:
+                                    box_final_untuk_manifest = min(box_in_selected_zones, box_siap_kirim)
+                            
                                 if box_final_untuk_manifest > 0 and r_id and r_id not in matched_ids:
                                     matched_ids.append(r_id)
                                     id_box_added_map[r_id] = box_final_untuk_manifest
