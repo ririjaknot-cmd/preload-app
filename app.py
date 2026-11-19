@@ -856,7 +856,43 @@ else:
             st.markdown("---")
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             if not df_lokal.empty:
-                df_preload_display = df_lokal.copy()
+                df_lokal = df_lokal.copy()
+
+                def _hitung_sisa_aktif(r):
+                    try:
+                        jb = int(float(str(r.get("Jumlah Box") or 0).split('.')[0]))
+                    except Exception:
+                        jb = 0
+                    try:
+                        pr = int(float(str(r.get("Progress") or 0).split('.')[0]))
+                    except Exception:
+                        pr = 0
+                    return max(0, jb - pr)
+            
+                df_lokal["Sisa Box"] = df_lokal.apply(_hitung_sisa_aktif, axis=1)
+            
+                zona_sisa_map = {}
+                for _, r in df_lokal.iterrows():
+                    st_row = str(r.get("Status", "")).strip().lower()
+                    if st_row == "delivered":
+                        continue
+            
+                    sisa_b = int(r.get("Sisa Box") or 0)
+                    if sisa_b > 0:
+                        z_text = str(r.get("Zona Mezzanine", "")).strip()
+                        zona_list = [part.split("(")[0].strip() for part in z_text.split(",") if part.strip()]
+                        if zona_list:
+                            if len(zona_list) == 1:
+                                z_name = zona_list[0]
+                                zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + sisa_b
+                            else:
+                                for idx_z, z_name in enumerate(zona_list):
+                                    tambahan = sisa_b // len(zona_list) + (1 if idx_z < (sisa_b % len(zona_list)) else 0)
+                                    if tambahan > 0:
+                                        zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + tambahan
+            
+                if zona_sisa_map:
+                    summary_items = [f"({z}) {cnt} Box" for z, cnt in sorted(zona_sisa_map.items())]
                 
                 # Hitung Summary Zona Cabang menggunakan parser universal (aman untuk format tunggal & multi-zona)
                 branch_zona_counts = {}
