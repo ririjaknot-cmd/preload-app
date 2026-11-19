@@ -525,15 +525,20 @@ else:
                 st.session_state[base_zona_key] = {}
         
             if local_df_key not in st.session_state or st.sidebar.button("🔄 Reset Draft", key=f"reset_{wilayah}"):
-                st.session_state[local_df_key] = df_filtered.copy()
+                df_lokal = df_filtered.copy()
+                st.session_state[local_df_key] = df_lokal
                 st.session_state[changes_key] = False
                 st.session_state[scanned_ids_key] = []
                 st.session_state[session_boxes_key] = {}
                 st.session_state[base_zona_key] = {}
-                if not df_lokal.empty and "Status" in df_lokal.columns:
-                    df_lokal = df_lokal[
-                        df_lokal["Status"].astype(str).str.strip().str.lower() != "delivered"
-                    ].copy()
+            else:
+                df_lokal = st.session_state[local_df_key]
+            
+            if not df_lokal.empty and "Status" in df_lokal.columns:
+                df_lokal = df_lokal[
+                    df_lokal["Status"].astype(str).str.strip().str.lower() != "delivered"
+                ].copy()
+            
             st.session_state[local_df_key] = df_lokal
             df_lokal = st.session_state[local_df_key]
             id_col_name = 'ID' if 'ID' in df_lokal.columns else 'id request'
