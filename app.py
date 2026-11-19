@@ -900,19 +900,19 @@ else:
                                     if tambahan > 0:
                                         zona_sisa_map[z_name] = zona_sisa_map.get(z_name, 0) + tambahan
             
-                if zona_sisa_map:
-                    summary_parts = [f"• ({z}) {cnt} Box" for z, cnt in sorted(zona_sisa_map.items())]
-                    summary_text = " | ".join(summary_parts)
+                if branch_zona_counts:
+                    branch_summary_items = [f"• <b>({z})</b> {cnt} Box" for z, cnt in sorted(branch_zona_counts.items())]
+                    summary_branch_html = " | ".join(branch_summary_items)
                 else:
-                    summary_text = "• Tidak ada sisa box aktif"
-                
+                    summary_branch_html = "<i>Belum ada zona mezzanine yang tercatat pada data cabang ini.</i>"
+        
                 st.markdown(
                     f"""
-                    <div style="background-color:#161b2e; padding:12px 16px; border-radius:8px; margin-bottom:10px;">
-                        <b>Summary Zona & Total Box Cabang:</b> {summary_text}
+                    <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 13px; color: #fff;'>
+                        <b>Summary Zona & Total Box Cabang:</b> {summary_branch_html}
                     </div>
                     """,
-                    unsafe_allow_html=True,
+                    unsafe_allow_html=True
                 )
         
                 status_formatted_list = []
