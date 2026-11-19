@@ -740,7 +740,7 @@ else:
         
                     st.markdown(
                         f"""
-                        <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 13px; color: #fff;'>
+                        <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 12px; color: #fff;'>
                         <b>Summary Zona & Total Box Cabang:</b> {summary_zona_html}
                     </div>
                     """,
