@@ -464,7 +464,7 @@ else:
             if not keyword_cari or not str(keyword_cari).strip():
                 if "Status" in df_display.columns:
                     df_display = df_display[
-                        df_display["Status"].astype(str).str.strip().str.lower() != "delivered"
+                        df_display["Status"].astype(str).str.replace("🔵", "").str.replace("🟢", "").str.replace("🟡", "").str.replace("🔴", "").str.strip().str.lower() != "delivered"
                     ].copy()
             if keyword_cari and not df_database.empty:
                 df_all_branch = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy() if "Tujuan Pengiriman" in df_database.columns else pd.DataFrame()
@@ -474,39 +474,38 @@ else:
                         target_col = id_col_candidates[0]
                         df_matched = df_all_branch[df_all_branch[target_col].astype(str).str.contains(keyword_cari, case=False, na=False)]
                         if not df_matched.empty:
-                            df_display = df_matched
+                            df_display = df_matched.copy()
                             
                             for _, m_row in df_matched.iterrows():
                                 m_id = str(m_row.get(target_col, "")).split('.')[0].strip()
-                                m_status = str(m_row.get("Status", "")).strip().lower()
+                                m_status = str(m_row.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
                                 if m_status == "on delivery":
                                     st.warning(f"**Status ID {m_id} : On Delivery** (Terkirim sebagian / dalam proses pengiriman).")
                                 elif m_status == "delivered":
                                     st.success(f"**Status ID {m_id} : Delivered** (Seluruh box sudah terkirim lengkap).")
-                            
-                            if not df_display.empty:
-                                status_formatted_list = []
-                                for idx, row in df_display.iterrows():
-                                    try:
-                                        jb = row.get("Jumlah Box") or 0
-                                        pr = row.get("Progress") or 0
-                                        raw_st = str(row.get("Status", "")).strip().lower()
-            
-                                        st_formatted = format_status_dengan_ikon(pr, jb)
-                                        if raw_st == "on delivery":
-                                            st_formatted = "🔵 On Delivery"
-                                        elif raw_st == "delivered":
-                                            st_formatted = "🟢 Delivered"
-                                        status_formatted_list.append(st_formatted)
-                                    except Exception:
-                                        status_formatted_list.append("🔴 Pending")
-            
-                                # Pastikan panjang list persis sama dengan jumlah baris df_display
-                                if len(status_formatted_list) == len(df_display):
-                                    df_display = df_display.copy()
-                                    df_display["Status"] = status_formatted_list
 
             if not df_display.empty:
+                status_formatted_list = []
+                for idx, row in df_display.iterrows():
+                    try:
+                        jb = row.get("Jumlah Box") or 0
+                        pr = row.get("Progress") or 0
+                        raw_st = str(row.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+
+                        if raw_st == "on delivery":
+                            st_formatted = "🔵 On Delivery"
+                        elif raw_st == "delivered":
+                            st_formatted = "🟢 Delivered"
+                        else:
+                            st_formatted = format_status_dengan_ikon(pr, jb)
+                        status_formatted_list.append(st_formatted)
+                    except Exception:
+                        status_formatted_list.append("🔴 Pending")
+
+                if len(status_formatted_list) == len(df_display):
+                    df_display = df_display.copy()
+                    df_display["Status"] = status_formatted_list
+
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
             else:
                 st.info("Tidak ada data preload yang cocok atau tersedia untuk cabang ini.")
@@ -857,28 +856,76 @@ else:
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             if not df_lokal.empty:
                 df_preload_display = df_lokal.copy()
-                
-                # Hitung Summary Zona Cabang menggunakan parser universal (aman untuk format tunggal & multi-zona)
+
+                # Ambil data Manifest log agar tahu berapa box per ID yang sudah pernah dimanifestkan/dikirim
+                id_box_termanifest = {}
+                try:
+                    df_mnf_cek = conn.read(worksheet="Manifest log", ttl=0)
+                    if df_mnf_cek is not None and not df_mnf_cek.empty:
+                        df_mnf_cek.columns = [str(c).strip() for c in df_mnf_cek.columns]
+                        for _, mr in df_mnf_cek.iterrows():
+                            if str(mr.get("Tujuan Pengiriman", "")).strip().lower() != wilayah.strip().lower():
+                                continue
+                            mst = str(mr.get("Status Manifest") or mr.get("Status") or "").strip().lower()
+                            if mst in ["on delivery", "delivered", "manifested"]:
+                                m_ids = [x.split('.')[0].strip() for x in str(mr.get("ID List", "")).split(",") if x.strip()]
+                                try:
+                                    m_tot_b = int(float(str(mr.get("Jumlah Box", 0)).split('.')[0]))
+                                except Exception:
+                                    m_tot_b = 0
+                                if len(m_ids) == 1 and m_ids[0]:
+                                    id_box_termanifest[m_ids[0]] = id_box_termanifest.get(m_ids[0], 0) + m_tot_b
+                except Exception:
+                    pass
+
+                # Hitung Summary Zona Cabang HANYA dari box yang aktif / BELUM dimanifestkan
                 branch_zona_counts = {}
                 for _, r_item in df_preload_display.iterrows():
+                    st_clean = str(r_item.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+                    if st_clean == "delivered":
+                        continue
+
+                    r_id_clean = str(r_item.get("ID") or r_item.get("id request") or "").split('.')[0].strip()
                     z_val = str(r_item.get("Zona Mezzanine", "")).strip()
-                    if z_val and z_val.lower() not in ["nan", "none", "nat", ""]:
-                        try:
-                            b_val = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
-                        except:
-                            b_val = 0
-                        
-                        parsed_z = parse_zona_mezzanine(z_val, total_progress=b_val)
-                        for sz, cnt in parsed_z.items():
-                            branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + cnt
-        
+                    if not z_val or z_val.lower() in ["nan", "none", "nat", ""]:
+                        continue
+
+                    try:
+                        b_prog = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
+                    except Exception:
+                        b_prog = 0
+
+                    # Kurangi box yang sudah masuk manifest sebelumnya (status On Delivery)
+                    sudah_dimanifest = id_box_termanifest.get(r_id_clean, 0)
+                    if st_clean == "on delivery" and sudah_dimanifest == 0:
+                        # Fallback jika manifest lama berisi multi-ID: anggap box aktif = sisa kuota yang baru dipreload
+                        sudah_dimanifest = b_prog
+
+                    box_aktif_belum_kirim = max(0, b_prog - sudah_dimanifest)
+
+                    if box_aktif_belum_kirim > 0:
+                        # Ambil zona terakhir jika parsial lanjutan, atau distribusikan sejumlah box_aktif_belum_kirim
+                        zona_parts = [p.split("(")[0].strip() for p in z_val.split(",") if p.strip()]
+                        if len(zona_parts) == 1:
+                            branch_zona_counts[zona_parts[0]] = branch_zona_counts.get(zona_parts[0], 0) + box_aktif_belum_kirim
+                        else:
+                            # Jika multi-zona dan pengiriman lanjutan, prioritaskan zona dengan alokasi baru atau bagi merata
+                            parsed_all = parse_zona_mezzanine(z_val, total_progress=b_prog)
+                            # Jika box_aktif_belum_kirim < b_prog, alokasikan ke zona terbaru (elemen terakhir di z_val)
+                            if box_aktif_belum_kirim < b_prog and zona_parts:
+                                last_z = zona_parts[-1]
+                                branch_zona_counts[last_z] = branch_zona_counts.get(last_z, 0) + box_aktif_belum_kirim
+                            else:
+                                for sz, cnt in parsed_all.items():
+                                    branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + cnt
+
                 summary_branch_html = ""
                 if branch_zona_counts:
                     branch_summary_items = [f"• <b>({z})</b> {cnt} Box" for z, cnt in sorted(branch_zona_counts.items())]
                     summary_branch_html = " | ".join(branch_summary_items)
                 else:
-                    summary_branch_html = "<i>Belum ada zona mezzanine yang tercatat pada data cabang ini.</i>"
-        
+                    summary_branch_html = "<i>Tidak ada box aktif yang menunggu manifest pada cabang ini.</i>"
+
                 st.markdown(
                     f"""
                     <div style='background-color: #1e1e2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #313244; margin-bottom: 10px; font-size: 12px; color: #fff;'>
@@ -887,39 +934,44 @@ else:
                     """,
                     unsafe_allow_html=True
                 )
-        
+
                 status_formatted_list = []
                 for idx, row in df_preload_display.iterrows():
                     try:
-                        jb = row.get("Jumlah Box") or 0
-                        pr = row.get("Progress")
-                        st_formatted = format_status_dengan_ikon(pr, jb)
+                        raw_st = str(row.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+                        if raw_st == "on delivery":
+                            st_formatted = "🔵 On Delivery"
+                        elif raw_st == "delivered":
+                            st_formatted = "🟢 Delivered"
+                        else:
+                            jb = row.get("Jumlah Box") or 0
+                            pr = row.get("Progress") or 0
+                            st_formatted = format_status_dengan_ikon(pr, jb)
                         status_formatted_list.append(st_formatted)
                     except Exception:
                         status_formatted_list.append("🔴 Pending")
-                
+
                 df_preload_display["Status"] = status_formatted_list
-            
+
                 for col in ["Jam Proses Scan", "Tanggal Proses Scan"]:
                     if col in df_preload_display.columns:
                         df_preload_display = df_preload_display.drop(columns=[col])
-            
+
                 cols_tampil = [
-                    "ID" if "ID" in df_preload_display.columns else "id request", 
-                    "Tujuan Pengiriman", 
-                    "Jumlah Box", 
-                    "Progress", 
-                    "Zona Mezzanine", 
-                    "Loader", 
-                    "Waktu Preload", 
+                    "ID" if "ID" in df_preload_display.columns else "id request",
+                    "Tujuan Pengiriman",
+                    "Jumlah Box",
+                    "Progress",
+                    "Zona Mezzanine",
+                    "Loader",
+                    "Waktu Preload",
                     "Status"
                 ]
                 cols_tersedia = [c for c in cols_tampil if c in df_preload_display.columns]
                 id_col_key = "ID" if "ID" in df_preload_display.columns else "id request"
-                
+
                 df_editor_clean = df_preload_display[cols_tersedia].reset_index(drop=True)
-                
-                # Menggunakan TextColumn agar format gabungan seperti "A1(2 Box), A2(3 Box)" bisa tampil & diedit dengan bebas
+
                 edited_preload_df = st.data_editor(
                     df_editor_clean,
                     column_config={
@@ -934,28 +986,28 @@ else:
                     hide_index=True,
                     key=f"editor_preload_table_{wilayah}"
                 )
-                
+
                 def normalize_zone(val):
                     if val is None:
                         return ""
                     s = str(val).strip()
                     return "" if s.lower() in ["nan", "none", "nat", ""] else s
-                
+
                 orig_zone_map = {
                     str(r[id_col_key]).split('.')[0].strip(): normalize_zone(r.get("Zona Mezzanine", ""))
                     for _, r in df_editor_clean.iterrows()
                 }
-                
+
                 has_zone_changes = False
                 for _, row_edited in edited_preload_df.iterrows():
                     curr_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
                     ed_zona = normalize_zone(row_edited.get("Zona Mezzanine", ""))
                     orig_zona = orig_zone_map.get(curr_id, "")
-                    
+
                     if orig_zona != ed_zona:
                         has_zone_changes = True
                         break
-                
+
                 if has_zone_changes:
                     if st.button("💾 Simpan Perubahan", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
                         try:
@@ -965,26 +1017,25 @@ else:
                                 spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
                                 sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
                                 ws = sh.worksheet("Database log")
-            
+
                                 records_main = ws.get_all_records()
                                 header_main = ws.row_values(1)
-            
+
                                 zona_col_i = header_main.index("Zona Mezzanine") + 1 if "Zona Mezzanine" in header_main else 9
-            
+
                                 cell_updates = []
                                 for _, row_edited in edited_preload_df.iterrows():
                                     e_id = str(row_edited.get(id_col_key, "")).split('.')[0].strip()
                                     e_zona = normalize_zone(row_edited.get("Zona Mezzanine", ""))
-            
+
                                     for r_idx, r_val in enumerate(records_main, start=2):
                                         sheet_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                         if sheet_id_str == e_id:
                                             old_zona = normalize_zone(r_val.get("Zona Mezzanine", ""))
-                                                
                                             if old_zona != e_zona:
                                                 cell_updates.append(gspread.Cell(r_idx, zona_col_i, e_zona))
                                             break
-            
+
                                 if cell_updates:
                                     ws.update_cells(cell_updates)
                                     st.session_state[scanned_ids_key] = []
@@ -993,11 +1044,11 @@ else:
                                     st.session_state[changes_key] = False
                                     if local_df_key in st.session_state:
                                         del st.session_state[local_df_key]
-                                            
+
                                     st.cache_data.clear()
                                     st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke database!")
                                     st.rerun()
-            
+
                         except Exception as e:
                             st.error(f"❌ Gagal menyimpan zona: {e}")
             else:
@@ -1054,48 +1105,86 @@ else:
                         st.warning("⚠️ Pilih minimal satu Zona Mezzanine terlebih dahulu.")
                     else:
                         try:
+                            creds_dict = dict(st.secrets["connections"]["gsheets"])
+                            gc = gspread.service_account_from_dict(creds_dict)
+                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+
+                            ws_manifest = sh.worksheet("Manifest log")
+                            ws_main = sh.worksheet("Database log")
+
+                            # Baca manifest yang sudah ada untuk mengetahui berapa box per ID yang sudah terkirim/dimanifestkan
+                            records_mnf_existing = ws_manifest.get_all_records()
+                            id_sudah_dimanifest = {}
+                            for m_rec in records_mnf_existing:
+                                if str(m_rec.get("Tujuan Pengiriman", "")).strip().lower() != wilayah.strip().lower():
+                                    continue
+                                m_st = str(m_rec.get("Status Manifest") or m_rec.get("Status") or "").strip().lower()
+                                if m_st in ["on delivery", "delivered", "manifested"]:
+                                    m_ids_str = str(m_rec.get("ID List") or m_rec.get("ID Request") or "")
+                                    try:
+                                        m_box_total = int(float(str(m_rec.get("Jumlah Box") or 0).split('.')[0]))
+                                    except Exception:
+                                        m_box_total = 0
+                                    m_ids_list = [x.split('.')[0].strip() for x in m_ids_str.split(",") if x.strip()]
+                                    if len(m_ids_list) == 1 and m_ids_list[0]:
+                                        id_sudah_dimanifest[m_ids_list[0]] = id_sudah_dimanifest.get(m_ids_list[0], 0) + m_box_total
+
                             matched_ids = []
                             total_box_manifest = 0
                             id_box_added_map = {}
-        
+
                             for idx, row in df_filtered.iterrows():
-                                if str(row.get("Status", "")).strip().lower() == "delivered":
+                                st_clean = (
+                                    str(row.get("Status", ""))
+                                    .replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "")
+                                    .strip()
+                                    .lower()
+                                )
+                                if st_clean == "delivered":
                                     continue
+
                                 row_zona = str(row.get("Zona Mezzanine", "")).strip()
                                 r_id = str(row.get("ID") or row.get("id request") or "").split('.')[0].strip()
                                 curr_p = id_current_progress.get(r_id, 0)
-                                
+                                max_b = id_max_box.get(r_id, 0)
+
+                                if st_clean == "on delivery":
+                                    sudah_kirim = id_sudah_dimanifest.get(r_id, 0)
+                                    box_siap_kirim = max(0, curr_p - sudah_kirim)
+                                    sisa_kuota_id = max(0, max_b - sudah_kirim)
+                                    box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
+                                else:
+                                    box_siap_kirim = curr_p
+
+                                if box_siap_kirim <= 0:
+                                    continue
+
                                 parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
                                 box_in_selected_zones = 0
                                 for sel_z in selected_zones_manifest:
                                     for p_z, p_cnt in parsed_row_zones.items():
                                         if sel_z.strip().lower() == p_z.strip().lower():
                                             box_in_selected_zones += p_cnt
-        
+
                                 if box_in_selected_zones > 0 and r_id and r_id not in matched_ids:
-                                    matched_ids.append(r_id)
-                                    id_box_added_map[r_id] = box_in_selected_zones
-                                    total_box_manifest += box_in_selected_zones
-        
+                                    box_final = min(box_in_selected_zones, box_siap_kirim)
+                                    if box_final > 0:
+                                        matched_ids.append(r_id)
+                                        id_box_added_map[r_id] = box_final
+                                        total_box_manifest += box_final
+
                             if not matched_ids:
-                                st.warning("⚠️ Tidak ada ID Request atau progress box pada zona mezzanine yang dipilih.")
+                                st.warning("⚠️ Tidak ada box baru yang siap dimanifestkan pada zona mezzanine yang dipilih.")
                             else:
                                 now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
                                 nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
-                                
-                                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                gc = gspread.service_account_from_dict(creds_dict)
-                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
-                                
-                                ws_manifest = sh.worksheet("Manifest log")
-                                ws_main = sh.worksheet("Database log")
-        
+
                                 dibuat_oleh = str(st.session_state.user_nama)
                                 waktu_buat = now.strftime("%Y-%m-%d %H:%M:%S")
-                                status_manifest = "On Delivery" # Status awal manifest baru dibuat
+                                status_manifest = "On Delivery"
                                 zona_str = ", ".join(selected_zones_manifest)
-        
+
                                 ws_manifest.append_row([
                                     nomor_manifest,
                                     wilayah,
@@ -1106,29 +1195,31 @@ else:
                                     waktu_buat,
                                     status_manifest
                                 ])
-        
-                                # Perbarui status ID terkait di Database log menjadi 'On Delivery'
+
                                 records_main = ws_main.get_all_records()
                                 header_main = ws_main.row_values(1)
-                                id_col_i = header_main.index("ID") + 1 if "ID" in header_main else header_main.index("id request") + 1
                                 status_col_i = header_main.index("Status") + 1 if "Status" in header_main else header_main.index("status") + 1
-                                prog_col_i = header_main.index("Progress") + 1 if "Progress" in header_main else 6
-                                box_col_i = header_main.index("Jumlah Box") + 1 if "Jumlah Box" in header_main else 3
-        
+
                                 batch_updates = []
                                 for r_idx, r_val in enumerate(records_main, start=2):
                                     r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
                                     if r_id_str in matched_ids:
                                         p_val = r_val.get("Progress", 0)
                                         m_val = r_val.get("Jumlah Box", 0)
-                                        
-                                        # Cek apakah sudah delivered penuh atau masih on delivery
                                         final_st = tentukan_status_id(p_val, m_val, status_manifest_saat_ini="On Delivery")
                                         batch_updates.append(gspread.Cell(r_idx, status_col_i, final_st))
-        
+
                                 if batch_updates:
                                     ws_main.update_cells(batch_updates)
-        
+
+                                st.cache_data.clear()
+                                for k in list(st.session_state.keys()):
+                                    if "local_df_preload" in k or "has_unsaved_changes" in k:
+                                        del st.session_state[k]
+
+                                st.success(f"✅ Manifest `{nomor_manifest}` berhasil dibuat ({int(total_box_manifest)} box)!")
+                                st.rerun()
+
                         except Exception as e:
                             st.error(f"❌ Gagal membuat manifest: {e}")
         
