@@ -1111,9 +1111,8 @@ else:
                             sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
 
                             ws_manifest = sh.worksheet("Manifest log")
-                            ws_main = sh.worksheet("Database log")
 
-                            # Baca manifest yang sudah ada untuk mengetahui berapa box per ID yang sudah terkirim/dimanifestkan
+                            # Hitung total box per ID yang sudah masuk manifest ('Manifested' atau 'Delivered')
                             records_mnf_existing = ws_manifest.get_all_records()
                             id_sudah_dimanifest = {}
                             for m_rec in records_mnf_existing:
@@ -1149,43 +1148,39 @@ else:
                                 curr_p = id_current_progress.get(r_id, 0)
                                 max_b = id_max_box.get(r_id, 0)
 
-                                if st_clean == "on delivery":
-                                    sudah_kirim = id_sudah_dimanifest.get(r_id, 0)
-                                    box_siap_kirim = max(0, curr_p - sudah_kirim)
-                                    sisa_kuota_id = max(0, max_b - sudah_kirim)
-                                    box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
-                                else:
-                                    box_siap_kirim = curr_p
-                                
+                                sudah_dimanifest = id_sudah_dimanifest.get(r_id, 0)
+                                box_siap_kirim = max(0, curr_p - sudah_dimanifest)
+                                sisa_kuota_id = max(0, max_b - sudah_dimanifest)
+                                box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
+
                                 if box_siap_kirim <= 0:
                                     continue
-                                zona_tokens = [p.split("(")[0].strip() for p in row_zona.split(",") if p.strip()]
 
+                                zona_tokens = [p.split("(")[0].strip() for p in row_zona.split(",") if p.strip()]
                                 box_in_selected_zones = 0
-                                if st_clean == "on delivery" and len(zona_tokens) > 1:
-                                    # Zona yang sudah terpakai pengiriman sebelumnya = zona awal
+
+                                # Jika sudah ada pengiriman sebelumnya, zona lama tidak dihitung ulang
+                                if sudah_dimanifest > 0 and len(zona_tokens) > 1:
                                     zona_terpakai_lama = {z.strip().lower() for z in zona_tokens[:-1]}
                                     zona_baru_terakhir = zona_tokens[-1].strip().lower()
-                                
                                     for sel_z in selected_zones_manifest:
                                         sel_low = sel_z.strip().lower()
-                                        # Tolak jika zona murni zona lama yang sudah terkirim penuh
                                         if sel_low in zona_terpakai_lama and sel_low != zona_baru_terakhir:
                                             continue
                                         if sel_low == zona_baru_terakhir:
                                             box_in_selected_zones += box_siap_kirim
-                            else:
-                                parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=box_siap_kirim)
-                                for sel_z in selected_zones_manifest:
-                                    for p_z, p_cnt in parsed_row_zones.items():
-                                        if sel_z.strip().lower() == p_z.strip().lower():
-                                            box_in_selected_zones += p_cnt
-                            
-                            box_final = min(box_in_selected_zones, box_siap_kirim)
-                            if box_final > 0:
-                                matched_ids.append(r_id)
-                                id_box_added_map[r_id] = box_final
-                                total_box_manifest += box_final
+                                else:
+                                    parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
+                                    for sel_z in selected_zones_manifest:
+                                        for p_z, p_cnt in parsed_row_zones.items():
+                                            if sel_z.strip().lower() == p_z.strip().lower():
+                                                box_in_selected_zones += p_cnt
+
+                                box_final = min(box_in_selected_zones, box_siap_kirim)
+                                if box_final > 0 and r_id and r_id not in matched_ids:
+                                    matched_ids.append(r_id)
+                                    id_box_added_map[r_id] = box_final
+                                    total_box_manifest += box_final
 
                             if not matched_ids:
                                 st.warning("⚠️ Tidak ada box baru yang siap dimanifestkan pada zona mezzanine yang dipilih.")
@@ -1195,7 +1190,7 @@ else:
 
                                 dibuat_oleh = str(st.session_state.user_nama)
                                 waktu_buat = now.strftime("%Y-%m-%d %H:%M:%S")
-                                status_manifest = "Manifested"  # Status manifest baru selalu 'Manifested'
+                                status_manifest = "Manifested"
                                 zona_str = ", ".join(selected_zones_manifest)
 
                                 ws_manifest.append_row([
@@ -1209,40 +1204,12 @@ else:
                                     status_manifest
                                 ])
 
-                                records_main = ws_main.get_all_records()
-                                header_main = ws_main.row_values(1)
-                                status_col_i = header_main.index("Status") + 1 if "Status" in header_main else header_main.index("status") + 1
-
-                                batch_updates = []
-                                for r_idx, r_val in enumerate(records_main, start=2):
-                                    r_id_str = str(r_val.get("ID") or r_val.get("id request") or "").split('.')[0].strip()
-                                    if r_id_str in matched_ids:
-                                        try:
-                                            p_val = int(float(str(r_val.get("Progress") or 0).split('.')[0]))
-                                        except Exception:
-                                            p_val = 0
-                                        try:
-                                            m_val = int(float(str(r_val.get("Jumlah Box") or 0).split('.')[0]))
-                                        except Exception:
-                                            m_val = 0
-
-                                        # Status ID: 'Delivered' jika sudah mencapai kuota penuh, selain itu 'On Delivery'
-                                        if m_val > 0 and p_val >= m_val:
-                                            final_st = "Delivered"
-                                        else:
-                                            final_st = "On Delivery"
-
-                                        batch_updates.append(gspread.Cell(r_idx, status_col_i, final_st))
-
-                                if batch_updates:
-                                    ws_main.update_cells(batch_updates)
-
                                 st.cache_data.clear()
                                 for k in list(st.session_state.keys()):
                                     if "local_df_preload" in k or "has_unsaved_changes" in k:
                                         del st.session_state[k]
 
-                                st.success(f"✅ Manifest `{nomor_manifest}` berhasil dibuat ({int(total_box_manifest)} box)!")
+                                st.success(f"✅ Manifest `{nomor_manifest}` berhasil dibuat ({int(total_box_manifest)} box) dengan status **Manifested**.")
                                 st.rerun()
 
                         except Exception as e:
