@@ -873,11 +873,20 @@ else:
             
                 zona_sisa_map = {}
                 for _, r in df_lokal.iterrows():
-                    st_row = str(r.get("Status", "")).strip().lower()
-                    if st_row == "delivered":
+                    st_clean = str(r.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+                    if st_clean == "delivered":
                         continue
-            
-                    sisa_b = int(r.get("Sisa Box") or 0)
+                
+                    try:
+                        jb = int(float(str(r.get("Jumlah Box") or 0).split('.')[0]))
+                    except Exception:
+                        jb = 0
+                    try:
+                        pr = int(float(str(r.get("Progress") or 0).split('.')[0]))
+                    except Exception:
+                        pr = 0
+                
+                    sisa_b = max(0, jb - pr)
                     if sisa_b > 0:
                         z_text = str(r.get("Zona Mezzanine", "")).strip()
                         zona_list = [part.split("(")[0].strip() for part in z_text.split(",") if part.strip()]
@@ -927,10 +936,23 @@ else:
                 status_formatted_list = []
                 for idx, row in df_lokal.iterrows():
                     try:
-                        jb = row.get("Jumlah Box") or 0
-                        pr = row.get("Progress")
-                        st_formatted = format_status_dengan_ikon(pr, jb)
-                        status_formatted_list.append(st_formatted)
+                        raw_st = (
+                            str(row.get("Status", ""))
+                            .replace("🔵", "")
+                            .replace("🟢", "")
+                            .replace("🟡", "")
+                            .replace("🔴", "")
+                            .strip()
+                            .lower()
+                        )
+                        if raw_st == "on delivery":
+                            status_formatted_list.append("🔵 On Delivery")
+                        elif raw_st == "delivered":
+                            status_formatted_list.append("🟢 Delivered")
+                        else:
+                            jb = row.get("Jumlah Box") or 0
+                            pr = row.get("Progress") or 0
+                            status_formatted_list.append(format_status_dengan_ikon(pr, jb))
                     except Exception:
                         status_formatted_list.append("🔴 Pending")
                 
