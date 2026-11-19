@@ -1156,19 +1156,32 @@ else:
                                     box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
                                 else:
                                     box_siap_kirim = curr_p
-
+                                
                                 if box_siap_kirim <= 0:
                                     continue
+                                zona_tokens = [p.split("(")[0].strip() for p in row_zona.split(",") if p.strip()]
 
-                                parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
                                 box_in_selected_zones = 0
+                                if st_clean == "on delivery" and len(zona_tokens) > 1:
+                                    # Zona yang sudah terpakai pengiriman sebelumnya = zona awal
+                                    zona_terpakai_lama = {z.strip().lower() for z in zona_tokens[:-1]}
+                                    zona_baru_terakhir = zona_tokens[-1].strip().lower()
+                                
+                                    for sel_z in selected_zones_manifest:
+                                        sel_low = sel_z.strip().lower()
+                                        # Tolak jika zona murni zona lama yang sudah terkirim penuh
+                                        if sel_low in zona_terpakai_lama and sel_low != zona_baru_terakhir:
+                                            continue
+                                        if sel_low == zona_baru_terakhir:
+                                            box_in_selected_zones += box_siap_kirim
+                            else:
+                                parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=box_siap_kirim)
                                 for sel_z in selected_zones_manifest:
                                     for p_z, p_cnt in parsed_row_zones.items():
                                         if sel_z.strip().lower() == p_z.strip().lower():
                                             box_in_selected_zones += p_cnt
-
-                                if box_in_selected_zones > 0 and r_id and r_id not in matched_ids:
-                                    box_final = min(box_in_selected_zones, box_siap_kirim)
+                            
+                            box_final = min(box_in_selected_zones, box_siap_kirim)
                                     if box_final > 0:
                                         matched_ids.append(r_id)
                                         id_box_added_map[r_id] = box_final
@@ -1761,6 +1774,13 @@ else:
                         df_detail_manifest = pd.DataFrame()
                 
                     if not df_detail_manifest.empty:
+                        if len(ids_in_manifest) == 1:
+                            try:
+                                mnf_box_int = int(float(str(row_info.get("Jumlah Box", 0)).split('.')[0]))
+                                if mnf_box_int > 0:
+                                    df_detail_manifest["Jumlah Box"] = str(mnf_box_int)
+                            except Exception:
+                                pass
                         creator_val = row_info.get("Dibuat Oleh") or row_info.get("Oleh") or str(st.session_state.get("user_nama", "Admin"))
                         time_val = row_info.get("Waktu Buat") or row_info.get("Timestamp") or "-"
                         
