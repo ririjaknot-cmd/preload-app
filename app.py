@@ -992,6 +992,7 @@ else:
                     hide_index=True,
                 )
                 df_editor_clean = df_preload_display.drop(columns=["Sisa Box"], errors="ignore").copy()
+                editor_cols_tersedia = [c for c in df_editor_clean.columns]
                 # Menggunakan TextColumn agar format gabungan seperti "A1(2 Box), A2(3 Box)" bisa tampil & diedit dengan bebas
                 edited_preload_df = st.data_editor(
                     df_editor_clean,
@@ -1002,10 +1003,10 @@ else:
                             required=False,
                         ),
                     },
-                    disabled=[c for c in cols_tersedia if c != "Zona Mezzanine"],
+                    disabled=[c for c in editor_cols_tersedia if c != "Zona Mezzanine"],
                     use_container_width=True,
                     hide_index=True,
-                    key=f"editor_preload_{wilayah}"
+                    key=f"editor_preload_{wilayah}",
                 )
                 
                 def normalize_zone(val):
