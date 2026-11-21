@@ -6,6 +6,8 @@ import datetime
 import gspread
 import io
 import re
+import inspect
+from functools import lru_cache
 import time
 import random
 import base64
@@ -14,6 +16,338 @@ from openpyxl.styles import Font, Alignment, Border, Side
 
 PRELOAD_WS_NAME = "Preload Input"
 PRELOAD_HEADERS = ["ID", "Progress", "Loader", "Waktu Preload", "Zona Mezzanine", "Status"]
+
+MANIFEST_WS_NAME = "Manifest log"
+MANIFEST_ITEMS_WS_NAME = "Manifest Items"
+MANIFEST_ITEMS_HEADERS = ["Nomor Manifest", "ID", "Zona Mezzanine", "Jumlah Box"]
+
+# Batas jumlah manifest berstatus Delivered yang masih ditampilkan (yang terbaru) agar halaman tetap ringan.
+MAKS_MANIFEST_DELIVERED = 10
+
+WIB = datetime.timezone(datetime.timedelta(hours=7))
+
+
+def now_wib():
+    """Waktu sekarang WIB (tanpa tzinfo) untuk dicatat ke database."""
+    return datetime.datetime.now(WIB).replace(tzinfo=None)
+
+
+@lru_cache(maxsize=None)
+def _widget_mendukung_width(nama_widget):
+    try:
+        param = inspect.signature(getattr(st, nama_widget)).parameters.get("width")
+        return param is not None and isinstance(param.default, str)
+    except Exception:
+        return False
+
+
+def stretch(widget):
+    """Pakai parameter width baru jika versi Streamlit mendukung, jika tidak pakai parameter lama."""
+    if _widget_mendukung_width(getattr(widget, "__name__", "")):
+        return {"width": "stretch"}
+    return {"use_container_width": True}
+
+
+def flash(tipe, teks):
+    """Simpan pesan agar tetap tampil setelah st.rerun()."""
+    st.session_state.setdefault("_flash_msgs", []).append((tipe, teks))
+
+
+def tampilkan_flash():
+    for tipe, teks in st.session_state.pop("_flash_msgs", []):
+        if tipe == "success":
+            st.success(teks)
+        elif tipe == "warning":
+            st.warning(teks)
+        elif tipe == "error":
+            st.error(teks)
+        else:
+            st.info(teks)
+
+
+@st.cache_resource(show_spinner=False)
+def get_gspread_client():
+    creds_dict = dict(st.secrets["connections"]["gsheets"])
+    return gspread.service_account_from_dict(creds_dict)
+
+
+@st.cache_resource(show_spinner=False)
+def get_spreadsheet():
+    gc = get_gspread_client()
+    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
+    return gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+
+
+def bersihkan_id(v):
+    return str(v).split(".")[0].strip()
+
+
+def bersihkan_ikon(v):
+    s = str(v)
+    for ikon in ("🔵", "🟢", "🟡", "🔴"):
+        s = s.replace(ikon, "")
+    return s.strip()
+
+
+def ke_int(v, default=0):
+    try:
+        return int(float(str(v).strip()))
+    except Exception:
+        return default
+
+
+def status_manifest_bersih(row):
+    s = str(row.get("Status Manifest") or row.get("Status") or "").strip().lower()
+    return "manifested" if s in ("", "nan", "none") else s
+
+
+def append_row_by_header(ws, data):
+    """Menambah baris sesuai nama header di sheet (tidak bergantung urutan kolom)."""
+    header = [str(h).strip() for h in ws.row_values(1)]
+    if any(h in data for h in header):
+        baris = [data.get(h, "") for h in header]
+    else:
+        baris = list(data.values())
+    ws.append_row(baris)
+
+
+def get_or_init_manifest_items_ws(sh):
+    try:
+        ws_i = sh.worksheet(MANIFEST_ITEMS_WS_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        ws_i = sh.add_worksheet(title=MANIFEST_ITEMS_WS_NAME, rows=2000, cols=6)
+        ws_i.append_row(MANIFEST_ITEMS_HEADERS)
+        return ws_i
+
+    if not ws_i.row_values(1):
+        ws_i.append_row(MANIFEST_ITEMS_HEADERS)
+    return ws_i
+
+
+def bangun_items_manifest(df_manifest, df_items, df_cabang_semua):
+    """
+    Rincian isi manifest: {nomor_manifest: [(id, zona, box), ...]}
+    - Manifest baru dibaca dari sheet 'Manifest Items'.
+    - Manifest lama (belum punya rincian) diperkirakan dari data preload secara kronologis,
+      dengan memperhitungkan box per zona yang sudah dipakai manifest sebelumnya.
+    Mengembalikan (hasil, set_nomor_manifest_lama).
+    """
+    hasil = {}
+    if df_items is not None and not df_items.empty:
+        for _, r in df_items.iterrows():
+            nomor = str(r.get("Nomor Manifest", "")).strip()
+            box = ke_int(r.get("Jumlah Box", 0))
+            if not nomor or nomor.lower() == "nan" or box <= 0:
+                continue
+            hasil.setdefault(nomor, []).append(
+                (bersihkan_id(r.get("ID", "")), str(r.get("Zona Mezzanine", "")).strip(), box)
+            )
+
+    lama = set()
+    if df_manifest is None or df_manifest.empty or "Nomor Manifest" not in df_manifest.columns:
+        return hasil, lama
+
+    peta = {}
+    if df_cabang_semua is not None and not df_cabang_semua.empty:
+        kol_id = "ID" if "ID" in df_cabang_semua.columns else ("id request" if "id request" in df_cabang_semua.columns else None)
+        if kol_id:
+            for _, r in df_cabang_semua.iterrows():
+                peta[bersihkan_id(r.get(kol_id, ""))] = (
+                    str(r.get("Zona Mezzanine", "")).strip(),
+                    ke_int(r.get("Progress", 0)),
+                )
+
+    baris_lama = [
+        r for _, r in df_manifest.iterrows()
+        if str(r.get("Nomor Manifest", "")).strip() and str(r.get("Nomor Manifest", "")).strip() not in hasil
+    ]
+    baris_lama.sort(key=lambda r: str(r.get("Waktu Buat", "") or r.get("Timestamp", "")))
+
+    terpakai = {}
+    for r in baris_lama:
+        nomor = str(r.get("Nomor Manifest", "")).strip()
+        zona_manifest = list(dict.fromkeys(z.strip() for z in str(r.get("Zona Mezzanine", "")).split(",") if z.strip()))
+        id_manifest = [bersihkan_id(i) for i in str(r.get("ID List", "")).split(",") if i.strip()]
+
+        items = []
+        for id_i in id_manifest:
+            zona_str, prog = peta.get(id_i, ("", 0))
+            zmap = parse_zona_mezzanine(zona_str, total_progress=prog)
+            zmap_low = {k.strip().lower(): (k, v) for k, v in zmap.items()}
+            for z in zona_manifest:
+                kunci = z.strip().lower()
+                if kunci in zmap_low:
+                    nama_z, cnt = zmap_low[kunci]
+                    ambil = max(0, cnt - terpakai.get((id_i, kunci), 0))
+                    if ambil > 0:
+                        items.append((id_i, nama_z, ambil))
+
+        # Total manifest lama tidak boleh melebihi angka yang tercatat di Manifest log
+        tersimpan = ke_int(r.get("Jumlah Box", 0))
+        lebih = sum(b for _, _, b in items) - tersimpan
+        if tersimpan > 0 and lebih > 0:
+            for i in range(len(items) - 1, -1, -1):
+                if lebih <= 0:
+                    break
+                id_i, z_i, b_i = items[i]
+                kurang = min(b_i, lebih)
+                items[i] = (id_i, z_i, b_i - kurang)
+                lebih -= kurang
+            items = [x for x in items if x[2] > 0]
+
+        for id_i, z_i, b_i in items:
+            kunci = (id_i, z_i.strip().lower())
+            terpakai[kunci] = terpakai.get(kunci, 0) + b_i
+
+        lama.add(nomor)
+        if items:
+            hasil[nomor] = items
+
+    return hasil, lama
+
+
+def hitung_pengiriman(items_by_mnf, status_manifest_map):
+    """
+    Mengembalikan (terkirim_total, terkirim_zona, delivered_total):
+    - terkirim_total  : {id: total box yang sudah masuk manifest apa pun}
+    - terkirim_zona   : {(id, zona_lowercase): box yang sudah masuk manifest}
+    - delivered_total : {id: total box pada manifest berstatus Delivered}
+    """
+    total, zona, delivered = {}, {}, {}
+    for nomor, items in items_by_mnf.items():
+        if nomor not in status_manifest_map:
+            continue
+        is_delivered = status_manifest_map[nomor] == "delivered"
+        for id_i, zona_i, box_i in items:
+            total[id_i] = total.get(id_i, 0) + box_i
+            kunci = (id_i, zona_i.strip().lower())
+            zona[kunci] = zona.get(kunci, 0) + box_i
+            if is_delivered:
+                delivered[id_i] = delivered.get(id_i, 0) + box_i
+    return total, zona, delivered
+
+
+def olah_data_manifest(df_manifest, df_items, df_cabang_semua):
+    items_by_mnf, lama = bangun_items_manifest(df_manifest, df_items, df_cabang_semua)
+    status_map = {}
+    if df_manifest is not None and not df_manifest.empty and "Nomor Manifest" in df_manifest.columns:
+        for _, m_r in df_manifest.iterrows():
+            nomor = str(m_r.get("Nomor Manifest", "")).strip()
+            if nomor:
+                status_map[nomor] = status_manifest_bersih(m_r)
+    total, zona, delivered = hitung_pengiriman(items_by_mnf, status_map)
+    return items_by_mnf, lama, status_map, total, zona, delivered
+
+
+def hitung_box_siap_per_zona(zona_str, progress, id_str, terkirim_total, terkirim_zona, zona_dipilih=None):
+    """
+    Box yang sudah di-preload tetapi BELUM masuk manifest manapun, per zona.
+    Box yang sudah pernah dimanifestkan (termasuk yang sudah Delivered) tidak dihitung lagi.
+    """
+    zmap = parse_zona_mezzanine(zona_str, total_progress=progress)
+    sisa_total = max(0, progress - terkirim_total.get(id_str, 0))
+    dipilih = None if zona_dipilih is None else {z.strip().lower() for z in zona_dipilih}
+    hasil = {}
+    for z_nama, z_cnt in zmap.items():
+        kunci = z_nama.strip().lower()
+        if dipilih is not None and kunci not in dipilih:
+            continue
+        sisa_zona = max(0, z_cnt - terkirim_zona.get((id_str, kunci), 0))
+        ambil = min(sisa_zona, sisa_total)
+        if ambil > 0:
+            hasil[z_nama] = ambil
+            sisa_total -= ambil
+    return hasil
+
+
+def status_efektif_id(raw_status, progress, jumlah_box, delivered_box=0):
+    """Status ID: dihitung dari box yang benar-benar Delivered; jika tidak ada rincian, pakai status tersimpan."""
+    raw = bersihkan_ikon(raw_status).lower()
+    if delivered_box > 0:
+        return tentukan_status_id(progress, jumlah_box, box_terkirim=delivered_box)
+    if raw == "delivered":
+        return "Delivered"
+    if raw == "on delivery":
+        return "On Delivery"
+    return tentukan_status_id(progress, jumlah_box, box_terkirim=0)
+
+
+def tulis_items_manifest(ws_items, nomor, items):
+    baris = [[nomor, id_i, zona_i, int(box_i)] for id_i, zona_i, box_i in items if box_i > 0]
+    if baris:
+        ws_items.append_rows(baris, value_input_option="RAW")
+
+
+def hapus_items_manifest(ws_items, nomor):
+    semua = ws_items.col_values(1)
+    baris = [i for i, v in enumerate(semua, start=1) if i > 1 and str(v).strip() == str(nomor)]
+    if not baris:
+        return
+    kelompok = []
+    mulai = akhir = baris[0]
+    for b in baris[1:]:
+        if b == akhir + 1:
+            akhir = b
+        else:
+            kelompok.append((mulai, akhir))
+            mulai = akhir = b
+    kelompok.append((mulai, akhir))
+    for m, a in reversed(kelompok):
+        ws_items.delete_rows(m, a)
+
+
+def kurangi_items_manifest(ws_items, nomor, id_target, jumlah):
+    """Mengurangi box suatu ID pada manifest (dari rincian terakhir). Mengembalikan [(zona, box_diambil)]."""
+    nilai = ws_items.get_all_values()
+    kandidat = []
+    for i, baris in enumerate(nilai, start=1):
+        if i == 1 or len(baris) < 4:
+            continue
+        if str(baris[0]).strip() == str(nomor) and bersihkan_id(baris[1]) == id_target:
+            kandidat.append((i, str(baris[2]).strip(), ke_int(baris[3])))
+
+    sisa = jumlah
+    diambil, hapus_baris, ubah = [], [], []
+    for i, zona_i, box_i in reversed(kandidat):
+        if sisa <= 0:
+            break
+        ambil = min(box_i, sisa)
+        sisa -= ambil
+        diambil.append((zona_i, ambil))
+        if box_i - ambil <= 0:
+            hapus_baris.append(i)
+        else:
+            ubah.append(gspread.Cell(i, 4, box_i - ambil))
+    if ubah:
+        ws_items.update_cells(ubah)
+    for i in sorted(hapus_baris, reverse=True):
+        ws_items.delete_rows(i)
+    return diambil
+
+
+def bekukan_manifest_lama(ws_items, ws_manifest, items_by_mnf, legacy_set, nomor_list):
+    """Menyimpan rincian manifest lama (hasil perkiraan) ke sheet 'Manifest Items' agar angkanya tetap/tidak bergeser."""
+    baris_items, total_baru = [], {}
+    for nomor in nomor_list:
+        if nomor in legacy_set and items_by_mnf.get(nomor):
+            for id_i, zona_i, box_i in items_by_mnf[nomor]:
+                baris_items.append([nomor, id_i, zona_i, int(box_i)])
+            total_baru[nomor] = sum(b for _, _, b in items_by_mnf[nomor])
+    if not baris_items:
+        return False
+
+    ws_items.append_rows(baris_items, value_input_option="RAW")
+
+    header_m = ws_manifest.row_values(1)
+    mnf_col = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+    tbox_col = header_m.index("Jumlah Box") + 1 if "Jumlah Box" in header_m else 5
+    sel = []
+    for i, v in enumerate(ws_manifest.col_values(mnf_col), start=1):
+        if str(v).strip() in total_baru:
+            sel.append(gspread.Cell(i, tbox_col, total_baru[str(v).strip()]))
+    if sel:
+        ws_manifest.update_cells(sel)
+    return True
 
 
 def get_or_init_preload_ws(sh):
@@ -124,7 +458,7 @@ def format_zona_output(zone_dict):
     return ", ".join([f"{z}({b} Box)" for z, b in valid_zones.items()])
 
 
-def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini="", status_saat_ini=""):
+def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini="", status_saat_ini="", box_terkirim=None):
     """
     Aturan status ID:
     - Jika sudah 'Delivered' penuh dan kuota terpenuhi -> 'Delivered'
@@ -136,12 +470,29 @@ def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini="", statu
       - Jika manifest sudah 'Delivered' -> 'Delivered'
       - Jika manifest masih 'On Delivery' -> 'On Delivery'
       - Default selesai preload -> 'Completed'
+
+    Jika box_terkirim diberikan (jumlah box ID ini pada manifest berstatus Delivered):
+    - box_terkirim >= max_box -> 'Delivered' (lengkap)
+    - 0 < box_terkirim < max_box -> 'On Delivery' (terkirim sebagian)
+    - selain itu mengikuti progress: Pending / Not Completed / Completed
     """
     try:
         p = int(float(str(current_prog or 0).split('.')[0]))
         max_b = int(float(str(max_box or 0).split('.')[0]))
     except Exception:
         p, max_b = 0, 0
+
+    if box_terkirim is not None:
+        terkirim = ke_int(box_terkirim)
+        if max_b > 0 and terkirim >= max_b:
+            return "Delivered"
+        if terkirim > 0:
+            return "On Delivery"
+        if p <= 0:
+            return "Pending"
+        if max_b > 0 and p < max_b:
+            return "Not Completed"
+        return "Completed"
 
     st_curr_lower = str(status_saat_ini).strip().lower()
     st_mnf_lower = str(status_manifest_saat_ini).strip().lower()
@@ -165,16 +516,27 @@ def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini="", statu
         return "Completed"
 
 
-def format_status_dengan_ikon(progress, jumlah_box, status_manifest="", status_saat_ini=""):
-    st_text = tentukan_status_id(progress, jumlah_box, status_manifest, status_saat_ini)
-    ikon = {
-        "Delivered": "🟢", "On Delivery": "🔵", "Completed": "🟢",
-        "Not Completed": "🟡", "Pending": "🔴",
-    }
-    return f"{ikon.get(st_text, '🔴')} {st_text}"
+IKON_STATUS = {
+    "Delivered": "🟢",
+    "On Delivery": "🔵",
+    "Completed": "🟢",
+    "Not Completed": "🟡",
+    "Pending": "🔴",
+}
 
 
-def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items):
+def ikon_status(st_text):
+    if st_text in IKON_STATUS:
+        return f"{IKON_STATUS[st_text]} {st_text}"
+    return "🔴 Pending"
+
+
+def format_status_dengan_ikon(progress, jumlah_box, status_manifest="", status_saat_ini="", box_terkirim=None):
+    st_text = tentukan_status_id(progress, jumlah_box, status_manifest, status_saat_ini, box_terkirim=box_terkirim)
+    return ikon_status(st_text)
+
+
+def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items, total_override=None):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = f"Manifest {mnf_num}"
@@ -254,6 +616,9 @@ def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items
 
         current_row += 1
 
+    if total_override is not None:
+        total_box = total_override
+
     ws.row_dimensions[current_row].height = 22
     ws.cell(row=current_row, column=1, value="").border = border_thin
 
@@ -299,17 +664,14 @@ def tampilkan_halaman_login():
         with st.form("form_login"):
             username_input = st.text_input("Nama Pengguna").strip().lower()
             pin_input = st.text_input("PIN / Password", type="password")
-            submit_btn = st.form_submit_button("Masuk (Login)", use_container_width=True)
+            submit_btn = st.form_submit_button("Masuk (Login)", **stretch(st.form_submit_button))
 
         if submit_btn:
             if not username_input or not pin_input:
                 st.warning("⚠️ Masukkan Username dan PIN terlebih dahulu.")
             else:
                 try:
-                    creds_dict = dict(st.secrets["connections"]["gsheets"])
-                    gc = gspread.service_account_from_dict(creds_dict)
-                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                    sh = get_spreadsheet()
 
                     ws_users = sh.worksheet("Data User")
                     records = ws_users.get_all_records()
@@ -331,7 +693,7 @@ def tampilkan_halaman_login():
                         st.session_state.logged_in = True
                         st.session_state.user_email = username_input
                         st.session_state.user_nama = nama_user
-                        st.success(f"Login berhasil! Selamat datang, {st.session_state.user_nama}")
+                        flash("success", f"Login berhasil! Selamat datang, {st.session_state.user_nama}")
                         st.rerun()
                     else:
                         st.error("❌ Username atau PIN salah.")
@@ -351,13 +713,34 @@ def load_cached_database():
     return df if df is not None else pd.DataFrame()
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def load_cached_manifest_log():
+    df = conn.read(worksheet="Manifest log", ttl=0)
+    if df is not None and not df.empty:
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.loc[:, ~df.columns.duplicated()]
+    return df if df is not None else pd.DataFrame()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_cached_manifest_items():
+    try:
+        df = conn.read(worksheet=MANIFEST_ITEMS_WS_NAME, ttl=0)
+    except Exception:
+        return pd.DataFrame()
+    if df is not None and not df.empty:
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.loc[:, ~df.columns.duplicated()]
+    return df if df is not None else pd.DataFrame()
+
+
 if not st.session_state.logged_in:
     tampilkan_halaman_login()
 else:
     st.sidebar.markdown("---")
-    if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    if st.sidebar.button("🔄 Refresh Data", **stretch(st.button)):
         st.cache_data.clear()
-        st.success("Cache dibersihkan, memuat data terbaru...")
+        flash("success", "Cache dibersihkan, memuat data terbaru...")
         st.rerun()
 
     col_head1, col_head2 = st.columns([4, 1])
@@ -401,14 +784,14 @@ else:
         btn_col1, btn_col2 = st.columns(2)
 
         with btn_col1:
-            with st.popover("Password", use_container_width=True):
+            with st.popover("Password", **stretch(st.popover)):
                 st.markdown("##### 🔐 Ubah Password")
                 with st.form(key=f"form_ubah_pin_{st.session_state.user_email}", clear_on_submit=True):
                     old_pin = st.text_input("Password Lama:", type="password")
                     new_pin = st.text_input("Password Baru:", type="password")
                     confirm_pin = st.text_input("Konfirmasi Password Baru:", type="password")
 
-                    btn_save_pin = st.form_submit_button("Simpan", type="primary", use_container_width=True)
+                    btn_save_pin = st.form_submit_button("Simpan", type="primary", **stretch(st.form_submit_button))
 
                     if btn_save_pin:
                         if not old_pin or not new_pin or not confirm_pin:
@@ -418,10 +801,7 @@ else:
                         else:
                             try:
                                 with st.spinner("⏳ Memperbarui..."):
-                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                    gc = gspread.service_account_from_dict(creds_dict)
-                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                    sh = get_spreadsheet()
 
                                     ws_users = sh.worksheet("Data User")
                                     header_users = ws_users.row_values(1)
@@ -451,13 +831,14 @@ else:
                                 st.error(f"❌ Gagal: {e}")
 
         with btn_col2:
-            if st.button("Logout", use_container_width=True):
+            if st.button("Logout", **stretch(st.button)):
                 st.session_state.logged_in = False
                 st.session_state.user_email = ""
                 st.session_state.user_nama = ""
                 st.rerun()
 
     st.divider()
+    tampilkan_flash()
 
     try:
         df_database = load_cached_database()
@@ -500,7 +881,7 @@ else:
             else:
                 df_summary = df_database.groupby("Tujuan Pengiriman").size().reset_index(name="Total Log Data")
 
-            st.dataframe(df_summary, use_container_width=True, hide_index=True)
+            st.dataframe(df_summary, **stretch(st.dataframe), hide_index=True)
         else:
             st.warning("⚠️ Database kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
 
@@ -521,11 +902,46 @@ else:
         if not df_filtered.empty and "Jumlah Box" in df_filtered.columns:
             df_filtered["Jumlah Box"] = pd.to_numeric(df_filtered["Jumlah Box"], errors="coerce").fillna(0).astype(int)
 
-        tab_id, tab_preload, tab_manifest = st.tabs([
-            "ID Request", "Preload", "Manifest"
-        ])
+        df_branch_all = df_database[df_database["Tujuan Pengiriman"] == wilayah].copy() if (not df_database.empty and "Tujuan Pengiriman" in df_database.columns) else pd.DataFrame()
 
-        with tab_id:
+        id_max_box_all = {}
+        id_current_progress_all = {}
+        id_zona_str = {}
+        if not df_branch_all.empty:
+            for _, r_a in df_branch_all.iterrows():
+                r_id_a = bersihkan_id(r_a.get("ID") or r_a.get("id request") or "")
+                if r_id_a:
+                    id_max_box_all[r_id_a] = ke_int(r_a.get("Jumlah Box", 1), 1)
+                    id_current_progress_all[r_id_a] = ke_int(r_a.get("Progress", 0))
+                    id_zona_str[r_id_a] = str(r_a.get("Zona Mezzanine", "")).strip()
+
+        df_manifest_wilayah = pd.DataFrame()
+        df_items_semua = pd.DataFrame()
+        try:
+            df_manifest_all = load_cached_manifest_log()
+            if df_manifest_all is not None and not df_manifest_all.empty:
+                if "Tujuan Pengiriman" in df_manifest_all.columns:
+                    df_manifest_wilayah = df_manifest_all[
+                        df_manifest_all["Tujuan Pengiriman"].astype(str).str.strip().str.lower() == wilayah.strip().lower()
+                    ].copy()
+            df_items_semua = load_cached_manifest_items()
+        except Exception as e:
+            st.warning(f"⚠️ Gagal memuat data manifest: {e}")
+
+        (
+            items_by_mnf, manifest_lama, status_manifest_map,
+            terkirim_total, terkirim_zona, delivered_total
+        ) = olah_data_manifest(df_manifest_wilayah, df_items_semua, df_branch_all)
+
+        tab_aktif = st.radio(
+            "Menu Cabang:",
+            ["ID Request", "Preload", "Manifest"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="tab_cabang_aktif"
+        )
+
+        if tab_aktif == "ID Request":
             st.subheader(f"Data Preload & Pencarian ID - {wilayah}")
             keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Masukkan ID Request yang ingin dicari...", key="search_id_request")
 
@@ -552,7 +968,12 @@ else:
 
                             for _, m_row in df_matched.iterrows():
                                 m_id = str(m_row.get(target_col, "")).split('.')[0].strip()
-                                m_status = str(m_row.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+                                m_status = status_efektif_id(
+                                    m_row.get("Status", ""),
+                                    ke_int(m_row.get("Progress", 0)),
+                                    ke_int(m_row.get("Jumlah Box", 0)),
+                                    delivered_total.get(m_id, 0)
+                                ).lower()
                                 if m_status == "on delivery":
                                     st.warning(f"**Status ID {m_id} : On Delivery** (Terkirim sebagian / dalam proses pengiriman).")
                                 elif m_status == "delivered":
@@ -560,18 +981,15 @@ else:
 
             if not df_display.empty:
                 status_formatted_list = []
+                kol_id_tab = "ID" if "ID" in df_display.columns else "id request"
                 for idx, row in df_display.iterrows():
                     try:
-                        jb = row.get("Jumlah Box") or 0
-                        pr = row.get("Progress") or 0
-                        raw_st = str(row.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
-
-                        if raw_st == "on delivery":
-                            st_formatted = "🔵 On Delivery"
-                        elif raw_st == "delivered":
-                            st_formatted = "🟢 Delivered"
-                        else:
-                            st_formatted = format_status_dengan_ikon(pr, jb)
+                        jb = ke_int(row.get("Jumlah Box"))
+                        pr = ke_int(row.get("Progress"))
+                        id_baris = bersihkan_id(row.get(kol_id_tab, ""))
+                        st_formatted = ikon_status(
+                            status_efektif_id(row.get("Status", ""), pr, jb, delivered_total.get(id_baris, 0))
+                        )
                         status_formatted_list.append(st_formatted)
                     except Exception:
                         status_formatted_list.append("🔴 Pending")
@@ -580,11 +998,11 @@ else:
                     df_display = df_display.copy()
                     df_display["Status"] = status_formatted_list
 
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                st.dataframe(df_display, **stretch(st.dataframe), hide_index=True)
             else:
                 st.info("Tidak ada data preload yang cocok atau tersedia untuk cabang ini.")
 
-        with tab_preload:
+        if tab_aktif == "Preload":
             st.subheader(f"Proses Preload & Zona Mezzanine - {wilayah}")
 
             local_df_key = f"local_df_preload_{wilayah}"
@@ -600,7 +1018,8 @@ else:
             if base_zona_key not in st.session_state:
                 st.session_state[base_zona_key] = {}
 
-            if local_df_key not in st.session_state or st.sidebar.button("🔄 Reset Draft", key=f"reset_{wilayah}"):
+            tombol_reset_draft = st.sidebar.button("🔄 Reset Draft", key=f"reset_{wilayah}")
+            if local_df_key not in st.session_state or tombol_reset_draft:
                 df_lokal = df_filtered.copy()
                 st.session_state[local_df_key] = df_lokal
                 st.session_state[changes_key] = False
@@ -648,7 +1067,7 @@ else:
                 with col_f2:
                     jumlah_box_val = st.number_input("Jumlah Box:", min_value=1, value=1, step=1)
 
-                submit_input = st.form_submit_button("Proses Preload", type="primary", use_container_width=True)
+                submit_input = st.form_submit_button("Proses Preload", type="primary", **stretch(st.form_submit_button))
 
             if submit_input:
                 target_id = input_id_val.strip().split('.')[0] if input_id_val else ""
@@ -703,8 +1122,8 @@ else:
                                     st.session_state[base_zona_key][target_id] = parse_zona_mezzanine(existing_z, total_progress=current_prog)
 
                                 new_prog = current_prog + int(jumlah_box_val)
-                                new_status = tentukan_status_id(new_prog, max_box, row_status)
-                                now_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+                                new_status = tentukan_status_id(new_prog, max_box, row_status, box_terkirim=delivered_total.get(target_id, 0))
+                                now_str = now_wib().strftime("%Y-%m-%d %H:%M:%S")
 
                                 df_lokal.at[idx, "Progress"] = new_prog
                                 df_lokal.at[idx, "Status"] = new_status
@@ -831,7 +1250,7 @@ else:
                         with cols_row[2]:
                             st.markdown(f"Zona: `{z_display if z_display else '-'}`")
                         with cols_row[3]:
-                            if st.button("🗑️ Hapus", key=f"del_scan_{wilayah}_{current_id_str}", use_container_width=True):
+                            if st.button("🗑️ Hapus", key=f"del_scan_{wilayah}_{current_id_str}", **stretch(st.button)):
                                 ids_to_remove = current_id_str
 
                     if ids_to_remove:
@@ -846,10 +1265,11 @@ else:
                             if r_id_chk == ids_to_remove:
                                 restored_prog = max(0, int(float(str(r_it.get("Progress", 0)).split('.')[0])) - removed_boxes)
                                 df_lokal.at[idx_r, "Progress"] = restored_prog
-                                if restored_prog == 0:
-                                    df_lokal.at[idx_r, "Status"] = "Pending"
-                                elif restored_prog < int(float(str(r_it.get("Jumlah Box", 0)).split('.')[0])):
-                                    df_lokal.at[idx_r, "Status"] = "Not Completed"
+                                df_lokal.at[idx_r, "Status"] = tentukan_status_id(
+                                    restored_prog,
+                                    ke_int(r_it.get("Jumlah Box", 0)),
+                                    box_terkirim=delivered_total.get(r_id_chk, 0)
+                                )
 
                                 df_lokal.at[idx_r, "Zona Mezzanine"] = format_zona_output(orig_z_map)
                                 break
@@ -859,16 +1279,13 @@ else:
 
                     st.markdown("")
 
-                    if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", use_container_width=True, key=f"btn_save_batch_mz_{wilayah}"):
+                    if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", **stretch(st.button), key=f"btn_save_batch_mz_{wilayah}"):
                         if selected_batch_zona == "-- Pilih Zona --":
                             st.warning("⚠️ Harap tentukan **Zona Mezzanine** terlebih dahulu sebelum menyimpan!")
                         else:
                             try:
                                 with st.spinner("⏳ Menyimpan data preload & zona ke Preload Input..."):
-                                    creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                    gc = gspread.service_account_from_dict(creds_dict)
-                                    spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                    sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                    sh = get_spreadsheet()
                                     ws_p = get_or_init_preload_ws(sh)
 
                                     updates_preload = {}
@@ -895,7 +1312,7 @@ else:
                                             del st.session_state[local_df_key]
 
                                         st.cache_data.clear()
-                                        st.success("✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke Preload Input!")
+                                        flash("success", "✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke Preload Input!")
                                         st.rerun()
 
                             except Exception as e:
@@ -905,26 +1322,6 @@ else:
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
             if not df_lokal.empty:
                 df_preload_display = df_lokal.copy()
-
-                id_box_termanifest = {}
-                try:
-                    df_mnf_cek = conn.read(worksheet="Manifest log", ttl=0)
-                    if df_mnf_cek is not None and not df_mnf_cek.empty:
-                        df_mnf_cek.columns = [str(c).strip() for c in df_mnf_cek.columns]
-                        for _, mr in df_mnf_cek.iterrows():
-                            if str(mr.get("Tujuan Pengiriman", "")).strip().lower() != wilayah.strip().lower():
-                                continue
-                            mst = str(mr.get("Status Manifest") or mr.get("Status") or "").strip().lower()
-                            if mst in ["on delivery", "delivered", "manifested"]:
-                                m_ids = [x.split('.')[0].strip() for x in str(mr.get("ID List", "")).split(",") if x.strip()]
-                                try:
-                                    m_tot_b = int(float(str(mr.get("Jumlah Box", 0)).split('.')[0]))
-                                except Exception:
-                                    m_tot_b = 0
-                                if len(m_ids) == 1 and m_ids[0]:
-                                    id_box_termanifest[m_ids[0]] = id_box_termanifest.get(m_ids[0], 0) + m_tot_b
-                except Exception:
-                    pass
 
                 branch_zona_counts = {}
                 for _, r_item in df_preload_display.iterrows():
@@ -937,29 +1334,11 @@ else:
                     if not z_val or z_val.lower() in ["nan", "none", "nat", ""]:
                         continue
 
-                    try:
-                        b_prog = int(float(str(r_item.get("Progress", 0) or 0).split('.')[0]))
-                    except Exception:
-                        b_prog = 0
+                    b_prog = ke_int(r_item.get("Progress", 0))
 
-                    sudah_dimanifest = id_box_termanifest.get(r_id_clean, 0)
-                    if st_clean == "on delivery" and sudah_dimanifest == 0:
-                        sudah_dimanifest = b_prog
-
-                    box_aktif_belum_kirim = max(0, b_prog - sudah_dimanifest)
-
-                    if box_aktif_belum_kirim > 0:
-                        zona_parts = [p.split("(")[0].strip() for p in z_val.split(",") if p.strip()]
-                        if len(zona_parts) == 1:
-                            branch_zona_counts[zona_parts[0]] = branch_zona_counts.get(zona_parts[0], 0) + box_aktif_belum_kirim
-                        else:
-                            parsed_all = parse_zona_mezzanine(z_val, total_progress=b_prog)
-                            if box_aktif_belum_kirim < b_prog and zona_parts:
-                                last_z = zona_parts[-1]
-                                branch_zona_counts[last_z] = branch_zona_counts.get(last_z, 0) + box_aktif_belum_kirim
-                            else:
-                                for sz, cnt in parsed_all.items():
-                                    branch_zona_counts[sz] = branch_zona_counts.get(sz, 0) + cnt
+                    # Hanya box yang belum masuk manifest manapun
+                    for z_nama, z_box in hitung_box_siap_per_zona(z_val, b_prog, r_id_clean, terkirim_total, terkirim_zona).items():
+                        branch_zona_counts[z_nama] = branch_zona_counts.get(z_nama, 0) + z_box
 
                 summary_branch_html = ""
                 if branch_zona_counts:
@@ -980,15 +1359,12 @@ else:
                 status_formatted_list = []
                 for idx, row in df_preload_display.iterrows():
                     try:
-                        raw_st = str(row.get("Status", "")).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
-                        if raw_st == "on delivery":
-                            st_formatted = "🔵 On Delivery"
-                        elif raw_st == "delivered":
-                            st_formatted = "🟢 Delivered"
-                        else:
-                            jb = row.get("Jumlah Box") or 0
-                            pr = row.get("Progress") or 0
-                            st_formatted = format_status_dengan_ikon(pr, jb)
+                        jb = ke_int(row.get("Jumlah Box"))
+                        pr = ke_int(row.get("Progress"))
+                        id_baris = bersihkan_id(row.get("ID") or row.get("id request") or "")
+                        st_formatted = ikon_status(
+                            status_efektif_id(row.get("Status", ""), pr, jb, delivered_total.get(id_baris, 0))
+                        )
                         status_formatted_list.append(st_formatted)
                     except Exception:
                         status_formatted_list.append("🔴 Pending")
@@ -1024,7 +1400,7 @@ else:
                         ),
                     },
                     disabled=[c for c in cols_tersedia if c != "Zona Mezzanine"],
-                    use_container_width=True,
+                    **stretch(st.data_editor),
                     hide_index=True,
                     key=f"editor_preload_table_{wilayah}"
                 )
@@ -1054,10 +1430,7 @@ else:
                     if st.button("💾 Simpan Perubahan", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
                         try:
                             with st.spinner("⏳ Menyimpan perubahan ke Preload Input..."):
-                                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                gc = gspread.service_account_from_dict(creds_dict)
-                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                sh = get_spreadsheet()
 
                                 ws_p = get_or_init_preload_ws(sh)
                                 updates_zona = {}
@@ -1079,7 +1452,7 @@ else:
                                         del st.session_state[local_df_key]
 
                                     st.cache_data.clear()
-                                    st.success("✅ Zona mezzanine berhasil disimpan ke Preload Input!")
+                                    flash("success", "✅ Zona mezzanine berhasil disimpan ke Preload Input!")
                                     st.rerun()
 
                         except Exception as e:
@@ -1087,7 +1460,7 @@ else:
             else:
                 st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
-        with tab_manifest:
+        if tab_aktif == "Manifest":
             st.subheader(f" Manifest Pengiriman - {wilayah}")
 
             id_current_progress = {}
@@ -1138,45 +1511,27 @@ else:
                         st.warning("⚠️ Pilih minimal satu Zona Mezzanine terlebih dahulu.")
                     else:
                         try:
-                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                            gc = gspread.service_account_from_dict(creds_dict)
-                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                            sh = get_spreadsheet()
 
                             ws_manifest = sh.worksheet("Manifest log")
+                            ws_items = get_or_init_manifest_items_ws(sh)
 
-                            records_mnf_existing = ws_manifest.get_all_records()
-                            id_sudah_dimanifest = {}
-                            id_zona_terpakai = {}
-
-                            for m_rec in records_mnf_existing:
-                                if str(m_rec.get("Tujuan Pengiriman", "")).strip().lower() != wilayah.strip().lower():
-                                    continue
-                                m_st = str(m_rec.get("Status Manifest") or m_rec.get("Status") or "").strip().lower()
-                                if m_st in ["manifested", "delivered", "on delivery"]:
-                                    m_ids_str = str(m_rec.get("ID List") or m_rec.get("ID Request") or "")
-                                    m_zona_str = str(m_rec.get("Zona Mezzanine") or "")
-                                    zona_list_m = [z.strip().lower() for z in m_zona_str.split(",") if z.strip()]
-                                    m_ids_list = [x.split('.')[0].strip() for x in m_ids_str.split(",") if x.strip()]
-
-                                    try:
-                                        m_box_total = int(float(str(m_rec.get("Jumlah Box") or 0).split('.')[0]))
-                                    except Exception:
-                                        m_box_total = 0
-
-                                    for m_id_item in m_ids_list:
-                                        if not m_id_item:
-                                            continue
-                                        if m_id_item not in id_zona_terpakai:
-                                            id_zona_terpakai[m_id_item] = set()
-                                        id_zona_terpakai[m_id_item].update(zona_list_m)
-
-                                    if len(m_ids_list) == 1 and m_ids_list[0]:
-                                        id_sudah_dimanifest[m_ids_list[0]] = id_sudah_dimanifest.get(m_ids_list[0], 0) + m_box_total
+                            # Data terbaru langsung dari sheet (bukan cache) agar tidak ada box yang terhitung ganda
+                            df_m_segar = pd.DataFrame(ws_manifest.get_all_records())
+                            df_i_segar = pd.DataFrame(ws_items.get_all_records())
+                            if not df_m_segar.empty and "Tujuan Pengiriman" in df_m_segar.columns:
+                                df_m_segar = df_m_segar[
+                                    df_m_segar["Tujuan Pengiriman"].astype(str).str.strip().str.lower() == wilayah.strip().lower()
+                                ].copy()
+                            (
+                                items_segar, lama_segar, _status_segar,
+                                terkirim_total_segar, terkirim_zona_segar, _delivered_segar
+                            ) = olah_data_manifest(df_m_segar, df_i_segar, df_branch_all)
 
                             matched_ids = []
                             total_box_manifest = 0
                             id_box_added_map = {}
+                            items_baru = []
 
                             for idx, row in df_filtered.iterrows():
                                 st_clean = (
@@ -1194,53 +1549,26 @@ else:
                                     continue
 
                                 curr_p = id_current_progress.get(r_id, 0)
-                                max_b = id_max_box.get(r_id, 0)
 
-                                sudah_dimanifest = id_sudah_dimanifest.get(r_id, 0)
-                                zona_sudah_pernah_manifest = id_zona_terpakai.get(r_id, set())
-                                zona_tokens = [p.split("(")[0].strip() for p in row_zona.split(",") if p.strip()]
-
-                                box_in_selected_zones = 0
-                                box_siap_kirim = 0
-
-                                if st_clean == "on delivery":
-                                    box_siap_kirim = max(0, curr_p - sudah_dimanifest)
-                                    sisa_kuota_id = max(0, max_b - sudah_dimanifest)
-                                    box_siap_kirim = min(box_siap_kirim, sisa_kuota_id)
-
-                                    if box_siap_kirim <= 0:
-                                        continue
-
-                                    for sel_z in selected_zones_manifest:
-                                        sel_low = sel_z.strip().lower()
-                                        if sel_low in zona_sudah_pernah_manifest:
-                                            continue
-                                        if sel_low in [z.strip().lower() for z in zona_tokens]:
-                                            box_in_selected_zones += box_siap_kirim
-
-                                    box_final = min(box_in_selected_zones, box_siap_kirim)
-                                else:
-                                    box_siap_kirim = curr_p
-                                    if box_siap_kirim <= 0:
-                                        continue
-
-                                    parsed_row_zones = parse_zona_mezzanine(row_zona, total_progress=curr_p)
-                                    for sel_z in selected_zones_manifest:
-                                        for p_z, p_cnt in parsed_row_zones.items():
-                                            if sel_z.strip().lower() == p_z.strip().lower():
-                                                box_in_selected_zones += p_cnt
-
-                                    box_final = min(box_in_selected_zones, box_siap_kirim)
+                                # Hanya box yang belum pernah masuk manifest (termasuk yang sudah Delivered) pada zona terpilih
+                                box_per_zona = hitung_box_siap_per_zona(
+                                    row_zona, curr_p, r_id,
+                                    terkirim_total_segar, terkirim_zona_segar,
+                                    selected_zones_manifest
+                                )
+                                box_final = sum(box_per_zona.values())
 
                                 if box_final > 0 and r_id not in matched_ids:
                                     matched_ids.append(r_id)
                                     id_box_added_map[r_id] = box_final
                                     total_box_manifest += box_final
+                                    for z_nama, z_box in box_per_zona.items():
+                                        items_baru.append((r_id, z_nama, z_box))
 
                             if not matched_ids:
                                 st.warning("⚠️ Tidak ada box baru yang siap dimanifestkan pada zona mezzanine yang dipilih.")
                             else:
-                                now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+                                now = now_wib()
                                 nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
 
                                 dibuat_oleh = str(st.session_state.user_nama)
@@ -1248,23 +1576,26 @@ else:
                                 status_manifest = "Manifested"
                                 zona_str = ", ".join(selected_zones_manifest)
 
-                                ws_manifest.append_row([
-                                    nomor_manifest,
-                                    wilayah,
-                                    zona_str,
-                                    ", ".join(matched_ids),
-                                    int(total_box_manifest),
-                                    dibuat_oleh,
-                                    waktu_buat,
-                                    status_manifest
-                                ])
+                                bekukan_manifest_lama(ws_items, ws_manifest, items_segar, lama_segar, list(lama_segar))
+                                tulis_items_manifest(ws_items, nomor_manifest, items_baru)
+
+                                append_row_by_header(ws_manifest, {
+                                    "Nomor Manifest": nomor_manifest,
+                                    "Tujuan Pengiriman": wilayah,
+                                    "Zona Mezzanine": zona_str,
+                                    "ID List": ", ".join(matched_ids),
+                                    "Jumlah Box": int(total_box_manifest),
+                                    "Dibuat Oleh": dibuat_oleh,
+                                    "Waktu Buat": waktu_buat,
+                                    "Status Manifest": status_manifest,
+                                })
 
                                 st.cache_data.clear()
                                 for k in list(st.session_state.keys()):
                                     if "local_df_preload" in k or "has_unsaved_changes" in k:
                                         del st.session_state[k]
 
-                                st.success(f"✅ Manifest `{nomor_manifest}` berhasil dibuat ({int(total_box_manifest)} box) dengan status **Manifested**.")
+                                flash("success", f"✅ Manifest `{nomor_manifest}` berhasil dibuat ({int(total_box_manifest)} box) dengan status **Manifested**.")
                                 st.rerun()
 
                         except Exception as e:
@@ -1273,26 +1604,33 @@ else:
             st.markdown("---")
             st.markdown(f"##### Daftar Manifest Cabang: {wilayah}")
 
-            df_manifest_wilayah = pd.DataFrame()
-            try:
-                df_manifest_all = conn.read(worksheet="Manifest log", ttl=0)
-                if df_manifest_all is not None and not df_manifest_all.empty:
-                    df_manifest_all.columns = [str(c).strip() for c in df_manifest_all.columns]
-                    if "Tujuan Pengiriman" in df_manifest_all.columns:
-                        df_manifest_wilayah = df_manifest_all[
-                            df_manifest_all["Tujuan Pengiriman"].astype(str).str.strip().str.lower() == wilayah.strip().lower()
-                        ].copy()
-            except Exception as e:
-                st.warning(f"⚠️ Gagal memuat data manifest: {e}")
-
             if df_manifest_wilayah.empty:
                 st.info(f"Belum ada data Manifest yang dibuat untuk cabang {wilayah}.")
             else:
-                for idx, m_row in df_manifest_wilayah.iterrows():
+                # Batasi manifest Delivered yang ditampilkan (yang terbaru saja) agar halaman tetap ringan
+                idx_delivered = [
+                    i_m for i_m, r_m in df_manifest_wilayah.iterrows()
+                    if status_manifest_bersih(r_m) == "delivered"
+                ]
+                jumlah_sembunyi = max(0, len(idx_delivered) - MAKS_MANIFEST_DELIVERED)
+                idx_disembunyikan = idx_delivered[:jumlah_sembunyi]
+                df_manifest_tampil = df_manifest_wilayah.drop(index=idx_disembunyikan)
+                if jumlah_sembunyi > 0:
+                    st.caption(
+                        f"Menampilkan {MAKS_MANIFEST_DELIVERED} manifest Delivered terbaru. "
+                        f"{jumlah_sembunyi} manifest Delivered yang lebih lama disembunyikan agar halaman tetap ringan."
+                    )
+
+                for idx, m_row in df_manifest_tampil.iterrows():
                     mnf_num = str(m_row.get("Nomor Manifest", ""))
                     zona_raw = str(m_row.get("Zona Mezzanine", ""))
-                    box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
                     m_status = str(m_row.get("Status Manifest", "") or m_row.get("Status", "Manifested"))
+
+                    items_m = items_by_mnf.get(mnf_num.strip(), [])
+                    if mnf_num.strip() in manifest_lama and items_m:
+                        box_total = str(sum(b for _, _, b in items_m))
+                    else:
+                        box_total = str(m_row.get("Jumlah Box", "0")).split('.')[0]
 
                     m_creator = str(m_row.get("Dibuat Oleh") or "-")
                     if m_creator.lower() in ["nan", "none", ""]:
@@ -1304,35 +1642,15 @@ else:
                     manifest_id_list = [i.strip().split('.')[0] for i in str(m_row.get("ID List", "")).split(",") if i.strip()]
 
                     tooltip_lines = []
-                    if list_zona_split and not df_filtered.empty:
-                        col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
-
-                        if col_id_name:
-                            df_temp = df_filtered.copy()
-                            clean_tmp_ids = [str(v).split('.')[0].strip() for v in df_temp[col_id_name].tolist()]
-                            df_mnf_items = df_temp[[cid in manifest_id_list for cid in clean_tmp_ids]]
-
-                            for z in list_zona_split:
-                                box_count = 0
-                                for _, row_item in df_mnf_items.iterrows():
-                                    val_p = row_item.get("Progress") or row_item.get("Jumlah Box") or 1
-                                    try:
-                                        p_int = int(float(str(val_p).split('.')[0]))
-                                    except Exception:
-                                        p_int = 1
-
-                                    parsed_item_z = parse_zona_mezzanine(str(row_item.get("Zona Mezzanine", "")), total_progress=p_int)
-                                    for pz_name, pz_qty in parsed_item_z.items():
-                                        if z.strip().lower() == pz_name.strip().lower():
-                                            box_count += pz_qty
-
-                                tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
-
-                            tooltip_items_html = "".join(tooltip_lines)
-                        else:
-                            tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split])
+                    if items_m:
+                        box_per_zona_m = {}
+                        for _, z_i, b_i in items_m:
+                            box_per_zona_m[z_i] = box_per_zona_m.get(z_i, 0) + b_i
+                        for z, box_count in box_per_zona_m.items():
+                            tooltip_lines.append(f"<div style='padding: 2px 0;'>• <b>({z})</b> {box_count} Box</div>")
+                        tooltip_items_html = "".join(tooltip_lines)
                     else:
-                        tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b> 1 Box</div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
+                        tooltip_items_html = "".join([f"<div style='padding: 2px 0;'>• <b>({z})</b></div>" for z in list_zona_split]) if list_zona_split else "<div>Tidak ada zona</div>"
 
                     clean_css_id = re.sub(r'[^a-zA-Z0-9_-]', '_', str(mnf_num)) if mnf_num else str(idx)
 
@@ -1398,7 +1716,7 @@ else:
 
                         with c_btn1:
                             btn_key = f"detail_mnf_{wilayah}_{mnf_num}_{idx}"
-                            if st.button("🔍 Detail", key=btn_key, use_container_width=True):
+                            if st.button("🔍 Detail", key=btn_key, **stretch(st.button)):
                                 st.session_state[f"active_detail_manifest_{wilayah}"] = mnf_num
                                 st.rerun()
 
@@ -1406,15 +1724,13 @@ else:
                             btn_od_key = f"od_mnf_{wilayah}_{mnf_num}_{idx}"
                             if m_status.lower() != "delivered":
                                 btn_label = "Delivered" if m_status.lower() == "on delivery" else "Set Delivered"
-                                if st.button(btn_label, key=btn_od_key, use_container_width=True, type="primary"):
+                                if st.button(btn_label, key=btn_od_key, **stretch(st.button), type="primary"):
                                     try:
-                                        creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                        gc = gspread.service_account_from_dict(creds_dict)
-                                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                        sh = get_spreadsheet()
 
                                         ws_m = sh.worksheet("Manifest log")
                                         ws_p = get_or_init_preload_ws(sh)
+                                        ws_items = get_or_init_manifest_items_ws(sh)
 
                                         header_m = ws_m.row_values(1)
                                         status_m_idx = header_m.index("Status Manifest") + 1 if "Status Manifest" in header_m else 8
@@ -1428,16 +1744,24 @@ else:
                                                 break
 
                                         if row_idx_m:
+                                            bekukan_manifest_lama(ws_items, ws_m, items_by_mnf, manifest_lama, [mnf_num.strip()])
                                             ws_m.update_cell(row_idx_m, status_m_idx, "Delivered")
 
+                                            # Status tiap ID dihitung dari total box yang benar-benar Delivered (termasuk manifest ini)
+                                            status_manifest_baru = dict(status_manifest_map)
+                                            status_manifest_baru[mnf_num.strip()] = "delivered"
+                                            _t, _z, delivered_baru = hitung_pengiriman(items_by_mnf, status_manifest_baru)
+
+                                            id_untuk_status = list(dict.fromkeys(
+                                                [i_i for i_i, _, _ in items_by_mnf.get(mnf_num.strip(), [])] + manifest_id_list
+                                            ))
                                             status_updates = {}
-                                            for r_id_str in manifest_id_list:
-                                                p_val = id_current_progress.get(r_id_str, 0)
-                                                m_val = id_max_box.get(r_id_str, 0)
-                                                if m_val > 0 and 0 < p_val < m_val:
-                                                    status_updates[r_id_str] = {"Status": "On Delivery"}
-                                                else:
-                                                    status_updates[r_id_str] = {"Status": "Delivered"}
+                                            for r_id_str in id_untuk_status:
+                                                p_val = id_current_progress_all.get(r_id_str, 0)
+                                                m_val = id_max_box_all.get(r_id_str, 0)
+                                                status_updates[r_id_str] = {
+                                                    "Status": tentukan_status_id(p_val, m_val, box_terkirim=delivered_baru.get(r_id_str, 0))
+                                                }
 
                                             if status_updates:
                                                 upsert_preload_records(ws_p, status_updates)
@@ -1447,7 +1771,7 @@ else:
                                                 if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                     del st.session_state[k]
 
-                                            st.success(f"✅ Manifest `{mnf_num}` diproses! ID lengkap menjadi **Delivered**, ID parsial tetap **On Delivery**.")
+                                            flash("success", f"✅ Manifest `{mnf_num}` diproses! ID lengkap menjadi **Delivered**, ID parsial tetap **On Delivery**.")
                                             st.rerun()
                                     except Exception as e:
                                         st.error(f"❌ Gagal merubah status Delivered: {e}")
@@ -1456,16 +1780,14 @@ else:
 
                         with c_btn3:
                             btn_del_key = f"del_mnf_{wilayah}_{mnf_num}_{idx}"
-                            if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} ", use_container_width=True):
+                            if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} ", **stretch(st.button)):
                                 try:
                                     with st.spinner(f"⏳ Menghapus manifest {mnf_num} "):
-                                        creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                        gc = gspread.service_account_from_dict(creds_dict)
-                                        spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                        sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                        sh = get_spreadsheet()
 
                                         ws_m = sh.worksheet("Manifest log")
                                         ws_p = get_or_init_preload_ws(sh)
+                                        ws_items = get_or_init_manifest_items_ws(sh)
 
                                         header_m = ws_m.row_values(1)
                                         mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
@@ -1484,14 +1806,27 @@ else:
                                                 break
 
                                         if row_idx_m:
+                                            # Bekukan manifest lama lainnya agar angkanya tidak bergeser setelah manifest ini dihapus
+                                            bekukan_manifest_lama(
+                                                ws_items, ws_m, items_by_mnf, manifest_lama,
+                                                [n for n in manifest_lama if n != mnf_num.strip()]
+                                            )
                                             ws_m.delete_rows(row_idx_m)
+                                            hapus_items_manifest(ws_items, mnf_num.strip())
 
-                                            if ids_to_restore:
+                                            status_manifest_baru = {k: v for k, v in status_manifest_map.items() if k != mnf_num.strip()}
+                                            items_tanpa_ini = {k: v for k, v in items_by_mnf.items() if k != mnf_num.strip()}
+                                            _t, _z, delivered_baru = hitung_pengiriman(items_tanpa_ini, status_manifest_baru)
+
+                                            id_untuk_status = list(dict.fromkeys(
+                                                ids_to_restore + [i_i for i_i, _, _ in items_by_mnf.get(mnf_num.strip(), [])]
+                                            ))
+                                            if id_untuk_status:
                                                 restore_updates = {}
-                                                for r_id_str in ids_to_restore:
-                                                    p_val = id_current_progress.get(r_id_str, 0)
-                                                    m_val = id_max_box.get(r_id_str, 0)
-                                                    restored_st = tentukan_status_id(p_val, m_val)
+                                                for r_id_str in id_untuk_status:
+                                                    p_val = id_current_progress_all.get(r_id_str, 0)
+                                                    m_val = id_max_box_all.get(r_id_str, 0)
+                                                    restored_st = tentukan_status_id(p_val, m_val, box_terkirim=delivered_baru.get(r_id_str, 0))
                                                     restore_updates[r_id_str] = {"Status": restored_st}
                                                 upsert_preload_records(ws_p, restore_updates)
 
@@ -1503,7 +1838,7 @@ else:
                                                 if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                     del st.session_state[k]
 
-                                            st.success(f"✅ Manifest `{mnf_num}` berhasil dihapus dan status dikembalikan!")
+                                            flash("success", f"✅ Manifest `{mnf_num}` berhasil dihapus dan status dikembalikan!")
                                             st.rerun()
                                 except Exception as e:
                                     st.error(f"❌ Gagal menghapus manifest: {e}")
@@ -1522,8 +1857,17 @@ else:
                     current_id_list_str = str(row_info.get("ID List", ""))
                     ids_in_manifest = [i.strip().split('.')[0] for i in current_id_list_str.split(",") if i.strip()]
 
-                    box_tampilkan = str(row_info.get('Jumlah Box', '0')).split('.')[0]
+                    items_aktif = items_by_mnf.get(str(active_mnf).strip(), [])
+                    manifest_terkunci = status_manifest_map.get(str(active_mnf).strip(), "manifested") == "delivered"
+
+                    if str(active_mnf).strip() in manifest_lama and items_aktif:
+                        box_tampilkan = str(sum(b for _, _, b in items_aktif))
+                    else:
+                        box_tampilkan = str(row_info.get('Jumlah Box', '0')).split('.')[0]
                     st.info(f"**Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Jumlah Box:** {box_tampilkan} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
+
+                    if manifest_terkunci:
+                        st.caption("🔒 Manifest berstatus Delivered: hanya dapat dilihat dan didownload.")
 
                     col_scan_in, col_scan_out = st.columns(2)
 
@@ -1532,7 +1876,7 @@ else:
                             st.markdown("##### ➕ Tambah ID baru ke Manifest")
                             scan_input_id = st.text_input("ID Request:", placeholder="Scan/Ketik ID...")
                             added_box_input = st.number_input("Jumlah Box yang Dimasukkan:", min_value=1, value=1, step=1)
-                            btn_submit_susulan = st.form_submit_button("Tambah ke Manifest")
+                            btn_submit_susulan = st.form_submit_button("Tambah ke Manifest", disabled=manifest_terkunci)
 
                             if btn_submit_susulan:
                                 clean_new_id = scan_input_id.strip().split('.')[0]
@@ -1543,99 +1887,115 @@ else:
                                     if max_b is None:
                                         st.error(f"❌ ID `{clean_new_id}` tidak ditemukan pada data preload.")
                                     else:
-                                        with st.spinner("⏳ Menambahkan ID ke Manifest & memperbarui data..."):
-                                            try:
-                                                creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                                gc = gspread.service_account_from_dict(creds_dict)
-                                                spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                                sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                        old_p = id_current_progress.get(clean_new_id, 0)
+                                        input_box = int(added_box_input)
 
-                                                ws_p = get_or_init_preload_ws(sh)
-                                                old_p = id_current_progress.get(clean_new_id, 0)
-                                                new_p = min(max_b, old_p + int(added_box_input))
-                                                actual_added = new_p - old_p
+                                        # Box yang sudah di-preload tapi belum masuk manifest dipakai lebih dulu,
+                                        # sisanya menambah progress (maksimal sampai kuota ID).
+                                        siap_id = max(0, old_p - terkirim_total.get(clean_new_id, 0))
+                                        dari_siap = min(input_box, siap_id)
+                                        tambah_progress = min(input_box - dari_siap, max(0, max_b - old_p))
+                                        actual_added = dari_siap + tambah_progress
 
-                                                if actual_added > 0:
-                                                    upsert_preload_records(ws_p, {
-                                                        clean_new_id: {
-                                                            "Progress": new_p,
-                                                            "Status": "Manifested"
-                                                        }
-                                                    })
+                                        if actual_added <= 0:
+                                            st.error(f"❌ ID `{clean_new_id}` tidak memiliki box yang bisa ditambahkan (kuota {max_b} box sudah terpenuhi / sudah masuk manifest).")
+                                        else:
+                                            with st.spinner("⏳ Menambahkan ID ke Manifest & memperbarui data..."):
+                                                try:
+                                                    sh = get_spreadsheet()
 
-                                                ws_m = sh.worksheet("Manifest log")
-                                                header_m = ws_m.row_values(1)
+                                                    ws_p = get_or_init_preload_ws(sh)
+                                                    ws_items = get_or_init_manifest_items_ws(sh)
+                                                    ws_m = sh.worksheet("Manifest log")
+                                                    header_m = ws_m.row_values(1)
 
-                                                mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
-                                                idlist_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
-                                                tbox_idx = header_m.index("Jumlah Box") + 1 if "Jumlah Box" in header_m else 5
+                                                    mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
+                                                    idlist_idx = header_m.index("ID List") + 1 if "ID List" in header_m else 4
+                                                    tbox_idx = header_m.index("Jumlah Box") + 1 if "Jumlah Box" in header_m else 5
 
-                                                manifest_col_values = ws_m.col_values(mnf_col_idx)
-                                                row_idx = None
-                                                for idx_m, val_m in enumerate(manifest_col_values, start=1):
-                                                    if str(val_m).strip() == str(active_mnf):
-                                                        row_idx = idx_m
-                                                        break
+                                                    manifest_col_values = ws_m.col_values(mnf_col_idx)
+                                                    row_idx = None
+                                                    for idx_m, val_m in enumerate(manifest_col_values, start=1):
+                                                        if str(val_m).strip() == str(active_mnf):
+                                                            row_idx = idx_m
+                                                            break
 
-                                                if row_idx:
-                                                    row_values = ws_m.row_values(row_idx)
-                                                    if clean_new_id not in ids_in_manifest:
-                                                        ids_in_manifest.append(clean_new_id)
-                                                    new_id_list_str = ", ".join(ids_in_manifest)
+                                                    if row_idx:
+                                                        bekukan_manifest_lama(ws_items, ws_m, items_by_mnf, manifest_lama, [str(active_mnf).strip()])
 
-                                                    try:
-                                                        current_total_box = int(float(row_values[tbox_idx - 1])) if len(row_values) >= tbox_idx and row_values[tbox_idx - 1] != '' else 0
-                                                    except Exception:
-                                                        current_total_box = 0
-                                                    new_total_box = current_total_box + int(added_box_input)
+                                                        items_susulan = []
+                                                        sisa_ambil = dari_siap
+                                                        if dari_siap > 0:
+                                                            for z_nama, z_box in hitung_box_siap_per_zona(
+                                                                id_zona_str.get(clean_new_id, ""), old_p, clean_new_id,
+                                                                terkirim_total, terkirim_zona
+                                                            ).items():
+                                                                ambil_z = min(z_box, sisa_ambil)
+                                                                if ambil_z > 0:
+                                                                    items_susulan.append((clean_new_id, z_nama, ambil_z))
+                                                                    sisa_ambil -= ambil_z
+                                                        box_tanpa_zona = sisa_ambil + tambah_progress
+                                                        if box_tanpa_zona > 0:
+                                                            items_susulan.append((clean_new_id, "Susulan", box_tanpa_zona))
 
-                                                    ws_m.update_cell(row_idx, idlist_idx, new_id_list_str)
-                                                    ws_m.update_cell(row_idx, tbox_idx, int(new_total_box))
+                                                        if tambah_progress > 0:
+                                                            new_p = old_p + tambah_progress
+                                                            upsert_preload_records(ws_p, {
+                                                                clean_new_id: {
+                                                                    "Progress": new_p,
+                                                                    "Status": tentukan_status_id(new_p, max_b, box_terkirim=delivered_total.get(clean_new_id, 0))
+                                                                }
+                                                            })
 
-                                                    st.cache_data.clear()
-                                                    for k in list(st.session_state.keys()):
-                                                        if "local_df_preload" in k or "has_unsaved_changes" in k:
-                                                            del st.session_state[k]
+                                                        tulis_items_manifest(ws_items, str(active_mnf).strip(), items_susulan)
 
-                                                    st.success(f"✅ Berhasil menambahkan ID `{clean_new_id}` sebanyak {added_box_input} box ke manifest!")
-                                                    st.rerun()
-                                                else:
-                                                    st.error("❌ Baris manifest tidak ditemukan di database.")
-                                            except Exception as e:
-                                                st.error(f"❌ Gagal memperbarui manifest: {e}")
+                                                        row_values = ws_m.row_values(row_idx)
+                                                        if clean_new_id not in ids_in_manifest:
+                                                            ids_in_manifest.append(clean_new_id)
+                                                        new_id_list_str = ", ".join(ids_in_manifest)
+
+                                                        try:
+                                                            current_total_box = int(float(row_values[tbox_idx - 1])) if len(row_values) >= tbox_idx and row_values[tbox_idx - 1] != '' else 0
+                                                        except Exception:
+                                                            current_total_box = 0
+                                                        new_total_box = current_total_box + actual_added
+
+                                                        ws_m.update_cell(row_idx, idlist_idx, new_id_list_str)
+                                                        ws_m.update_cell(row_idx, tbox_idx, int(new_total_box))
+
+                                                        st.cache_data.clear()
+                                                        for k in list(st.session_state.keys()):
+                                                            if "local_df_preload" in k or "has_unsaved_changes" in k:
+                                                                del st.session_state[k]
+
+                                                        flash("success", f"✅ Berhasil menambahkan ID `{clean_new_id}` sebanyak {actual_added} box ke manifest!")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error("❌ Baris manifest tidak ditemukan di database.")
+                                                except Exception as e:
+                                                    st.error(f"❌ Gagal memperbarui manifest: {e}")
 
                     with col_scan_out:
                         with st.form(key=f"form_scan_keluar_{active_mnf}", clear_on_submit=True):
                             st.markdown("##### ➖ Keluarkan ID dari Manifest")
                             scan_out_id = st.text_input("ID Request:", placeholder="Scan/Ketik ID...")
                             removed_box_input = st.number_input("Jumlah Box yang Dikeluarkan:", min_value=1, value=1, step=1)
-                            btn_submit_keluar = st.form_submit_button("Keluarkan dari Manifest", type="secondary")
+                            btn_submit_keluar = st.form_submit_button("Keluarkan dari Manifest", type="secondary", disabled=manifest_terkunci)
 
                             if btn_submit_keluar:
                                 clean_out_id = scan_out_id.strip().split('.')[0]
+                                box_id_di_manifest = sum(b for i_i, _, b in items_aktif if i_i == clean_out_id)
                                 if clean_out_id not in ids_in_manifest:
                                     st.error(f"❌ ID `{clean_out_id}` tidak ditemukan dalam manifest ini!")
+                                elif box_id_di_manifest > 0 and int(removed_box_input) > box_id_di_manifest:
+                                    st.error(f"❌ Jumlah box melebihi box ID `{clean_out_id}` pada manifest ini ({box_id_di_manifest} box).")
                                 else:
                                     with st.spinner("⏳ Mengeluarkan ID dari Manifest & memperbarui data..."):
                                         try:
-                                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                            gc = gspread.service_account_from_dict(creds_dict)
-                                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                            sh = get_spreadsheet()
 
                                             ws_p = get_or_init_preload_ws(sh)
-                                            old_p = id_current_progress.get(clean_out_id, 0)
-                                            max_b_out = id_max_box.get(clean_out_id, 0)
-                                            sisa_progress = max(0, old_p - int(removed_box_input))
-
-                                            out_payload = {"Progress": sisa_progress}
-                                            if sisa_progress == 0:
-                                                out_payload["Status"] = "Pending"
-                                            else:
-                                                out_payload["Status"] = tentukan_status_id(sisa_progress, max_b_out)
-
-                                            upsert_preload_records(ws_p, {clean_out_id: out_payload})
-
+                                            ws_items = get_or_init_manifest_items_ws(sh)
                                             ws_m = sh.worksheet("Manifest log")
                                             header_m = ws_m.row_values(1)
 
@@ -1651,8 +2011,39 @@ else:
                                                     break
 
                                             if row_idx:
+                                                removed = int(removed_box_input)
+                                                old_p = id_current_progress_all.get(clean_out_id, 0)
+                                                max_b_out = id_max_box_all.get(clean_out_id, 0)
+                                                sisa_progress = max(0, old_p - removed)
+
+                                                bekukan_manifest_lama(ws_items, ws_m, items_by_mnf, manifest_lama, [str(active_mnf).strip()])
+                                                diambil = kurangi_items_manifest(ws_items, str(active_mnf).strip(), clean_out_id, removed)
+
+                                                out_payload = {"Progress": sisa_progress}
+
+                                                # Kurangi box pada zona asal agar rincian zona tetap sesuai progress
+                                                zmap_now = parse_zona_mezzanine(id_zona_str.get(clean_out_id, ""), total_progress=old_p)
+                                                zona_berubah = False
+                                                for z_nama, z_box in diambil:
+                                                    for z_key in list(zmap_now.keys()):
+                                                        if z_key.strip().lower() == z_nama.strip().lower():
+                                                            zmap_now[z_key] = max(0, zmap_now[z_key] - z_box)
+                                                            zona_berubah = True
+                                                if zona_berubah:
+                                                    out_payload["Zona Mezzanine"] = format_zona_output(zmap_now)
+
+                                                out_payload["Status"] = tentukan_status_id(
+                                                    sisa_progress, max_b_out, box_terkirim=delivered_total.get(clean_out_id, 0)
+                                                )
+
+                                                upsert_preload_records(ws_p, {clean_out_id: out_payload})
+
                                                 row_values = ws_m.row_values(row_idx)
-                                                if sisa_progress == 0 and clean_out_id in ids_in_manifest:
+                                                if box_id_di_manifest > 0:
+                                                    id_habis = (box_id_di_manifest - removed) <= 0
+                                                else:
+                                                    id_habis = sisa_progress == 0
+                                                if id_habis and clean_out_id in ids_in_manifest:
                                                     ids_in_manifest.remove(clean_out_id)
 
                                                 new_id_list_str = ", ".join(ids_in_manifest)
@@ -1662,7 +2053,7 @@ else:
                                                 except Exception:
                                                     current_total_box = 0
 
-                                                new_total_box = max(0, current_total_box - int(removed_box_input))
+                                                new_total_box = max(0, current_total_box - removed)
 
                                                 ws_m.update_cell(row_idx, idlist_idx, new_id_list_str)
                                                 ws_m.update_cell(row_idx, tbox_idx, int(new_total_box))
@@ -1672,7 +2063,7 @@ else:
                                                     if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                         del st.session_state[k]
 
-                                                st.success(f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest!")
+                                                flash("success", f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest!")
                                                 st.rerun()
                                             else:
                                                 st.error("❌ Baris manifest tidak ditemukan di database.")
@@ -1699,7 +2090,7 @@ else:
                                 help="Masukkan total box akhir untuk ID-ID yang dipilih (misal: digabung jadi 1 box)"
                             )
 
-                            btn_submit_merge = st.form_submit_button("🔄 Buat ID Gabungan", type="primary")
+                            btn_submit_merge = st.form_submit_button("🔄 Buat ID Gabungan", type="primary", disabled=manifest_terkunci)
 
                             if btn_submit_merge:
                                 if not selected_ids_to_merge:
@@ -1707,12 +2098,10 @@ else:
                                 else:
                                     with st.spinner("⏳ Menggabungkan ID & memperbarui data..."):
                                         try:
-                                            creds_dict = dict(st.secrets["connections"]["gsheets"])
-                                            gc = gspread.service_account_from_dict(creds_dict)
-                                            spreadsheet_name = st.secrets["connections"]["gsheets"].get("spreadsheet")
-                                            sh = gc.open_by_url(spreadsheet_name) if spreadsheet_name.startswith("http") else gc.open(spreadsheet_name)
+                                            sh = get_spreadsheet()
 
                                             ws_m = sh.worksheet("Manifest log")
+                                            ws_items = get_or_init_manifest_items_ws(sh)
                                             header_m = ws_m.row_values(1)
 
                                             mnf_col_idx = header_m.index("Nomor Manifest") + 1 if "Nomor Manifest" in header_m else 1
@@ -1726,14 +2115,29 @@ else:
                                                     break
 
                                             if row_idx:
-                                                ws_m.update_cell(row_idx, tbox_idx, int(target_combined_box))
+                                                bekukan_manifest_lama(ws_items, ws_m, items_by_mnf, manifest_lama, [str(active_mnf).strip()])
+
+                                                # Hanya box milik ID terpilih yang diganti menjadi total gabungan,
+                                                # box ID lain pada manifest ini tidak ikut berubah.
+                                                row_values = ws_m.row_values(row_idx)
+                                                try:
+                                                    current_total_box = int(float(row_values[tbox_idx - 1])) if len(row_values) >= tbox_idx and row_values[tbox_idx - 1] != '' else 0
+                                                except Exception:
+                                                    current_total_box = 0
+                                                box_terpilih = sum(b for i_i, _, b in items_aktif if i_i in selected_ids_to_merge)
+                                                if box_terpilih > 0:
+                                                    new_total_box = max(0, current_total_box - box_terpilih) + int(target_combined_box)
+                                                else:
+                                                    new_total_box = int(target_combined_box)
+
+                                                ws_m.update_cell(row_idx, tbox_idx, int(new_total_box))
 
                                                 st.cache_data.clear()
                                                 for k in list(st.session_state.keys()):
                                                     if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                         del st.session_state[k]
 
-                                                st.success(f"✅ Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini!")
+                                                flash("success", f"✅ Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini!")
                                                 st.rerun()
                                             else:
                                                 st.error("❌ Baris manifest tidak ditemukan di database.")
@@ -1742,10 +2146,11 @@ else:
 
                     st.markdown("---")
 
-                    if not df_filtered.empty:
-                        col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
+                    # Detail memakai data seluruh ID cabang (termasuk yang sudah Delivered) agar manifest Delivered tetap bisa dibuka & didownload
+                    if not df_branch_all.empty:
+                        col_id_name = "ID" if "ID" in df_branch_all.columns else ("id request" if "id request" in df_branch_all.columns else None)
                         if col_id_name:
-                            df_temp_detail = df_filtered.copy()
+                            df_temp_detail = df_branch_all.copy()
                             df_temp_detail = df_temp_detail.loc[:, ~df_temp_detail.columns.duplicated()]
 
                             id_series = df_temp_detail[col_id_name]
@@ -1767,6 +2172,20 @@ else:
                                         for v in target_s.tolist()
                                     ]
 
+                            # Jumlah Box & zona pada tabel/Excel = box yang benar-benar masuk manifest ini
+                            if items_aktif:
+                                box_per_id = {}
+                                zona_per_id = {}
+                                for i_i, z_i, b_i in items_aktif:
+                                    box_per_id[i_i] = box_per_id.get(i_i, 0) + b_i
+                                    zona_per_id.setdefault(i_i, {})
+                                    zona_per_id[i_i][z_i] = zona_per_id[i_i].get(z_i, 0) + b_i
+                                df_detail_manifest["Jumlah Box"] = [str(box_per_id.get(cid, 0)) for cid in df_detail_manifest["clean_id"].tolist()]
+                                if "Zona Mezzanine" in df_detail_manifest.columns:
+                                    df_detail_manifest["Zona Mezzanine"] = [
+                                        format_zona_output(zona_per_id.get(cid, {})) for cid in df_detail_manifest["clean_id"].tolist()
+                                    ]
+
                             if "clean_id" in df_detail_manifest.columns:
                                 df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
                         else:
@@ -1775,13 +2194,11 @@ else:
                         df_detail_manifest = pd.DataFrame()
 
                     if not df_detail_manifest.empty:
-                        if len(ids_in_manifest) == 1:
-                            try:
-                                mnf_box_int = int(float(str(row_info.get("Jumlah Box", 0)).split('.')[0]))
-                                if mnf_box_int > 0:
-                                    df_detail_manifest["Jumlah Box"] = str(mnf_box_int)
-                            except Exception:
-                                pass
+                        mnf_box_int = ke_int(row_info.get("Jumlah Box", 0))
+                        mnf_baru_format = str(active_mnf).strip() not in manifest_lama
+                        if len(ids_in_manifest) == 1 and mnf_baru_format:
+                            if mnf_box_int > 0:
+                                df_detail_manifest["Jumlah Box"] = str(mnf_box_int)
                         creator_val = row_info.get("Dibuat Oleh") or row_info.get("Oleh") or str(st.session_state.get("user_nama", "Admin"))
                         time_val = row_info.get("Waktu Buat") or row_info.get("Timestamp") or "-"
 
@@ -1790,7 +2207,8 @@ else:
                             wilayah=wilayah,
                             creator_name=creator_val,
                             waktu_buat=time_val,
-                            df_items=df_detail_manifest
+                            df_items=df_detail_manifest,
+                            total_override=(mnf_box_int if (mnf_baru_format and mnf_box_int > 0) else None)
                         )
 
                         st.download_button(
@@ -1799,12 +2217,12 @@ else:
                             file_name=f"{active_mnf}_{wilayah}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             key=f"dl_excel_{active_mnf}",
-                            use_container_width=True
+                            **stretch(st.download_button)
                         )
 
                     st.markdown("##### List ID Request Manifest :")
                     if not df_detail_manifest.empty:
-                        st.dataframe(df_detail_manifest, use_container_width=True, hide_index=True)
+                        st.dataframe(df_detail_manifest, **stretch(st.dataframe), hide_index=True)
                     else:
                         st.info("ℹ️ ID Terdaftar:")
                         st.write(ids_in_manifest)
