@@ -1763,10 +1763,12 @@ else:
                         if col_id_name:
                             df_temp_detail = df_filtered.copy()
                             df_temp_detail = df_temp_detail.loc[:, ~df_temp_detail.columns.duplicated()]
+                    
                             id_series = df_temp_detail[col_id_name]
                             if isinstance(id_series, pd.DataFrame):
                                 id_series = id_series.iloc[:, 0]
-                            df_temp_detail["clean_id"] = id_series.astype(str).str.split(".").str[0].str.strip()
+                            clean_id_list = [str(v).split(".")[0].strip() for v in id_series.tolist()]
+                            df_temp_detail["clean_id"] = clean_id_list
                     
                             df_detail_manifest = df_temp_detail[df_temp_detail["clean_id"].isin(ids_in_manifest)].copy()
                             df_detail_manifest = df_detail_manifest.loc[:, ~df_detail_manifest.columns.duplicated()]
@@ -1776,7 +1778,10 @@ else:
                                     target_s = df_detail_manifest[col_num_check]
                                     if isinstance(target_s, pd.DataFrame):
                                         target_s = target_s.iloc[:, 0]
-                                    df_detail_manifest[col_num_check] = target_s.astype(str).str.split(".").str[0]
+                                    df_detail_manifest[col_num_check] = [
+                                        "" if v is None or str(v).strip().lower() in ["nan", "none", "nat"] else str(v).split(".")[0].strip()
+                                        for v in target_s.tolist()
+                                    ]
                     
                             if "clean_id" in df_detail_manifest.columns:
                                 df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
