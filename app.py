@@ -1761,13 +1761,23 @@ else:
                     if not df_filtered.empty:
                         col_id_name = "ID" if "ID" in df_filtered.columns else ("id request" if "id request" in df_filtered.columns else None)
                         if col_id_name:
-                            df_filtered["clean_id"] = df_filtered[col_id_name].astype(str).str.split('.').str[0].str.strip()
-                            df_detail_manifest = df_filtered[df_filtered["clean_id"].isin(ids_in_manifest)].copy()
-                            
+                            df_temp_detail = df_filtered.copy()
+                            df_temp_detail = df_temp_detail.loc[:, ~df_temp_detail.columns.duplicated()]
+                            id_series = df_temp_detail[col_id_name]
+                            if isinstance(id_series, pd.DataFrame):
+                                id_series = id_series.iloc[:, 0]
+                            df_temp_detail["clean_id"] = id_series.astype(str).str.split(".").str[0].str.strip()
+                    
+                            df_detail_manifest = df_temp_detail[df_temp_detail["clean_id"].isin(ids_in_manifest)].copy()
+                            df_detail_manifest = df_detail_manifest.loc[:, ~df_detail_manifest.columns.duplicated()]
+                    
                             for col_num_check in ["Jumlah Box", "Progress", "clean_id"]:
                                 if col_num_check in df_detail_manifest.columns:
-                                    df_detail_manifest[col_num_check] = df_detail_manifest[col_num_check].astype(str).str.split('.').str[0]
-                                    
+                                    target_s = df_detail_manifest[col_num_check]
+                                    if isinstance(target_s, pd.DataFrame):
+                                        target_s = target_s.iloc[:, 0]
+                                    df_detail_manifest[col_num_check] = target_s.astype(str).str.split(".").str[0]
+                    
                             if "clean_id" in df_detail_manifest.columns:
                                 df_detail_manifest = df_detail_manifest.drop(columns=["clean_id"])
                         else:
