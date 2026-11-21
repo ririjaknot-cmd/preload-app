@@ -167,16 +167,11 @@ def tentukan_status_id(current_prog, max_box, status_manifest_saat_ini="", statu
 
 def format_status_dengan_ikon(progress, jumlah_box, status_manifest="", status_saat_ini=""):
     st_text = tentukan_status_id(progress, jumlah_box, status_manifest, status_saat_ini)
-    if "Delivered" in st_text:
-        return "🟢 Delivered"
-    elif "On Delivery" in st_text:
-        return "🔵 On Delivery"
-    elif "Completed" in st_text:
-        return "🟢 Completed"
-    elif "Not Completed" in st_text:
-        return "🟡 Not Completed"
-    else:
-        return "🔴 Pending"
+    ikon = {
+        "Delivered": "🟢", "On Delivery": "🔵", "Completed": "🟢",
+        "Not Completed": "🟡", "Pending": "🔴",
+    }
+    return f"{ikon.get(st_text, '🔴')} {st_text}"
 
 
 def generate_manifest_excel(mnf_num, wilayah, creator_name, waktu_buat, df_items):
