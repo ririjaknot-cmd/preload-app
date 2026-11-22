@@ -818,15 +818,55 @@ else:
         st.title(" Summary Status Cabang")
 
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
-            if "Jumlah Box" in df_database.columns:
-                df_sum_base = df_database.copy()
-                df_sum_base["Jumlah Box"] = pd.to_numeric(df_sum_base["Jumlah Box"], errors="coerce").fillna(0).astype(int)
-                df_summary = df_sum_base.groupby("Tujuan Pengiriman")["Jumlah Box"].sum().reset_index()
-                df_summary.columns = ["Tujuan Pengiriman", "Total Jumlah Box"]
-            else:
-                df_summary = df_database.groupby("Tujuan Pengiriman").size().reset_index(name="Total Log Data")
+            df_sum_base = df_database.copy()
 
-            st.dataframe(df_summary, **stretch(st.dataframe), hide_index=True)
+            # 1. Kecualikan data yang sudah berstatus 'Delivered'
+            if "Status" in df_sum_base.columns:
+                clean_st_sum = [
+                    str(v).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+                    for v in df_sum_base["Status"].tolist()
+                ]
+                df_sum_base = df_sum_base[[s != "delivered" for s in clean_st_sum]].copy()
+
+            # 2. Normalisasi nama cabang agar tidak duplikat (misal: 'bandung' vs 'Bandung')
+            daftar_cabang_baku = {
+                c.strip().lower(): c.strip()
+                for c in [
+                    "Jakarta Pusat", "Jakarta Barat", "Jakarta Utara",
+                    "Tangerang", "Cikupa", "Bandung", "Semarang",
+                    "Surabaya Timur", "Surabaya Barat", "Yogyakarta",
+                    "Makassar", "Medan", "Official Store"
+                ]
+            }
+
+            def normalisasi_cabang(val):
+                s = str(val).strip()
+                if not s or s.lower() in ["nan", "none", "nat"]:
+                    return ""
+                return daftar_cabang_baku.get(s.lower(), s.title())
+
+            df_sum_base["_cabang_bersih"] = [normalisasi_cabang(v) for v in df_sum_base["Tujuan Pengiriman"].tolist()]
+            df_sum_base = df_sum_base[df_sum_base["_cabang_bersih"] != ""].copy()
+
+            if df_sum_base.empty:
+                st.info("Tidak ada data aktif (non-Delivered) untuk ditampilkan pada Summary Status Cabang.")
+            elif "Jumlah Box" in df_sum_base.columns:
+                df_sum_base["Jumlah Box"] = pd.to_numeric(df_sum_base["Jumlah Box"], errors="coerce").fillna(0).astype(int)
+                df_summary = (
+                    df_sum_base.groupby("_cabang_bersih", as_index=False)["Jumlah Box"]
+                    .sum()
+                    .sort_values("_cabang_bersih")
+                )
+                df_summary.columns = ["Tujuan Pengiriman", "Total Jumlah Box"]
+                st.dataframe(df_summary, use_container_width=True, hide_index=True)
+            else:
+                df_summary = (
+                    df_sum_base.groupby("_cabang_bersih", as_index=False)
+                    .size()
+                    .sort_values("_cabang_bersih")
+                )
+                df_summary.columns = ["Tujuan Pengiriman", "Total Log Data"]
+                st.dataframe(df_summary, use_container_width=True, hide_index=True)
         else:
             st.warning("⚠️ Database kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
 
