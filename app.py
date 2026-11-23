@@ -810,7 +810,7 @@ else:
                 "Jakarta Pusat", "Jakarta Barat", "Jakarta Utara",
                 "Tangerang", "Cikupa", "Bandung", "Semarang",
                 "Surabaya Timur", "Surabaya Barat", "Yogyakarta",
-                "Makassar", "Medan", "Official Store"
+                "Makassar", "Medan", "Official Store", "Official Store 2"
             ]
         )
 
@@ -835,7 +835,7 @@ else:
                     "Jakarta Pusat", "Jakarta Barat", "Jakarta Utara",
                     "Tangerang", "Cikupa", "Bandung", "Semarang",
                     "Surabaya Timur", "Surabaya Barat", "Yogyakarta",
-                    "Makassar", "Medan", "Official Store"
+                    "Makassar", "Medan", "Official Store", "Official Store 2"
                 ]
             }
 
@@ -2205,3 +2205,4 @@ else:
                     if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                         st.session_state[f"active_detail_manifest_{wilayah}"] = None
                         st.rerun()
+
