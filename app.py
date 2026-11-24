@@ -601,7 +601,7 @@ if "user_nama" not in st.session_state:
 
 
 def tampilkan_halaman_login():
-    st.markdown("<h2 style='text-align: center;'>🔐 Login Pre Load</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>Login Pre Load</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>Silakan masukkan Username terdaftar dan PIN Anda.</p>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -613,7 +613,7 @@ def tampilkan_halaman_login():
 
         if submit_btn:
             if not username_input or not pin_input:
-                st.warning("⚠️ Masukkan Username dan PIN terlebih dahulu.")
+                st.warning("Masukkan Username dan PIN terlebih dahulu.")
             else:
                 try:
                     sh = get_spreadsheet()
@@ -641,9 +641,9 @@ def tampilkan_halaman_login():
                         flash("success", f"Login berhasil! Selamat datang, {st.session_state.user_nama}")
                         st.rerun()
                     else:
-                        st.error("❌ Username atau PIN salah.")
+                        st.error("Username atau PIN salah.")
                 except Exception as e:
-                    st.error(f"❌ Gagal memuat data login dari database: {e}")
+                    st.error(f"Gagal memuat data login dari database: {e}")
 
 
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -683,7 +683,7 @@ if not st.session_state.logged_in:
     tampilkan_halaman_login()
 else:
     st.sidebar.markdown("---")
-    if st.sidebar.button("🔄 Refresh Data", **stretch(st.button)):
+    if st.sidebar.button("Refresh Data", **stretch(st.button)):
         st.cache_data.clear()
         flash("success", "Cache dibersihkan, memuat data terbaru...")
         st.rerun()
@@ -700,7 +700,7 @@ else:
 
         components.html("""
         <div style="font-family: sans-serif; font-size: 12px; color: #A0A0A0; text-align: right; margin-top: -10px;">
-            🕑<span id="live-clock">Loading...</span>
+            <span id="live-clock">Loading...</span>
         </div>
         <script>
         function updateClock() {
@@ -730,7 +730,7 @@ else:
 
         with btn_col1:
             with st.popover("Password", **stretch(st.popover)):
-                st.markdown("##### 🔐 Ubah Password")
+                st.markdown("##### Ubah Password")
                 with st.form(key=f"form_ubah_pin_{st.session_state.user_email}", clear_on_submit=True):
                     old_pin = st.text_input("Password Lama:", type="password")
                     new_pin = st.text_input("Password Baru:", type="password")
@@ -740,12 +740,12 @@ else:
 
                     if btn_save_pin:
                         if not old_pin or not new_pin or not confirm_pin:
-                            st.warning("⚠️ Semua kolom harus diisi.")
+                            st.warning("Semua kolom harus diisi.")
                         elif new_pin != confirm_pin:
-                            st.error("❌ Password baru tidak cocok.")
+                            st.error("Password baru tidak cocok.")
                         else:
                             try:
-                                with st.spinner("⏳ Memperbarui..."):
+                                with st.spinner("Memperbarui..."):
                                     sh = get_spreadsheet()
 
                                     ws_users = sh.worksheet("Data User")
@@ -765,15 +765,15 @@ else:
                                             target_row = idx_u
                                             stored_pin = str(pins_list[idx_u - 1]).strip() if (idx_u - 1) < len(pins_list) else ""
                                             if stored_pin != old_pin.strip():
-                                                st.error("❌ Password lama salah!")
+                                                st.error("Password lama salah!")
                                                 target_row = None
                                             break
 
                                     if target_row:
                                         ws_users.update_cell(target_row, pin_col_i, new_pin.strip())
-                                        st.success("✅ Berhasil! Gunakan password baru saat login.")
+                                        st.success("Berhasil! Gunakan password baru saat login.")
                             except Exception as e:
-                                st.error(f"❌ Gagal: {e}")
+                                st.error(f"Gagal: {e}")
 
         with btn_col2:
             if st.button("Logout", **stretch(st.button)):
@@ -788,7 +788,7 @@ else:
     try:
         df_database = load_cached_database()
     except Exception as e:
-        st.error("❌ Gagal terhubung ke database. Detail Error:")
+        st.error("Gagal terhubung ke database. Detail Error:")
         st.exception(e)
         df_database = pd.DataFrame()
 
@@ -820,7 +820,7 @@ else:
         if not df_database.empty and "Tujuan Pengiriman" in df_database.columns:
             df_sum_base = df_database.copy()
 
-            # 1. Kecualikan data yang sudah berstatus 'Delivered'
+            
             if "Status" in df_sum_base.columns:
                 clean_st_sum = [
                     str(v).replace("🔵", "").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
@@ -828,7 +828,6 @@ else:
                 ]
                 df_sum_base = df_sum_base[[s != "delivered" for s in clean_st_sum]].copy()
 
-            # 2. Normalisasi nama cabang agar tidak duplikat (misal: 'bandung' vs 'Bandung')
             daftar_cabang_baku = {
                 c.strip().lower(): c.strip()
                 for c in [
@@ -868,7 +867,7 @@ else:
                 df_summary.columns = ["Tujuan Pengiriman", "Total Log Data"]
                 st.dataframe(df_summary, use_container_width=True, hide_index=True)
         else:
-            st.warning("⚠️ Database kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
+            st.warning("Database kosong atau kolom 'Tujuan Pengiriman' tidak ditemukan.")
 
     else:
         st.title(f"Cabang - {wilayah}")
@@ -911,7 +910,7 @@ else:
                     ].copy()
             df_items_semua = load_cached_manifest_items()
         except Exception as e:
-            st.warning(f"⚠️ Gagal memuat data manifest: {e}")
+            st.warning(f"Gagal memuat data manifest: {e}")
 
         (
             items_by_mnf, manifest_lama, status_manifest_map,
@@ -928,7 +927,7 @@ else:
 
         if tab_aktif == "ID Request":
             st.subheader(f"Data Preload & Pencarian ID - {wilayah}")
-            keyword_cari = st.text_input("🔍 Cari ID Request:", placeholder="Masukkan ID Request yang ingin dicari...", key="search_id_request")
+            keyword_cari = st.text_input("Cari ID Request:", placeholder="Masukkan ID Request yang ingin dicari...", key="search_id_request")
 
             df_display = df_filtered.copy()
             if not keyword_cari or not str(keyword_cari).strip():
@@ -1003,7 +1002,7 @@ else:
             if base_zona_key not in st.session_state:
                 st.session_state[base_zona_key] = {}
 
-            tombol_reset_draft = st.sidebar.button("🔄 Reset Draft", key=f"reset_{wilayah}")
+            tombol_reset_draft = st.sidebar.button("Reset Draft", key=f"reset_{wilayah}")
             if local_df_key not in st.session_state or tombol_reset_draft:
                 df_lokal = df_filtered.copy()
                 st.session_state[local_df_key] = df_lokal
@@ -1059,7 +1058,7 @@ else:
                 current_ts = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
 
                 if not target_id:
-                    st.session_state[f"last_msg_{wilayah}"] = ("error", "⚠️ Masukkan atau scan ID terlebih dahulu.")
+                    st.session_state[f"last_msg_{wilayah}"] = ("error", "Masukkan atau scan ID terlebih dahulu.")
                     st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                     st.rerun()
                 else:
@@ -1067,7 +1066,7 @@ else:
                     matched = df_lokal[[cid == target_id for cid in clean_lokal_ids]] if clean_lokal_ids else pd.DataFrame()
 
                     if matched.empty:
-                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** tidak terdaftar di database cabang ini.")
+                        st.session_state[f"last_msg_{wilayah}"] = ("error", f"ID **{target_id}** tidak terdaftar di database cabang ini.")
                         st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                         st.rerun()
                     else:
@@ -1078,7 +1077,7 @@ else:
 
                         row_status = str(row.get("Status", "")).strip().lower()
                         if row_status == "delivered":
-                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ ID **{target_id}** sudah berstatus **Delivered**.")
+                            st.session_state[f"last_msg_{wilayah}"] = ("error", f"ID **{target_id}** sudah berstatus **Delivered**.")
                             st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                             st.rerun()
                         else:
@@ -1090,15 +1089,15 @@ else:
                             sisa_kuota = max(0, max_box - current_prog)
 
                             if current_prog >= max_box and max_box > 0 and row_status != "on delivery":
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah selesai diproses.")
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"ID **{target_id}** sudah selesai diproses.")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             elif sisa_kuota <= 0:
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"⚠️ ID **{target_id}** sudah mencapai batas kuota ({max_box} box).")
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"ID **{target_id}** sudah mencapai batas kuota ({max_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             elif int(jumlah_box_val) > sisa_kuota:
-                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"❌ Jumlah box melebihi sisa kuota (Sisa: {sisa_kuota} dari {max_box} box).")
+                                st.session_state[f"last_msg_{wilayah}"] = ("error", f"Jumlah box melebihi sisa kuota (Sisa: {sisa_kuota} dari {max_box} box).")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("error", current_ts)
                                 st.rerun()
                             else:
@@ -1121,7 +1120,7 @@ else:
                                 st.session_state[session_boxes_key][target_id] = st.session_state[session_boxes_key].get(target_id, 0) + int(jumlah_box_val)
 
                                 st.session_state[changes_key] = True
-                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"✅ ID **{target_id}** berhasil ditambahkan (+{int(jumlah_box_val)} Box). Progress: **{new_prog}/{max_box}**")
+                                st.session_state[f"last_msg_{wilayah}"] = ("success", f"ID **{target_id}** berhasil ditambahkan (+{int(jumlah_box_val)} Box). Progress: **{new_prog}/{max_box}**")
                                 st.session_state[f"sound_effect_{wilayah}"] = ("success", current_ts)
                                 st.rerun()
 
@@ -1167,7 +1166,7 @@ else:
                         components.html(audio_html, height=0, width=0)
 
                     except Exception as e:
-                        st.error(f"⚠️ Gagal memuat file audio: {e}")
+                        st.error(f"Gagal memuat file audio: {e}")
 
                 del st.session_state[sound_effect_key]
 
@@ -1264,12 +1263,12 @@ else:
 
                     st.markdown("")
 
-                    if st.button("💾 Simpan Perubahan & Zona ke Database", type="primary", **stretch(st.button), key=f"btn_save_batch_mz_{wilayah}"):
+                    if st.button("Simpan Perubahan & Zona ke Database", type="primary", **stretch(st.button), key=f"btn_save_batch_mz_{wilayah}"):
                         if selected_batch_zona == "-- Pilih Zona --":
-                            st.warning("⚠️ Harap tentukan **Zona Mezzanine** terlebih dahulu sebelum menyimpan!")
+                            st.warning("Harap tentukan **Zona Mezzanine** terlebih dahulu sebelum menyimpan!")
                         else:
                             try:
-                                with st.spinner("⏳ Menyimpan data preload & zona ke Preload Input..."):
+                                with st.spinner("Menyimpan data preload & zona ke Preload Input..."):
                                     sh = get_spreadsheet()
                                     ws_p = get_or_init_preload_ws(sh)
 
@@ -1297,11 +1296,11 @@ else:
                                             del st.session_state[local_df_key]
 
                                         st.cache_data.clear()
-                                        flash("success", "✅ Seluruh data preload dan zona mezzanine berhasil disimpan ke Database!")
+                                        flash("success", "Seluruh data preload dan zona mezzanine berhasil disimpan ke Database!")
                                         st.rerun()
 
                             except Exception as e:
-                                st.error(f"❌ Gagal menyimpan ke database: {e}")
+                                st.error(f"Gagal menyimpan ke database: {e}")
 
             st.markdown("---")
             st.markdown(f"##### Data Preload Cabang: {wilayah}")
@@ -1412,9 +1411,9 @@ else:
                         break
 
                 if has_zone_changes:
-                    if st.button("💾 Simpan Perubahan", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
+                    if st.button("Simpan Perubahan", type="primary", key=f"btn_save_preload_zona_{wilayah}"):
                         try:
-                            with st.spinner("⏳ Menyimpan perubahan ke Database..."):
+                            with st.spinner("Menyimpan perubahan ke Database..."):
                                 sh = get_spreadsheet()
 
                                 ws_p = get_or_init_preload_ws(sh)
@@ -1437,11 +1436,11 @@ else:
                                         del st.session_state[local_df_key]
 
                                     st.cache_data.clear()
-                                    flash("success", "✅ Zona mezzanine berhasil disimpan ke Database!")
+                                    flash("success", "Zona mezzanine berhasil disimpan ke Database!")
                                     st.rerun()
 
                         except Exception as e:
-                            st.error(f"❌ Gagal menyimpan zona: {e}")
+                            st.error(f"Gagal menyimpan zona: {e}")
             else:
                 st.info("Belum ada data preload untuk ditampilkan pada cabang ini.")
 
@@ -1493,7 +1492,7 @@ else:
 
                 if submit_manifest:
                     if not selected_zones_manifest:
-                        st.warning("⚠️ Pilih minimal satu Zona Mezzanine terlebih dahulu.")
+                        st.warning("Pilih minimal satu Zona Mezzanine terlebih dahulu.")
                     else:
                         try:
                             sh = get_spreadsheet()
@@ -1549,7 +1548,7 @@ else:
                                         items_baru.append((r_id, z_nama, z_box))
 
                             if not matched_ids:
-                                st.warning("⚠️ Tidak ada data baru yang bisa dilakukan manifest pada zona mezzanine yang dipilih.")
+                                st.warning("Tidak ada data baru yang bisa dilakukan manifest pada zona mezzanine yang dipilih.")
                             else:
                                 now = now_wib()
                                 nomor_manifest = f"MNF-{now.strftime('%Y%m%d-%H%M%S')}"
@@ -1578,11 +1577,11 @@ else:
                                     if "local_df_preload" in k or "has_unsaved_changes" in k:
                                         del st.session_state[k]
 
-                                flash("success", f"✅ Manifest `{nomor_manifest}` berhasil dibuat ({int(total_box_manifest)} box) dengan status **Manifested**.")
+                                flash("success", f"Manifest `{nomor_manifest}` berhasil dibuat ({int(total_box_manifest)} box) dengan status **Manifested**.")
                                 st.rerun()
 
                         except Exception as e:
-                            st.error(f"❌ Gagal membuat manifest: {e}")
+                            st.error(f"Gagal membuat manifest: {e}")
 
             st.markdown("---")
             st.markdown(f"##### Daftar Manifest Cabang: {wilayah}")
@@ -1698,7 +1697,7 @@ else:
 
                         with c_btn1:
                             btn_key = f"detail_mnf_{wilayah}_{mnf_num}_{idx}"
-                            if st.button("🔍 Detail", key=btn_key, **stretch(st.button)):
+                            if st.button("Detail", key=btn_key, **stretch(st.button)):
                                 st.session_state[f"active_detail_manifest_{wilayah}"] = mnf_num
                                 st.rerun()
 
@@ -1752,10 +1751,10 @@ else:
                                                 if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                     del st.session_state[k]
 
-                                            flash("success", f"✅ Manifest `{mnf_num}` berhasil diproses!.")
+                                            flash("success", f"Manifest `{mnf_num}` berhasil diproses!.")
                                             st.rerun()
                                     except Exception as e:
-                                        st.error(f"❌ Gagal merubah status Delivered: {e}")
+                                        st.error(f"Gagal merubah status Delivered: {e}")
                             else:
                                 st.markdown("*Delivered*")
 
@@ -1763,7 +1762,7 @@ else:
                             btn_del_key = f"del_mnf_{wilayah}_{mnf_num}_{idx}"
                             if st.button("🗑️", key=btn_del_key, help=f"Hapus Manifest {mnf_num} ", **stretch(st.button)):
                                 try:
-                                    with st.spinner(f"⏳ Menghapus manifest {mnf_num} "):
+                                    with st.spinner(f"Menghapus manifest {mnf_num} "):
                                         sh = get_spreadsheet()
 
                                         ws_m = sh.worksheet("Manifest log")
@@ -1818,10 +1817,10 @@ else:
                                                 if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                     del st.session_state[k]
 
-                                            flash("success", f"✅ Manifest `{mnf_num}` berhasil dihapus dan status dikembalikan!")
+                                            flash("success", f"Manifest `{mnf_num}` berhasil dihapus dan status dikembalikan!")
                                             st.rerun()
                                 except Exception as e:
-                                    st.error(f"❌ Gagal menghapus manifest: {e}")
+                                    st.error(f"Gagal menghapus manifest: {e}")
 
                     st.markdown("---")
 
@@ -1831,7 +1830,7 @@ else:
 
                 if not selected_row_data.empty:
                     st.markdown("---")
-                    st.markdown(f"### 🔍 Detail Manifest: `{active_mnf}`")
+                    st.markdown(f"### Detail Manifest: `{active_mnf}`")
 
                     row_info = selected_row_data.iloc[0]
                     current_id_list_str = str(row_info.get("ID List", ""))
@@ -1847,7 +1846,7 @@ else:
                     st.info(f"**Zona Terliput:** {row_info.get('Zona Mezzanine')} | **Jumlah Box:** {box_tampilkan} | **Waktu Buat:** {row_info.get('Waktu Buat')}")
 
                     if manifest_terkunci:
-                        st.caption("🔒 Manifest berstatus Delivered: hanya dapat dilihat dan didownload.")
+                        st.caption("Manifest berstatus Delivered: hanya dapat dilihat dan didownload.")
 
                     col_scan_in, col_scan_out = st.columns(2)
 
@@ -1861,11 +1860,11 @@ else:
                             if btn_submit_susulan:
                                 clean_new_id = scan_input_id.strip().split('.')[0]
                                 if not clean_new_id:
-                                    st.warning("⚠️ Masukkan ID yang valid.")
+                                    st.warning("Masukkan ID yang valid.")
                                 else:
                                     max_b = id_max_box.get(clean_new_id, None)
                                     if max_b is None:
-                                        st.error(f"❌ ID `{clean_new_id}` tidak ditemukan pada data preload.")
+                                        st.error(f"ID `{clean_new_id}` tidak ditemukan pada data preload.")
                                     else:
                                         old_p = id_current_progress.get(clean_new_id, 0)
                                         input_box = int(added_box_input)
@@ -1877,9 +1876,9 @@ else:
                                         actual_added = dari_siap + tambah_progress
 
                                         if actual_added <= 0:
-                                            st.error(f"❌ ID `{clean_new_id}` tidak memiliki box yang bisa ditambahkan (kuota {max_b} box sudah terpenuhi / sudah masuk manifest).")
+                                            st.error(f"ID `{clean_new_id}` tidak memiliki box yang bisa ditambahkan (kuota {max_b} box sudah terpenuhi / sudah masuk manifest).")
                                         else:
-                                            with st.spinner("⏳ Menambahkan ID ke Manifest & memperbarui data..."):
+                                            with st.spinner("Menambahkan ID ke Manifest & memperbarui data..."):
                                                 try:
                                                     sh = get_spreadsheet()
 
@@ -1947,12 +1946,12 @@ else:
                                                             if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                                 del st.session_state[k]
 
-                                                        flash("success", f"✅ Berhasil menambahkan ID `{clean_new_id}` Total {actual_added} box ke manifest!")
+                                                        flash("success", f"Berhasil menambahkan ID `{clean_new_id}` Total {actual_added} box ke manifest!")
                                                         st.rerun()
                                                     else:
-                                                        st.error("❌ Baris manifest tidak ditemukan di database.")
+                                                        st.error("Baris manifest tidak ditemukan di database.")
                                                 except Exception as e:
-                                                    st.error(f"❌ Gagal memperbarui manifest: {e}")
+                                                    st.error(f"Gagal memperbarui manifest: {e}")
 
                     with col_scan_out:
                         with st.form(key=f"form_scan_keluar_{active_mnf}", clear_on_submit=True):
@@ -1969,7 +1968,7 @@ else:
                                 elif box_id_di_manifest > 0 and int(removed_box_input) > box_id_di_manifest:
                                     st.error(f"❌ Jumlah box melebihi box ID `{clean_out_id}` pada manifest ini ({box_id_di_manifest} box).")
                                 else:
-                                    with st.spinner("⏳ Mengeluarkan ID dari Manifest & memperbarui data..."):
+                                    with st.spinner("Mengeluarkan ID dari Manifest & memperbarui data..."):
                                         try:
                                             sh = get_spreadsheet()
 
@@ -2041,16 +2040,16 @@ else:
                                                     if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                         del st.session_state[k]
 
-                                                flash("success", f"✅ Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest!")
+                                                flash("success", f"Berhasil mengeluarkan {removed_box_input} box dari ID `{clean_out_id}` di manifest!")
                                                 st.rerun()
                                             else:
-                                                st.error("❌ Baris manifest tidak ditemukan di database.")
+                                                st.error("Baris manifest tidak ditemukan di database.")
                                         except Exception as e:
-                                            st.error(f"❌ Gagal mengeluarkan ID: {e}")
+                                            st.error(f"Gagal mengeluarkan ID: {e}")
 
                     st.markdown("---")
 
-                    with st.expander("🔗 Gabungkan Beberapa ID Menjadi 1 Box", expanded=False):
+                    with st.expander("Gabungkan Beberapa ID Menjadi 1 Box", expanded=False):
                         with st.form(key=f"form_gabung_box_{active_mnf}", clear_on_submit=True):
                             st.markdown("Pilih beberapa ID yang ingin digabungkan box-nya dalam manifest ini:")
 
@@ -2068,13 +2067,13 @@ else:
                                 help="Masukkan total box akhir untuk ID-ID yang dipilih (misal: digabung jadi 1 box)"
                             )
 
-                            btn_submit_merge = st.form_submit_button("🔄 Buat ID Gabungan", type="primary", disabled=manifest_terkunci)
+                            btn_submit_merge = st.form_submit_button("Buat ID Gabungan", type="primary", disabled=manifest_terkunci)
 
                             if btn_submit_merge:
                                 if not selected_ids_to_merge:
-                                    st.warning("⚠️ Pilih minimal satu ID untuk digabungkan.")
+                                    st.warning("Pilih minimal satu ID untuk digabungkan.")
                                 else:
-                                    with st.spinner("⏳ Menggabungkan ID & memperbarui data..."):
+                                    with st.spinner("Menggabungkan ID & memperbarui data..."):
                                         try:
                                             sh = get_spreadsheet()
 
@@ -2114,12 +2113,12 @@ else:
                                                     if "local_df_preload" in k or "has_unsaved_changes" in k:
                                                         del st.session_state[k]
 
-                                                flash("success", f"✅ Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini!")
+                                                flash("success", f"Berhasil menggabungkan ID ({', '.join(selected_ids_to_merge)}) menjadi total **{target_combined_box} box** pada manifest ini!")
                                                 st.rerun()
                                             else:
-                                                st.error("❌ Baris manifest tidak ditemukan di database.")
+                                                st.error("Baris manifest tidak ditemukan di database.")
                                         except Exception as e:
-                                            st.error(f"❌ Gagal melakukan penggabungan box: {e}")
+                                            st.error(f"Gagal melakukan penggabungan box: {e}")
 
                     st.markdown("---")
 
@@ -2199,10 +2198,10 @@ else:
                     if not df_detail_manifest.empty:
                         st.dataframe(df_detail_manifest, **stretch(st.dataframe), hide_index=True)
                     else:
-                        st.info("ℹ️ ID Terdaftar:")
+                        st.info("ID Terdaftar:")
                         st.write(ids_in_manifest)
 
-                    if st.button("❌ Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
+                    if st.button("Tutup Detail", key=f"close_detail_{wilayah}_{active_mnf}"):
                         st.session_state[f"active_detail_manifest_{wilayah}"] = None
                         st.rerun()
 
